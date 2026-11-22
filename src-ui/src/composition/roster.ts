@@ -167,6 +167,12 @@ export const CompositionPatchSchema = z.strictObject({
       }),
     )
     .optional(),
+  // ── 直调 allowlist（2026-11-22，code 模式 fail-closed）──
+  //    programOnly 是黑名单：新工具默认漏到直调面。directOnly 是反向白名单：
+  //    非 null 即启用；模型直调面只保留这些名字，其余仍进 code_execution 绑定集。
+  //    空数组 = 允许零个直调工具；缺省/null = 不启用 allowlist（现行语义）。
+  //    层级语义 = 后层整体替换（与 programOnly 的逐 id 覆盖不同：allowlist 是集合）。
+  directOnly: z.array(idField).optional(),
 });
 
 export type CompositionPatch = z.infer<typeof CompositionPatchSchema>;
@@ -228,6 +234,8 @@ export interface ResolvedComposition {
    *  （直调面 ≡ 可见面），零漂移。**不动装配面**：这些工具仍在注册表里、
    *  仍进 code_execution 的绑定集，只是不再出现在 `schemas()`。 */
   programOnly: string[];
+  /** 直调 allowlist（null = 不启用；数组 = 只允许这些工具名直调）。 */
+  directOnly: string[] | null;
   /** 激活域声明（S6 P3b）——各层 `requires` / `exclusive` 的**纯聚合**
    *  （并集 + 保持首现序去重；空层 = 空数组，零漂移）。刻意只收集**声明**、
    *  不做任何判定：可满足性（插件在不在册）与独占冲突（别的组合是否持有）
@@ -301,6 +309,7 @@ export function factoryComposition(): ResolvedComposition {
     seamDisabled: EMPTY_SEAM_DISABLED,
     activationDecl: { requires: [], exclusive: [] },
     programOnly: [],
+    directOnly: null,
     diagnostics: { unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] },
   };
 }
@@ -425,6 +434,8 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
   const exclusiveDecl: string[] = [];
   // 程序内专属集（2026-11-21 code 模式）：后层覆盖前层的同 id 判定。
   const programOnlyDecl = new Set<string>();
+  // 直调 allowlist（2026-11-22）：后层整体替换；null = 不启用。
+  let directOnlyDecl: string[] | null = null;
 
   for (const layer of layers) {
     for (const plugin of layer.requires ?? []) {
@@ -451,6 +462,9 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     for (const entry of layer.programOnly ?? []) {
       if (entry.programOnly) programOnlyDecl.add(entry.id);
       else programOnlyDecl.delete(entry.id);
+    }
+    if (layer.directOnly !== undefined) {
+      directOnlyDecl = [...new Set(layer.directOnly)];
     }
     for (const entry of layer.prompt ?? []) {
       if ('insert' in entry) {
@@ -536,6 +550,7 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     // 程序内专属集进解析产物（纯收集；「这个名字存不存在」的判定归装配面——
     // 未在册的名字静默不入集，与 patch 的 disable 域同一宽容度）。
     programOnly: [...programOnlyDecl],
+    directOnly: directOnlyDecl,
     diagnostics: {
       unselected: unselectedIds,
       disabled: disabledIds,

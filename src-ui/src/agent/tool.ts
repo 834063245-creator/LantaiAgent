@@ -55,6 +55,9 @@ export class ToolRegistry {
    *  preset 剪可行——剪掉行 = 程序内也调不到，那等于把 code mode 做成残废
    *  （见 docs/plans/code-mode-preset-plan.md）。 */
   private programOnlyNames = new Set<string>();
+  /** 直调 allowlist（null = 不启用；Set = 只允许这些名字直调）。
+   *  与 programOnly 互补：allowlist 是 fail-closed（新工具默认不进直调面）。 */
+  private directOnlyNames: Set<string> | null = null;
 
   /** 注册工具并返回所有权清理器（Phase 1 disposer 契约）。
    *  调用方持有 disposer 即持有该工具的清理责任；幂等。
@@ -139,12 +142,13 @@ export class ToolRegistry {
    *  后者 = 「模型能把它当顶层工具调什么」。任何一处拿错就会让 code 模式
    *  要么漏绑、要么半残。 */
   directTools(): Tool[] {
-    return this.visibleTools().filter((t) => !this.programOnlyNames.has(t.name()));
+    const visible = this.visibleTools().filter((t) => !this.programOnlyNames.has(t.name()));
+    return this.directOnlyNames ? visible.filter((t) => this.directOnlyNames?.has(t.name())) : visible;
   }
 
-  /** 克隆注册表（工具引用 + hidden / programOnly 两项策略全量复制）。
+  /** 克隆注册表（工具引用 + hidden / programOnly / directOnly 三项策略全量复制）。
    *
-   *  ⚠ 不能只复制 `all()` 里的 Tool 对象：programOnly 是**注册表策略**，不是
+   *  ⚠ 不能只复制 `all()` 里的 Tool 对象：直调面策略是**注册表策略**，不是
    *  Tool 实例属性。runtime 装配时为每个 Agent 克隆注册表；若这里漏掉策略，
    *  code 模式在装配后会静默退回「直调面 ≡ 可见面」——组合声明还在，但模型
    *  仍能直调本来只应经 code_execution 提供的工具。hidden 同理由本方法保真，
@@ -154,6 +158,7 @@ export class ToolRegistry {
     for (const [name, tool] of this.tools) out.tools.set(name, tool);
     out.hiddenNames = new Set(this.hiddenNames);
     out.programOnlyNames = new Set(this.programOnlyNames);
+    out.directOnlyNames = this.directOnlyNames ? new Set(this.directOnlyNames) : null;
     return out;
   }
 
@@ -172,6 +177,28 @@ export class ToolRegistry {
   /** 当前仅程序内可见的名字（诊断/引导文案用）。 */
   programOnlyNamesList(): string[] {
     return [...this.programOnlyNames];
+  }
+
+  /** 设置直调 allowlist（null = 关闭；空数组 = 允许零个直调工具）。 */
+  setDirectOnlyAllowlist(names: readonly string[] | null): void {
+    this.directOnlyNames = names === null ? null : new Set(names);
+  }
+
+  /** 是否启用直调 allowlist。 */
+  hasDirectOnlyAllowlist(): boolean {
+    return this.directOnlyNames !== null;
+  }
+
+  /** 当前直调 allowlist（诊断/测试面；null = 未启用）。 */
+  directOnlyNamesList(): string[] | null {
+    return this.directOnlyNames ? [...this.directOnlyNames] : null;
+  }
+
+  /** 某工具是否因 allowlist 被禁止**直调**（仍留在 visibleTools 程序面）。
+   *  供 streaming-executor 在模型绕过 schemas 直呼时给可行动引导。 */
+  isDirectOnlyBlocked(name: string): boolean {
+    if (this.directOnlyNames === null) return false;
+    return this.tools.has(name) && !this.hiddenNames.has(name) && !this.directOnlyNames.has(name);
   }
 
   schemas(): ToolSchema[] {

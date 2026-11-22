@@ -281,10 +281,10 @@ export class StreamingToolExecutor {
       return;
     }
 
-    // 程序内专属工具被直调（2026-11-21 code 模式）：工具还在册、程序里照常能
-    // await 到，只是**不在直调面**（schemas() 已扣）。这里给可读引导而不是让它
-    // 静默跑掉——否则「组合说了收进程序」只是一句空话。
-    if (this.tools.isProgramOnly(call.name)) {
+    // 程序内专属 / 直调 allowlist 外的工具被直调（2026-11-21 code 模式）：
+    // 工具还在册、程序里照常能 await 到，只是**不在直调面**（schemas() 已扣）。
+    // 这里给可读引导而不是让它静默跑掉——否则「组合说了收进程序」只是一句空话。
+    if (this.tools.isProgramOnly(call.name) || this.tools.isDirectOnlyBlocked(call.name)) {
       const result: PendingResult = {
         call,
         output:

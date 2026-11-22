@@ -65,6 +65,7 @@ function io(fs: FakeFs, root = '/home/u/.lantai/composition'): CompositionIo {
     },
     rescan: async () => {
       fs.rescans += 1;
+      return { ok: true, updated: true, userPresetCount: 0, skipped: [] };
     },
   };
 }

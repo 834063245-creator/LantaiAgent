@@ -230,6 +230,24 @@ describe('S6 P1c 卷级组合选择', () => {
     );
   });
 
+  it('包含 shell 域的 preset 不能按卷选择（壳行只有应用启动面）', async () => {
+    setupSession();
+    usePresetStore.setState({
+      roster: [
+        ...builtinPresets(),
+        {
+          id: 'shell-mode',
+          builtin: false,
+          patch: { shell: [{ id: 'hologram/shell-workspace', disabled: true }] },
+        },
+      ],
+    });
+    const r = await selectSessionPreset(makeCtx(), SID, 'shell-mode');
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toContain('壳行');
+    expect(agentSessionState.getRecordedPresetId(STORE, SID)).toBeNull();
+  });
+
   it('卷级选择不写全局真源：settings 与 preset-store.selected 一动不动', async () => {
     await withFirstPartyToolChannel(() =>
       withFirstPartyCapabilityChannel(async () => {

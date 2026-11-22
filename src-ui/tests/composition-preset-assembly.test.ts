@@ -444,6 +444,33 @@ describe('F1/F1b/F5：preset 层捕获网 + 选择校验 + 立即回写（2026-0
     });
   });
 
+  it('全局选择：未知 id 直接拒绝，不允许把全局默认写成幽灵 id', () => {
+    expect(selectPreset('definitely-ghost')).toBe(false);
+    expect(usePresetStore.getState().selected).toBe('standard');
+    expect(usePresetStore.getState().error).toContain('不在册');
+  });
+
+  it('boot：选中 broken preset（patch = null）也进错误面，不只落 console.warn', () => {
+    usePresetStore.getState().select('damaged');
+    applyDefaultPreset();
+    expect(usePresetStore.getState().error).toContain('YAML');
+    expect(useCompositionStore.getState().status).toBe('factory');
+  });
+
+  it('F5：连续切换 preset 时 patchOrigin 不累加历史 preset', async () => {
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        expect(selectPreset('minimal')).toBe(true);
+        expect(useCompositionStore.getState().patchOrigin).toBe('preset:minimal');
+        expect(selectPreset('creator')).toBe(true);
+        expect(useCompositionStore.getState().patchOrigin).toBe('preset:creator');
+        expect(selectPreset('standard')).toBe(true);
+        expect(useCompositionStore.getState().status).toBe('factory');
+        expect(useCompositionStore.getState().patchOrigin).toBeUndefined();
+      }),
+    );
+  });
+
   it('F1b：selectPreset 拒绝不可解析 preset（选择与 settings 都不动 + 原因可见）', async () => {
     await withFirstPartyToolChannel(async () => {
       expect(selectPreset('ghost')).toBe(false);

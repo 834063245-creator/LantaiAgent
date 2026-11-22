@@ -1,6 +1,10 @@
 # code 模式 preset（2026-11-21 立项）
 
 > 状态：**批 1/2/3 已落地（2026-11-21）**
+>
+> **2026-11-22 追补**：code preset 改用 fail-closed 的 `directOnly` allowlist（v67），
+> 不再维护 `programOnly` 逐工具黑名单；plan-tools / plan-injector 在 code 组合里
+> 显式禁用（plan gate 会拦 code_execution，叠用会锁死会话）。
 > 触发：用户 2026-11-21 拍板——「我认为应该走 B 选项单独出一个 code mode preset」+
 > 「程序内的子调用在纸面上其实是应该显形的，只是我一直没来得及做」。
 
@@ -88,11 +92,11 @@ executor 返回**可读引导**（「本卷是 code 模式：请用 code_executi
 ### 5.1 已探明的边界（登记，不在本批修）
 
 - **子 Agent 不继承 code 模式**：`buildSubAgentTools` clone 的是注册表实例，
-  programOnly 标记按名字记在每个实例上，且 capability（`code_execution` 本身）
+  directOnly / programOnly 策略按名字记在每个实例上，且 capability（`code_execution` 本身）
   本就不下放给子 Agent。**刻意不传播标记**——传播了子 Agent 会拿到「请用
   code_execution」却根本没有这个工具的死循环，比现状更坏。
 - **plan 模式的只读克隆**（`planRegistry`）按 `readOnly` 收工具，不看
-  programOnly：规划用的只读子 Agent 仍能直调只读工具。这是**想要**的
+  直调面策略：规划用的只读子 Agent 仍能直调只读工具。这是**想要**的
   （它们没有 code_execution，也没必要绕程序）。
 - **冷恢复的旧卷**没有这一段（`uiMessages` 快照缺席）；不凭审计补造，理由见上。
 

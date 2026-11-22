@@ -47,6 +47,24 @@ describe('code 模式：直调程序内专属工具', () => {
     expect(results[0]?.err).toBeUndefined();
   });
 
+  it('directOnly allowlist 外的工具同样只给引导、不执行（fail-closed）', async () => {
+    const order: string[] = [];
+    const reg = new ToolRegistry();
+    reg.register(toyTool('fs', order));
+    reg.register(toyTool('ask_user', order));
+    reg.setDirectOnlyAllowlist(['ask_user']);
+
+    const executor = new StreamingToolExecutor(reg, () => {});
+    executor.addTool(call('fs'));
+    const results = await executor.awaitRemaining();
+
+    expect(order).toEqual([]);
+    const out = String(results[0]?.output ?? '');
+    expect(out).toContain('code_execution');
+    expect(out).toContain('tools.fs');
+    expect(results[0]?.err).toBeUndefined();
+  });
+
   it('未声明为程序内专属的工具照常直调（零回归）', async () => {
     const order: string[] = [];
     const reg = new ToolRegistry();

@@ -37,7 +37,7 @@ import {
   parsePatchYamlText,
   type ResolvedComposition,
   reapplyComposition,
-  resolveRoster,
+  resolvePresetDraft,
   stringifyPatchYaml,
   type Tool,
   typedRpc,
@@ -57,8 +57,8 @@ export interface CompositionIo {
   makeDir(path: string): Promise<void>;
   /** 删一个文件（不存在 → 不报错：删除是幂等的）。 */
   deleteFile(path: string): Promise<void>;
-  /** 重扫（discoverPresets + reapplyComposition）。 */
-  rescan(): Promise<void>;
+  /** 重扫（discoverPresets + reapplyComposition）；失败必须返回给工具面。 */
+  rescan(): Promise<Awaited<ReturnType<typeof discoverPresets>>>;
 }
 
 /** 组合解析读面（生产 = 内核组合层；测试注入假件）。 */
@@ -87,20 +87,31 @@ export const rpcCompositionIo: CompositionIo = {
     await kernelDeleteFile(path);
   },
   rescan: async () => {
-    await discoverPresets();
+    const result = await discoverPresets();
     reapplyComposition();
+    return result;
   },
 };
 
 const kernelDeps: CompositionDeps = {
   roster: () => usePresetStore.getState().roster,
   factory: () => factoryComposition(),
-  resolve: (patch) => resolveRoster(factoryComposition(), [patch]),
+  resolve: (patch) => resolvePresetDraft(patch),
 };
 
 /** 目录拼接（Windows / POSIX 都吃 `/`——Rust 侧 resolve 会归一）。 */
 export function presetDirPath(root: string, id: string): string {
   return root.replace(/[/\\]+$/, '') + '/presets/' + id;
+}
+
+function scanNotice(result: { ok: boolean; skipped: string[]; error?: string }): string {
+  if (!result.ok)
+    return (
+      '\n⚠ 文件已落盘，但重新扫描失败：' +
+      (result.error ?? '未知原因') +
+      '（可在 设置 › Agent › 组合 点「重新扫描」重试）'
+    );
+  return result.skipped.length > 0 ? '\n⚠ 扫描时跳过：' + result.skipped.join('、') : '';
 }
 
 /** 组合摘要（写盘后/校验后给人看的那几行）——只报计数与缺口，不倾倒全表。 */
@@ -283,6 +294,7 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
           if (yaml === null) return '拒绝：preset「' + id + '」的 roster.patch.yml 不可读（不在册或目录不完整）';
           meta = (await io.readFile(srcDir + '/preset.yml')) ?? ['name: ' + JSON.stringify(target), ''].join('\n');
         }
+        let scan: Awaited<ReturnType<CompositionIo['rescan']>>;
         try {
           await io.makeDir(dstDir);
           await io.writeFile(dstDir + '/roster.patch.yml', yaml);
@@ -292,7 +304,7 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
               await io.deleteFile(srcDir + '/' + name);
             }
           }
-          await io.rescan();
+          scan = await io.rescan();
         } catch (e) {
           return (action === 'rename' ? '改名' : '复制') + '失败：' + (e instanceof Error ? e.message : String(e));
         }
@@ -302,10 +314,11 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
             target +
             '」：' +
             dstDir +
-            '\n注意：已记着旧 id 的卷会显示「不在册」——在新卷上重选该组合即可（或用 composition(list) 确认）。'
+            '\n注意：已记着旧 id 的卷会显示「不在册」——在新卷上重选该组合即可（或用 composition(list) 确认）。' +
+            scanNotice(scan)
           );
         }
-        return '已复制为「' + target + '」：' + dstDir;
+        return '已复制为「' + target + '」：' + dstDir + scanNotice(scan);
       }
       if (action === 'delete') {
         if (!args.id) return '拒绝：delete 需要 id';
@@ -322,17 +335,18 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
         // 不在册也照删：残留目录 / 发现失败的坏 preset 正是最需要删的。
         const root = await io.dir();
         const dirPath = presetDirPath(root, id);
+        let scan: Awaited<ReturnType<CompositionIo['rescan']>>;
         try {
           // 两个约定文件都删（不存在不报，删除幂等）：roster.patch.yml 一没，发现层
           // 就不再认这个目录，preset 当场从清单消失。
           for (const name of ['roster.patch.yml', 'preset.yml']) {
             await io.deleteFile(dirPath + '/' + name);
           }
-          await io.rescan();
+          scan = await io.rescan();
         } catch (e) {
           return '删除失败：' + (e instanceof Error ? e.message : String(e));
         }
-        return '已删除 preset「' + id + '」：' + dirPath;
+        return '已删除 preset「' + id + '」：' + dirPath + scanNotice(scan);
       }
 
       // write
@@ -364,19 +378,22 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
         'description: ' + JSON.stringify(args.description ?? '由创作者模式生成'),
         '',
       ].join('\n');
+      let scan: Awaited<ReturnType<CompositionIo['rescan']>>;
       try {
         await io.makeDir(dirPath);
         await io.writeFile(dirPath + '/roster.patch.yml', checked.canonicalYaml);
         await io.writeFile(dirPath + '/preset.yml', meta);
-        await io.rescan();
+        scan = await io.rescan();
       } catch (e) {
         return '写入失败：' + (e instanceof Error ? e.message : String(e));
       }
-      return [
-        '已写入 preset「' + id + '」：' + dirPath,
-        '组成：' + checked.text,
-        '生效方式：在**空白卷**上选择该组合（卷首「组合」芯片 / 设置 › Agent › 组合），或由程序按组合起卷；已跑过一轮的卷不会中途换面。',
-      ].join('\n');
+      return (
+        [
+          '已写入 preset「' + id + '」：' + dirPath,
+          '组成：' + checked.text,
+          '生效方式：在**空白卷**上选择该组合（卷首「组合」芯片 / 设置 › Agent › 组合），或由程序按组合起卷；已跑过一轮的卷不会中途换面。',
+        ].join('\n') + scanNotice(scan)
+      );
     },
   });
 }

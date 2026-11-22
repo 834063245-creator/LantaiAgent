@@ -31,10 +31,12 @@ import {
   activationSkipped,
   activationStates,
   type CompositionActivationInput,
+  compositionTokenFor,
   declareActivation,
   declaredActivations,
   releaseActivations,
   retainActivation,
+  retainCompositionClaim,
 } from './activation';
 
 export class ActivationService extends Service {
@@ -64,6 +66,7 @@ export class ActivationService extends Service {
 
   /** 装配期记账：按组合激活（首次 → `start()`）。返回句柄数组——**调用方负责
    *  挂 ctx.effect 释放**（缺省 = 泄漏面）。未声明插件 ⇒ 空数组（no-op）。
+   *  start 失败不在这里抛（保留诊断账），但调用方必须检查 `ok=false` 并中止装配。
    *
    *  **独占冲突 = 装配期 fail loud**（S6 P3b）：任一插件要的独占资源已被别的
    *  插件持有 ⇒ 本次记账**整体回滚**（已 retain 的先释放）后抛错——拒绝后装配者，
@@ -74,9 +77,17 @@ export class ActivationService extends Service {
   ): Promise<ActivationHandle[]> {
     const handles: ActivationHandle[] = [];
     const exclusive = comp?.activationDecl?.exclusive ?? [];
+    // 组合级 exclusive 是**组合的**声明，不是每个插件各领一份。先由组合
+    // handle 占一次；随后各插件只领自己的 spec.exclusive。这样多插件组合
+    // 不会自相冲突，同一组合多卷共享同一 token，不同组合才冲突。
+    const compositionToken = comp && exclusive.length > 0 ? compositionTokenFor(comp) : undefined;
     try {
+      if (compositionToken) {
+        const claim = retainCompositionClaim(compositionToken, holder, exclusive);
+        if (claim) handles.push(claim);
+      }
       for (const plugin of activationPlan(comp)) {
-        const h = await retainActivation(plugin, holder, exclusive);
+        const h = await retainActivation(plugin, holder, [], compositionToken);
         if (h) handles.push(h);
       }
     } catch (e) {

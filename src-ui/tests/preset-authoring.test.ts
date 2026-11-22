@@ -17,8 +17,10 @@ import { builtinPresets } from '../src/composition/presets';
 import { factoryComposition, parseCompositionPatch } from '../src/composition/roster';
 import {
   createPresetFromTemplate,
+  deletePreset,
   type PresetAuthoringIo,
   presetDirPath,
+  renamePreset,
   rescanPresets,
   templateMetaYaml,
   templatePatchYaml,
@@ -43,6 +45,9 @@ function fakeIo(initial: Record<string, string> = {}): PresetAuthoringIo & {
     },
     makeDir: async (p) => {
       mkdirs.push(p);
+    },
+    deleteFile: async (p) => {
+      delete files[p];
     },
   };
 }
@@ -129,6 +134,31 @@ describe('P-1 authoring：复制为模板（拒覆盖 / 围栏）', () => {
   });
 });
 
+describe('P-1 authoring：管理面保护当前全局默认', () => {
+  it('删除当前全局默认被拒，且文件不动', async () => {
+    usePresetStore.setState({ selected: 'mine' });
+    const dir = presetDirPath(ROOT, 'mine');
+    const io = fakeIo({
+      [`${dir}/roster.patch.yml`]: 'tools: []\n',
+      [`${dir}/preset.yml`]: 'name: mine\n',
+    });
+    const res = await deletePreset('mine', io);
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('当前全局默认');
+    expect(io.files[`${dir}/roster.patch.yml`]).toBe('tools: []\n');
+  });
+
+  it('改名当前全局默认被拒，且源文件不动', async () => {
+    usePresetStore.setState({ selected: 'mine' });
+    const dir = presetDirPath(ROOT, 'mine');
+    const io = fakeIo({ [`${dir}/roster.patch.yml`]: 'tools: []\n' });
+    const res = await renamePreset('mine', 'renamed', io);
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('当前全局默认');
+    expect(io.files[`${dir}/roster.patch.yml`]).toBe('tools: []\n');
+  });
+});
+
 describe('P-1 authoring：免重启重扫', () => {
   const ORIGIN = presetsIndexOrigin(14570);
 
@@ -160,7 +190,9 @@ describe('P-1 authoring：免重启重扫', () => {
         [ORIGIN + '/my-preset/preset.yml']: { status: 200, body: 'name: 我的预设\n' },
       }),
     });
-    expect(res).toBeUndefined();
+    expect(res.ok).toBe(true);
+    expect(res.updated).toBe(true);
+    expect(res.userPresetCount).toBe(1);
     const ids = usePresetStore.getState().roster.map((p) => p.id);
     // creator（2026-10 创作者模式最小闭环）= 第三个内置 preset，readonly（2026-10-30
     // 只读研究）= 第四个；两者都排在用户 preset 之前

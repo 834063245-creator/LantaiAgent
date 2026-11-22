@@ -24,7 +24,7 @@ import {
   reapplyComposition,
   syncPresetSelectionFromSettings,
 } from '../composition/preset-assembly';
-import { discoverPresets } from '../composition/preset-discovery';
+import { type DiscoverPresetsResult, discoverPresets } from '../composition/preset-discovery';
 import { onPromptContributionsChanged } from '../composition/prompt-service';
 import type { ResolvedComposition } from '../composition/roster';
 import { onToolContributionsChanged } from '../composition/services';
@@ -46,8 +46,8 @@ function ensureCompositionLoaded(): Promise<void> {
 }
 
 /** 启动期一次 preset 发现（幂等；内置表 + 用户目录合并进 preset-store）。 */
-let presetDiscovery: Promise<void> | null = null;
-function ensurePresetsDiscovered(): Promise<void> {
+let presetDiscovery: Promise<DiscoverPresetsResult> | null = null;
+function ensurePresetsDiscovered(): Promise<DiscoverPresetsResult> {
   presetDiscovery ??= discoverPresets();
   return presetDiscovery;
 }

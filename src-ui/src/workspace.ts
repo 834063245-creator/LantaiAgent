@@ -543,6 +543,7 @@ export class Workspace {
       toolRows: composition.tools,
       // 程序内专属面（2026-11-21 code 模式）：直调面扣集随组合解析产物穿线
       programOnly: composition.programOnly,
+      directOnly: composition.directOnly,
     });
     this.registry = registry;
     // S6 P1d：身份与产物同步快照（建表时点）——判定「能否复用本注册表」用身份比，
@@ -1044,6 +1045,7 @@ export class Workspace {
               ) ?? Promise.resolve({ text: '', err: 'agent not available' }),
             toolRows: compositionOverride.tools,
             programOnly: compositionOverride.programOnly,
+            directOnly: compositionOverride.directOnly,
           })
         : (this.registry ?? registry);
 

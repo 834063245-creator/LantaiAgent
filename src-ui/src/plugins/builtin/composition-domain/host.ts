@@ -9,7 +9,7 @@
 
 export type { Tool } from '../../../agent/tool';
 export { defineTool } from '../../../agent/tools/define-tool';
-export { reapplyComposition } from '../../../composition/preset-assembly';
+export { reapplyComposition, resolvePresetDraft } from '../../../composition/preset-assembly';
 export { discoverPresets, parsePatchYamlText, stringifyPatchYaml } from '../../../composition/preset-discovery';
 export { builtinPresets, isValidPresetId, type PresetEntry } from '../../../composition/presets';
 export {

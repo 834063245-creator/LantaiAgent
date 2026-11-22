@@ -1,5 +1,5 @@
 {
-  "fingerprint": "aabd497d",
+  "fingerprint": "1d07af12",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -319,6 +319,7 @@
     "resolveGuardToolName",
     "resolveNewSessionDefault",
     "resolveOauthToken",
+    "resolvePresetDraft",
     "resolveRenderer",
     "resolveRoster",
     "resolveRunConfig",

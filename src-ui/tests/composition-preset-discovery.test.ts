@@ -36,7 +36,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     expect(presetsIndexOrigin(14570)).toBe('http://127.0.0.1:14570/composition/presets');
   });
 
-  it('正常发现：索引 + 本体 + 元数据 → roster 合并（内置在前，用户按 id 序）', async () => {
+  it('正常发现：索引 + 本体 + 元数据 → roster 合并（内置在前，用户按 order→id）', async () => {
     await discoverPresets({
       origin: ORIGIN,
       fetchImpl: router({
@@ -48,7 +48,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
       }),
     });
     const roster = usePresetStore.getState().roster;
-    expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly', 'alpha', 'paperx']);
+    expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly', 'paperx', 'alpha']);
     const paperx = roster.find((p) => p.id === 'paperx');
     expect(paperx?.builtin).toBe(false);
     expect(paperx?.patch).toEqual({ tools: [{ id: 'plugin/hologram/web-domain/web_fetch', disabled: true }] });
@@ -129,6 +129,19 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     expect(rosterIds).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly', 'ok']);
   });
 
+  it('发现结果报告重复与非法索引项，不静默吞掉', async () => {
+    const result = await discoverPresets({
+      origin: ORIGIN,
+      fetchImpl: router({
+        [ORIGIN + '/']: { status: 200, body: '["dedupe", "dedupe", "bad/id"]' },
+        [ORIGIN + '/dedupe/roster.patch.yml']: { status: 200, body: '{}' },
+      }),
+    });
+    expect(result.ok).toBe(true);
+    expect(result.userPresetCount).toBe(1);
+    expect(result.skipped).toEqual(expect.arrayContaining(['bad/id', 'dedupe（重复索引）']));
+  });
+
   it('索引 404 / 非 JSON 数组 / 500 = 内置表终态（非错误，store 不动）', async () => {
     for (const body of [undefined, 'not a list', '{"error":true}']) {
       await discoverPresets({
@@ -145,11 +158,14 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     }
   });
 
-  it('fetch 网络炸 → 永不 reject，内置表仍在', async () => {
+  it('fetch 网络炸 → 永不 reject，内置表仍在 + 结果可判失败', async () => {
     const boom: FetchTextLike = async () => {
       throw new Error('network down');
     };
-    await expect(discoverPresets({ origin: ORIGIN, fetchImpl: boom })).resolves.toBeUndefined();
+    const result = await discoverPresets({ origin: ORIGIN, fetchImpl: boom });
+    expect(result.ok).toBe(false);
+    expect(result.updated).toBe(false);
+    expect(result.error).toContain('network down');
     expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual([
       'standard',
       'minimal',
@@ -159,8 +175,10 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     ]);
   });
 
-  it('无通道（origin 空）→ 直接返回，内置表即终态', async () => {
-    await expect(discoverPresets({ origin: '' })).resolves.toBeUndefined();
+  it('无通道（origin 空）→ 内置表终态 + 明确返回不可发现', async () => {
+    const result = await discoverPresets({ origin: '' });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('通道不可用');
     expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual([
       'standard',
       'minimal',

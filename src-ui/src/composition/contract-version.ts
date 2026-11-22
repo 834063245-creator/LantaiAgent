@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 66;
+export const OPEN_SURFACE_CONTRACT_VERSION = 67;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v67（2026-11-22）**用户组合新增 `directOnly` 直调 allowlist（fail-closed code 模式）**：
+ *  `CompositionPatchSchema` 增可选顶层键 `directOnly: string[]`；非 null 即启用：
+ *  仅列出的**模型工具名**进入 `schemas()` 直调面，其余仍留 `visibleTools()` 供
+ *  `code_execution` 程序内调用。`ResolvedComposition.directOnly` 同步为
+ *  `string[] | null`（缺省 null = 现行语义，后层整体替换）。内置 `code` 组合改用
+ *  allowlist，不再维护逐工具黑名单：新工具/新插件默认不泄漏到直调面，旧 preset
+ *  不写该键 = 行为逐字不变。守护 `tests/composition-presets.test.ts` +
+ *  `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts`。
  *  v65（2026-11-21）**用户组合新增 `programOnly` 域（工具面收进程序）**：
  *  `composition/roster.ts` 的 `CompositionPatchSchema` 新增可选顶层键
  *  `programOnly: [{ id, programOnly: boolean }]`——语义 = 把**已装配的工具**

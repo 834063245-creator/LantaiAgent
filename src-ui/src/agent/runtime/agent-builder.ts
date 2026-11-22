@@ -103,6 +103,9 @@ export interface ToolRegistryOptions {
   /** 程序内专属工具名（2026-11-21 code 模式）——组合解析产物的
    *  `ResolvedComposition.programOnly`。缺省/空 = 直调面 ≡ 可见面（现行语义）。 */
   programOnly?: readonly string[];
+  /** 直调 allowlist（2026-11-22 fail-closed code 模式）——非 undefined 即启用：
+   *  只有列出的工具名进入直调面；null = 不启用（零漂移）。 */
+  directOnly?: readonly string[] | null;
 }
 
 import type { MemoryManagerFace } from '../memory-contract';
@@ -121,6 +124,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     subAgentSpawner,
     toolRows,
     programOnly,
+    directOnly,
   } = opts;
   const registry = new ToolRegistry();
 
@@ -189,6 +193,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
   // 语义：这些名字仍留注册表、仍进 code_execution 绑定集（visibleTools），
   // 只是从直调面（schemas）扣掉——见 tool.ts 的 directTools 注。
   for (const name of programOnly ?? []) registry.setProgramOnly(name, true);
+  if (directOnly !== undefined) registry.setDirectOnlyAllowlist(directOnly);
 
   return registry;
 }

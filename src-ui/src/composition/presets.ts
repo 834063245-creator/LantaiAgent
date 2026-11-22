@@ -79,6 +79,9 @@ export const CREATOR_GUIDE = [
   '  seam/<域>:    [ { id: <provider 或事件 id>, disabled: true } ]   # 域 = llm|subagents|fs|shell|sessionPersistence|loopEvents',
   '  requires:     [ <插件名> ]      # 本组合依赖的插件；缺任一则该组合不可选',
   '  exclusive:    [ <资源实例名> ]  # 本组合独占的资源（如 port:9310）',
+  '  directOnly:   [ <工具名> ]      # 直调 allowlist：非空时只有这些工具可直调，其余仅程序内',
+  '  programOnly:  [ { id: <工具名>, programOnly: true|false } ]  # 单名黑名单（兼容字段）',
+  '  # directOnly/programOnly 写**模型工具名**，不是行 id；普通组合不写这两个域即可。',
   '',
   '行 id 只能从 composition(list, rows:true) 的输出里抄——写错会被拒绝（报「未知行 id」并指出域）。本工具**不能新增插件或工具**，只能裁剪/回开已登记的行；也不能改插件参数。',
   '',
@@ -155,45 +158,30 @@ const BUILTIN_PRESETS: Array<{
     // code_execution 的绑定集（`await tools.fs(...)` 照旧可用）。
     // 为什么不是剪行：剪掉行 = 程序内也调不到（绑定集 = visibleTools），code mode
     // 会被做成残废（docs/plans/code-mode-preset-plan.md §4）。
-    // programOnly 的判据 = 直调面（schemas()）扣集，见 roster.ts 的字段注。
+    // 直调面用 fail-closed allowlist（directOnly）表达，见 roster.ts 的字段注。
     id: 'code',
     metadata: {
       name: 'code',
-      description: 'code 模式：工具面收进 code_execution 的程序里（直调只剩执行原语与问人），一程序多调用',
+      description: 'code 模式：工具面收进 code_execution 的程序里（直调只剩执行/会话原语），一程序多调用',
     },
-    // ⚠ id 语义：programOnly 域寻址的是**模型可见的工具名**（`fs` / `shell`…），
-    // 不是行 id——裁的是直调面（schemas()），而直调面按名字判定。未在册的名字
-    // 静默忽略（与 disable 域同一宽容度：裁一个不存在的名字不是错误）。
+    // ⚠ id 语义：directOnly 域寻址的是**模型可见的工具名**（`code_execution` /
+    // `ask_user`…），不是行 id——裁的是直调面（schemas()），而直调面按名字判定。
+    // 未在册的名字自然不出现；新工具默认不进入直调面（安全方向）。
     patch: {
       // plan 模式与 code 模式互斥：plan 激活后 planGate 会按 readOnly 拦截
       // code_execution（执行原语本身非只读），而日常工具又只允许经程序调用——
       // 两条规则叠在一起会把会话锁死。code 模式不提供规划模式，探索/设计直接
       // 在 code_execution 的程序里完成；要正式规划请另开 standard 卷。
       capabilities: [
+        // code 模式依赖这两个执行面：用户层即使禁过，也在本组合里回开。
+        { id: 'code-execution-tool', disabled: false },
+        { id: 'converge-tools', disabled: false },
         { id: 'plan-tools', disabled: true },
         { id: 'plan-injector', disabled: true },
       ],
-      programOnly: [
-        // 域工具：全部进程序（名单取「标准组合里有行」的那批；未在册的名字静默忽略）
-        { id: 'fs', programOnly: true },
-        { id: 'shell', programOnly: true },
-        { id: 'git', programOnly: true },
-        { id: 'search', programOnly: true },
-        { id: 'web', programOnly: true },
-        { id: 'office', programOnly: true },
-        { id: 'browser', programOnly: true },
-        { id: 'desktop', programOnly: true },
-        { id: 'cordis', programOnly: true },
-        { id: 'agent', programOnly: true },
-        { id: 'task', programOnly: true },
-        { id: 'memory', programOnly: true },
-        { id: 'goal', programOnly: true },
-        // 资产/知识类：读得到就调得到，但同样走程序（一次调用里批量取）
-        { id: 'show_asset', programOnly: true },
-        { id: 'update_asset', programOnly: true },
-        { id: 'list_block_kinds', programOnly: true },
-        { id: 'web_search', programOnly: true },
-      ],
+      // fail-closed 直调 allowlist：除下列会话原语/执行原语外，所有工具默认
+      // 只进程序（新插件、新工具域自动被收进 code_execution，不再依赖手工黑名单）。
+      directOnly: ['code_execution', 'ask_user', 'wait', 'Skill', 'hologram_compaction_stats'],
       prompt: [
         {
           insert: [

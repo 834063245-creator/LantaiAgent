@@ -91,6 +91,38 @@ describe('ToolRegistry.register → Disposer', () => {
     expect(reg.directTools().map((t) => t.name())).toEqual([]);
   });
 
+  it('directOnly：allowlist 内才进直调面；其余仍进 visibleTools，直调被引导拦截', () => {
+    const reg = new ToolRegistry();
+    reg.register(toyTool('fs'));
+    reg.register(toyTool('ask_user'));
+    reg.register(toyTool('new_future_tool'));
+    reg.setDirectOnlyAllowlist(['ask_user']);
+
+    expect(reg.schemas().map((s) => s.name)).toEqual(['ask_user']);
+    expect(reg.directTools().map((t) => t.name())).toEqual(['ask_user']);
+    expect(
+      reg
+        .visibleTools()
+        .map((t) => t.name())
+        .sort(),
+    ).toEqual(['ask_user', 'fs', 'new_future_tool']);
+    expect(reg.isDirectOnlyBlocked('fs')).toBe(true);
+    expect(reg.isDirectOnlyBlocked('ask_user')).toBe(false);
+    expect(reg.directOnlyNamesList()).toEqual(['ask_user']);
+
+    // fail-closed：后加的新工具也不会自动出现在直调面
+    reg.register(toyTool('another_new_tool'));
+    expect(reg.schemas().map((s) => s.name)).toEqual(['ask_user']);
+
+    reg.setDirectOnlyAllowlist(null);
+    expect(
+      reg
+        .schemas()
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(['another_new_tool', 'ask_user', 'fs', 'new_future_tool']);
+  });
+
   it('clone：工具引用与 hidden / programOnly 策略全量保真（runtime 装配回归）', () => {
     const reg = new ToolRegistry();
     const fs = toyTool('fs');
@@ -99,11 +131,13 @@ describe('ToolRegistry.register → Disposer', () => {
     reg.register(toyTool('ask_user'));
     reg.hide('legacy');
     reg.setProgramOnly('fs', true);
+    reg.setDirectOnlyAllowlist(['ask_user']);
 
     const copy = reg.clone();
     expect(copy.get('fs')).toBe(fs); // 工具实例不复制实现，只复制表
     expect(copy.isHidden('legacy')).toBe(true);
     expect(copy.isProgramOnly('fs')).toBe(true);
+    expect(copy.directOnlyNamesList()).toEqual(['ask_user']);
     expect(copy.schemas().map((s) => s.name)).toEqual(['ask_user']);
     expect(
       copy
@@ -114,9 +148,11 @@ describe('ToolRegistry.register → Disposer', () => {
 
     // 克隆是独立策略账：后续变更不串回源表
     copy.setProgramOnly('fs', false);
+    copy.setDirectOnlyAllowlist(null);
     copy.unhide('legacy');
     expect(reg.isProgramOnly('fs')).toBe(true);
     expect(reg.isHidden('legacy')).toBe(true);
+    expect(reg.directOnlyNamesList()).toEqual(['ask_user']);
   });
 
   it('陈旧 disposer 不误删同名的新工具', () => {

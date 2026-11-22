@@ -241,6 +241,47 @@ describe('④ requires 显式来源与 exclusive 冲突（S6 P3b）', () => {
     expect(activationPlan(comp)).toEqual([]);
   });
 
+  it('组合级 exclusive 只认领一次：同组合两个激活插件不自相冲突', async () => {
+    const log: string[] = [];
+    declareActivation('acme/a', probeSpec(log, 'a'));
+    declareActivation('acme/b', probeSpec(log, 'b'));
+    const root = new Context();
+    const fiber = root.plugin(compositionServicesPlugin);
+    await fiber;
+    const handles = await root.activation.retainForComposition(
+      compWith(['plugin/acme/a/tool', 'plugin/acme/b/tool'], { exclusive: ['stdio'] }),
+      'agent-same-composition',
+    );
+    // 1 个组合 claim + 2 个插件激活句柄
+    expect(handles).toHaveLength(3);
+    expect(log.sort()).toEqual(['start:a', 'start:b']);
+    await root.activation.releaseAll(handles);
+    expect(activationClaims()).toEqual([]);
+    await fiber.dispose();
+  });
+
+  it('同一组合对象多卷共享 claim；不同组合对象抢同一资源仍冲突', async () => {
+    const log: string[] = [];
+    declareActivation('acme/a', probeSpec(log, 'a'));
+    const root = new Context();
+    const fiber = root.plugin(compositionServicesPlugin);
+    await fiber;
+    const compA = compWith(['plugin/acme/a/tool'], { exclusive: ['port:9400'] });
+    const first = await root.activation.retainForComposition(compA, 'agent-a1');
+    const second = await root.activation.retainForComposition(compA, 'agent-a2');
+    expect(first).toHaveLength(2);
+    expect(second).toHaveLength(2);
+    expect(log).toEqual(['start:a']); // 同一插件引用计数，不重启
+
+    const compB = compWith(['plugin/acme/a/tool'], { exclusive: ['port:9400'] });
+    await expect(root.activation.retainForComposition(compB, 'agent-b1')).rejects.toThrow('独占资源冲突');
+
+    await root.activation.releaseAll(first);
+    await root.activation.releaseAll(second);
+    expect(activationClaims()).toEqual([]);
+    await fiber.dispose();
+  });
+
   it('exclusive 冲突：同一资源被两个插件声明 ⇒ 后装配者被拒 + 原因含双方 id', async () => {
     const log: string[] = [];
     declareActivation('acme/a', { ...probeSpec(log, 'a'), exclusive: ['port:9310'] });
@@ -309,6 +350,62 @@ describe('④ requires 显式来源与 exclusive 冲突（S6 P3b）', () => {
     await fiber.dispose();
   });
 
+  it('start 失败：资源 claim 当场退回，不会阻塞后来者', async () => {
+    declareActivation('acme/bad', {
+      ...probeSpec([], 'bad'),
+      exclusive: ['port:9500'],
+      start: () => {
+        throw new Error('端口被占');
+      },
+    });
+    declareActivation('acme/good', { ...probeSpec([], 'good'), exclusive: ['port:9500'] });
+    const bad = await retainActivation('acme/bad', 'bad-agent');
+    expect(bad?.ok).toBe(false);
+    expect(activationClaims()).toEqual([]); // 失败者不霸占资源
+    const good = await retainActivation('acme/good', 'good-agent');
+    expect(good?.ok).toBe(true);
+    expect(activationClaims()).toEqual([{ resource: 'port:9500', plugin: 'acme/good' }]);
+    await releaseActivation(good);
+  });
+
+  it('start 在途时撤销声明：落地后补 stop，不泄漏副作用', async () => {
+    const log: string[] = [];
+    let releaseStart: (() => void) | null = null;
+    const dispose = declareActivation('acme/inflight', {
+      exclusive: ['stdio'],
+      start: () => {
+        log.push('start:probe');
+        return new Promise<void>((resolve) => {
+          releaseStart = resolve;
+        });
+      },
+      stop: () => {
+        log.push('stop:probe');
+      },
+    });
+    const pending = retainActivation('acme/inflight', 'agent-1');
+    await vi.waitFor(() => expect(releaseStart).not.toBeNull());
+    dispose();
+    releaseStart?.();
+    await pending;
+    await vi.waitFor(() => expect(log).toEqual(['start:probe', 'stop:probe']));
+    expect(activationClaims()).toEqual([]);
+    expect(activationStates()).toEqual([]);
+  });
+
+  it('声明撤销：释放 claim 并 stop 已启动副作用，旧 handle release 幂等', async () => {
+    const log: string[] = [];
+    const dispose = declareActivation('acme/unload', { ...probeSpec(log), exclusive: ['stdio'] });
+    const h = await retainActivation('acme/unload', 'agent-1');
+    expect(activationClaims()).toEqual([{ resource: 'stdio', plugin: 'acme/unload' }]);
+    dispose();
+    await vi.waitFor(() => expect(log).toEqual(['start:probe', 'stop:probe']));
+    expect(activationClaims()).toEqual([]);
+    expect(activationStates()).toEqual([]);
+    await releaseActivation(h); // 账已清：幂等 no-op
+    expect(log).toEqual(['start:probe', 'stop:probe']);
+  });
+
   it('第四栏读面：skipped = 激活失败的插件 + 原因（start 抛错）', async () => {
     declareActivation('acme/ok', probeSpec([]));
     declareActivation('acme/bad', {
@@ -365,6 +462,35 @@ describe('③ 装配面（runtime：装配期 retain + AgentContext.effect 对�
     await vi.waitFor(() => expect(log).toEqual(['start:probe', 'stop:probe']));
     expect(root.activation.states()).toEqual([]);
 
+    await svcFiber.dispose();
+  });
+
+  it('插件 start 失败 ⇒ runtime 装配中止且激活账已回滚（不带着半残工具面开卷）', async () => {
+    const root = new Context();
+    const svcFiber = root.plugin(compositionServicesPlugin);
+    await svcFiber;
+    root.activation.declare('acme/broken', {
+      start: () => {
+        throw new Error('底层进程起不来');
+      },
+    });
+    const comp = compositionWithRows(['plugin/acme/broken/probe']);
+    const rt = new AgentRuntime(undefined, root, comp);
+    await rt.ready();
+    await expect(
+      rt.createAgent(
+        {
+          projectPath: '',
+          provider: stubProvider(),
+          tools: new ToolRegistry(),
+          subAgentPool: new SubAgentPool(),
+          subAgentSpawner: stubSpawner,
+          eventSink: () => {},
+        },
+        comp,
+      ),
+    ).rejects.toThrow('插件激活失败，装配中止');
+    expect(root.activation.states()).toEqual([]); // 回滚完成，不泄漏 holder/claim
     await svcFiber.dispose();
   });
 

@@ -39,6 +39,25 @@ export interface DiscoverPresetsOptions {
   fetchImpl?: FetchTextLike;
 }
 
+/** 发现结果——rescan/设置面板必须能区分「扫成功」与「通道失败但保留旧 roster」。
+ *  `updated=false` 时 roster 原样不动；`skipped` 记录非法 id / 重复条目。 */
+export interface DiscoverPresetsResult {
+  ok: boolean;
+  updated: boolean;
+  /** 本次成功合并后的用户 preset 数；失败时 = 现有 roster 的用户条目数。 */
+  userPresetCount: number;
+  skipped: string[];
+  error?: string;
+}
+
+function currentUserPresetCount(): number {
+  return usePresetStore.getState().roster.filter((p) => !p.builtin).length;
+}
+
+function discoveryFailure(error: string): DiscoverPresetsResult {
+  return { ok: false, updated: false, userPresetCount: currentUserPresetCount(), skipped: [], error };
+}
+
 /** preset 索引通道 origin（/composition 前缀 + presets 子路径）。 */
 export function presetsIndexOrigin(port: number): string {
   return 'http://127.0.0.1:' + port + '/composition/presets';
@@ -106,26 +125,47 @@ async function fetchPresetEntry(fetchImpl: FetchTextLike, origin: string, id: st
 
 /** preset 发现主入口（boot 引导期调用；永不 reject）。
  *  完成后写 preset-store.roster（内置 + 用户合并，内置同 id 胜）。 */
-export async function discoverPresets(opts: DiscoverPresetsOptions = {}): Promise<void> {
+export async function discoverPresets(opts: DiscoverPresetsOptions = {}): Promise<DiscoverPresetsResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   try {
     const origin = opts.origin ?? (await resolveOrigin());
-    if (!origin) return; // 无通道（浏览器 mock / 代理未起）——内置表即终态
-    const index = await fetchIndex(fetchImpl, origin + '/');
-    if (index == null) return; // 索引不可用（404/异常）——非错误，内置表
+    if (!origin) return discoveryFailure('组合通道不可用（浏览器 mock / 代理未起）');
+    const fetched = await fetchIndex(fetchImpl, origin + '/');
+    if (!fetched.ok) return discoveryFailure(fetched.error);
+    const index = fetched.index;
     const userEntries: PresetEntry[] = [];
+    const skipped: string[] = [];
+    const seen = new Set<string>();
     for (const raw of index) {
-      if (typeof raw !== 'string') continue;
-      if (!isValidPresetId(raw)) continue; // 围栏规则：非法 id 不入列
+      if (typeof raw !== 'string') {
+        skipped.push(String(raw));
+        continue;
+      }
+      if (!isValidPresetId(raw)) {
+        skipped.push(raw); // 围栏规则：非法 id 不入列，但必须可见
+        continue;
+      }
       if (BUILTIN_IDS.has(raw)) continue; // 内置胜（earlier root wins）
+      if (seen.has(raw)) {
+        skipped.push(raw + '（重复索引）');
+        continue;
+      }
+      seen.add(raw);
       userEntries.push(await fetchPresetEntry(fetchImpl, origin, raw));
     }
-    // 合并：内置表在前（表序呈现），用户行按 id 排序附后（稳定）
-    userEntries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    // 合并：内置表在前（表序呈现），用户行按 preset.yml.order（缺省 Infinity）
+    // 再按 id 排序附后——order 不再只解析不消费。
+    userEntries.sort((a, b) => {
+      const ao = a.metadata?.order ?? Number.POSITIVE_INFINITY;
+      const bo = b.metadata?.order ?? Number.POSITIVE_INFINITY;
+      return ao !== bo ? ao - bo : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
     usePresetStore.getState().setRoster([...builtinPresets(), ...userEntries]);
+    return { ok: true, updated: true, userPresetCount: userEntries.length, skipped };
   } catch (e) {
-    // 通道级失败：内置表仍在（store 初值），错误可见不打断引导
+    // 通道级失败：roster 原样保留，错误由调用方呈现（不再只落 console）。
     console.warn('[presets] 用户层 preset 发现失败:', e);
+    return discoveryFailure(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -159,15 +199,18 @@ export function parsePatchYamlText(text: string): { ok: true; patch: Composition
   return parseCompositionPatch(parsed);
 }
 
-/** 取索引 JSON 数组；不可用返回 null（404/非数组/异常统一非错误）。 */
-async function fetchIndex(fetchImpl: FetchTextLike, url: string): Promise<unknown[] | null> {
+/** 取索引 JSON 数组；不可用返回具名错误（404/非数组/网络异常）。 */
+async function fetchIndex(
+  fetchImpl: FetchTextLike,
+  url: string,
+): Promise<{ ok: true; index: unknown[] } | { ok: false; error: string }> {
   try {
     const res = await fetchImpl(url);
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, error: 'preset 索引不可用: HTTP ' + res.status };
     const parsed = parseYaml(await res.text());
-    if (!Array.isArray(parsed)) return null;
-    return parsed;
-  } catch {
-    return null;
+    if (!Array.isArray(parsed)) return { ok: false, error: 'preset 索引不是数组' };
+    return { ok: true, index: parsed };
+  } catch (e) {
+    return { ok: false, error: 'preset 索引读取失败: ' + (e instanceof Error ? e.message : String(e)) };
   }
 }

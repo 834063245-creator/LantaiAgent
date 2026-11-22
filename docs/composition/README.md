@@ -141,6 +141,21 @@ tools:
   （显式 `disabled: true`）分开——「某行不见了」的两种原因处置动作不同。设置 → Agent →
   组合节即按三栏呈现（第三栏 = **seam 裁剪**：`seam/<域>` 被禁的 provider / 事件 id）。
 
+### 直调面策略（`programOnly` / `directOnly`，2026-11-21/22）
+
+两者都只裁**模型直调面**（`schemas()`），不动装配面：工具仍在注册表、仍进
+`visibleTools()`，因此 `code_execution` 程序内 `tools.<name>` 照旧可调。
+
+| 字段 | 形状 | 语义 |
+|---|---|---|
+| `programOnly` | `[{ id: <工具名>, programOnly: true\|false }]` | 黑名单风格；后层逐 id 覆盖。未写/未知名字不报错 |
+| `directOnly` | `[<工具名>, …]` | **allowlist**；非 null 即启用：只有列出的名字可直调，其余全部仅程序内。空数组 = 零个直调工具。后层**整体替换**，缺省 = 不启用 |
+
+`directOnly` 是 code 模式的推荐形态：新工具/新插件默认不会泄漏到直调面。
+名字是**模型工具名**（如 `code_execution` / `ask_user` / `fs`），不是行 id。
+内置 `code` 组合用 `directOnly` 固定会话原语，并把 plan 能力显式禁用（plan
+与 code_execution 互斥，叠用会锁死会话）。
+
 ### 覆盖段落文本（仅 `prompt` 域）
 
 ```yaml
@@ -204,7 +219,7 @@ factory（出厂表）
     枚举 plugin 行）。
 - **用户 preset**：`~/.lantai/composition/presets/<id>/`——`roster.patch.yml`
   （组合本体，语法与本文件的 patch 完全相同）+ `preset.yml`（显示元数据：
-  name/description/order，纯展示）。
+  name/description/order；order 参与用户 preset 排序，缺省 Infinity）。
 - **id 围栏**：`/^[a-z0-9][a-z0-9-]*$/`（id 是路径段——防 `..`/分隔符/
   绝对名把组合挪出授权根）。
 - **同 id 内置胜**（用户不可影子化内置 preset）。
@@ -235,7 +250,7 @@ Agent →「组合」节的「新建 / 修改 preset」块就是这条路径的�
   回退「用户层 patch + 出厂组合」，绝不半应用。
 - **改完不必重启**：改文件 → 点「重新扫描」即可（热重载 watcher 只盯根级
   `roster.patch.yml`，preset 子树不在其范围——这是显式动作而非遗漏）。
-- 元数据文件 `preset.yml` 是纯展示（`name`/`description`/`order`），装载失败
+- 元数据文件 `preset.yml` 参与显示与排序（`name`/`description`/`order`），装载失败
   降级为无元数据，不拒载。
 
 ## 创作者模式（creator）与 composition 工具（2026-10-30）

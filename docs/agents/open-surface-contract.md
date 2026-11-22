@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：66
+当前版本：67
 
-<!-- contract-fingerprint: 9309c443ea80f8aebafddd59760e65a2cf84a4156830c45b4f072f2d3da3799e -->
+<!-- contract-fingerprint: 427b48014c0b18b1b103a7cc9583ea692e33b9e9ec74c5fe765b0de6fd39d44f -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -28,9 +28,9 @@
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
 | src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers（含 `readOnly`）/displace/dataDir/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**/**activation（v38：`{ lazy?, resources?, exclusive? }`——登记 ≠ 激活的策略面，整块缺席 = kill switch）**） |
-| `src/composition/roster.ts` | **用户 preset 写法契约**（v38 补登记，用户裁定 F）：`CompositionPatchSchema`——四行域（tools/prompt/capabilities/shell）+ 七 seam 裁剪域（`seam/<域>`）键，用户手写在 `~/.lantai/composition/presets/<id>/roster.patch.yml`；`ResolvedComposition` / `CompositionDiagnostics` 为解析产物形状 |
+| `src/composition/roster.ts` | **用户 preset 写法契约**（v38 补登记，用户裁定 F）：`CompositionPatchSchema`——四行域（tools/prompt/capabilities/shell）+ 七 seam 裁剪域（`seam/<域>`）键，用户手写在 `~/.lantai/composition/presets/<id>/roster.patch.yml`；`ResolvedComposition` / `CompositionDiagnostics` 为解析产物形状（**v67 起增 `directOnly` 直调 allowlist**；v65 的 `programOnly` 仍在，二者都只裁直调面） |
 | `src/composition/activation.ts` | **激活账**（v38 新增）：`ActivationSpec`（插件在 apply 期登记的形状——`{ resources?, exclusive?, start, stop? }`）+ 引用计数账（retain/release/plan，键 = 插件名）；叶模块（零项目内运行时依赖） |
-| `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体 |
+| `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体（组合级 `exclusive` 由组合认领一次，多 Agent 共享） |
 | `src/agent/agent-loop/types.ts` | AgentLoop/AgentLoopHost（D13 loop seam 契约）。**v44 起新增 `stepBoundary` / `abandonedError` / `isAbandoned` 三成员**（运行看门狗：步骤边界脉搏 + 硬截止栅栏 + 具名作废错误） |
 | src/plugins/builtin/agent-loop-service/default-loop.ts（原 `src/agent/agent-loop/default-loop.ts`，批 9h-2 整件随包） | 默认 loop 实现（行为逐字节一致，D13；**v51 起本体在产物包**，与注册表同包、同一次装载）。**v44 起每步入场调 `host.stepBoundary(signal)`**，为 false 即抛 `host.abandonedError(signal)` 停步；分发前审计补落加同款栅栏 |
 | src/agent/agent-loop/agent-loop-service.ts → `src/plugins/builtin/agent-loop-service/index.ts` | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜；S5b 起本体在产物域，活动面留 `agent-loop-active.ts`——**清单真源以 `contract-version.ts` 为准，本行同步实况**） |
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 67 | 2026-11-22 | **用户组合新增 `directOnly` 直调 allowlist（fail-closed code 模式）**：`composition/roster.ts` 的 `CompositionPatchSchema` 增可选顶层键 `directOnly: string[]`，非 null 即启用——仅列出的模型工具名进入 `schemas()` 直调面，其余仍留 `visibleTools()` 供 `code_execution` 程序内调用；`ResolvedComposition.directOnly` 同步为 `string[] \| null`（缺省 null = 零漂移，后层整体替换）。内置 `code` 组合从逐工具黑名单改为 allowlist，新工具/新插件默认不泄漏到直调面。 | `docs/plans/code-mode-preset-plan.md`；守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts` |
 | 66 | 2026-11-21 | **面板贡献面增可选 `frame` 与 `width`（面板宿主壳）**：`composition/services.ts` 的 `PanelContribution` 与 `app/panels/panel-def.ts` 的 `PanelDef` 各增可选 `frame?: 'shell' \| 'self'` 与 `width?: number`（「贡献面／消费面」一对形状，`panelDefs()` 合流时原样透传，故同批加）。**语义**：`side` 非 null 的面板缺省（`'shell'`）由壳包一层 `DockSlot`——定位／书眉（标题 + 关闭钮）／层级全由壳出；`'self'` = 面板自持定位与 chrome（书脊列／案卷侧栏这类家具，套通用壳会出双书眉）。**对外可感知**：第三方面板此前**永远不可见**——`ctx.panels` 的出口 `DockRail` 随 V5 拆除后组件裸挂文档流，被纸壳根（z 280）与首页底版（z 30）整片盖住，任何应用状态下都不可见；本版起不写一行 CSS 也能看见。旧插件不声明 = 从「不可见」变成「可见」，源码零迁移（纯可选字段）。同批架阁升格为应用级浮层（`ctx.rootViews` 的 `'overlay'` 槽），并成为 `ctx.panels` 的唯一入口。 | `docs/issues/lantai-plugin-panels-no-home`（第三方插件面板注册成功却永远看不见）；施工单 `docs/plans/panel-host-shell-plan.md`；守护 `tests/dock-slot.test.tsx` + `tests/shelf-panels.test.tsx` |
 | 65 | 2026-11-21 | **用户组合新增 `programOnly` 域（工具面收进程序）**：`composition/roster.ts` 的 `CompositionPatchSchema` 增可选顶层键 `programOnly: [{ id, programOnly: boolean }]`；语义 = 把**已装配的工具**从模型直调面（`schemas()`）扣掉、保留在 `visibleTools()`（code_execution 的程序内绑定集照旧包含它）。**为什么必须新开一个域而不是用 `tools[].disabled`**：禁用行 = 工具从注册表消失 ⇒ 程序内也调不到，而「code 模式」的全部意义正是「工具还在，只是只能经程序调」。解析产物 `ResolvedComposition` 同步增 `programOnly: string[]`（纯收集、后层覆盖前层）；出厂组合 = 空数组 ⇒ 现有组合逐字节零漂移。**对外可感知**：用户 preset 多一个可写域；内置 `code` 组合用它把日常工具收进 `code_execution`，直调只剩执行原语与问人。旧 preset 不写该键 = 行为逐字不变（纯可选，零迁移）。 | `docs/plans/code-mode-preset-plan.md`；守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts` |
 | 63 | 2026-11-21 | **命令贡献面增可选 `volumeCommand`（这条 `local` 命令作用于某一卷）**：`composition/services.ts` 的 `CommandContribution` 新增可选 `volumeCommand?: boolean`——出厂首批 `/compact` `/export` `/goal` `/remember`（`/new` 不标：它不作用于某一卷，就是「另起一卷」；`/memory` `/compact-stats` 是 `send` 型，由 action 类型自明）。**对外可感知**：题签态（待题纸在场、这一句还没开卷）**不再执行这一类命令**——它们作用于活跃卷，纸上敲下去等于拿画布上别的卷当靶子（用户报的事故），现改为提示「先发一句话开卷」，斜杠面板在纸期也不陈列。同批定死纸期另两条：与卷无关的开关型 `local` 命令**照常执行、不再替用户烧一个号**（旧形态先开卷再执行 = 开个设置面板就多一张空卷）；`send` / `skill` 型与未命中的斜杠照旧开卷并把这句发给**新卷**。旧插件不声明 = 行为逐字不变（纯可选字段，零迁移）。分诊单一真源 = `app/commands/command-catalog` 的 `draftCommandVerdict`（执行面与斜杠面板共用）。 | 2026-11-21 用户报「题签态直接发斜杠命令交给了其他卷」；守护 `tests/draft-slash-command.test.ts` |

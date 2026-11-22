@@ -69,6 +69,15 @@ export function registeredUserPatch(): CompositionPatch | null {
   return userPatchRegistry.patch;
 }
 
+/** 按**真实层序**解析一份 preset 草稿：用户层 patch → preset 草稿。
+ *
+ *  作者面 `composition(validate/write)` 的校验入口。不能只用
+ *  `resolveRoster(factory, [draft])`：insert 撞名、锚定用户层插入段等
+ *  可寻址性/冲突只有把用户层一起放进来才与真实选中路径同源。 */
+export function resolvePresetDraft(patch: CompositionPatch): ResolvedComposition {
+  return resolveRoster(factoryComposition(), [userPatchRegistry.patch ?? {}, patch]);
+}
+
 // ── 引用稳定 cache ──
 
 /** 内容 hash——纯 JSON 形状的 stable 序列化 + FNV-1a 32bit（无碰撞安全
@@ -237,6 +246,30 @@ export function isPresetKnown(presetId: string): boolean {
   return findPresetById(presetId) !== undefined;
 }
 
+/** 严格选择校验（全局默认 / 卷级选择共用）：id 必须在册，且能按当前
+ *  用户层 + preset 层真实解析。与宽容的 `selectionError` 分开——后者对未知 id
+ *  回退用户层，服务「读旧卷」；前者服务「写新选择」，未知 id 必须拒绝。 */
+function strictSelectionError(presetId: string): string | null {
+  if (!isPresetKnown(presetId)) {
+    return `组合「${presetId}」不在册（id 写错，或该 preset 已被删除/改名）`;
+  }
+  return selectionError(presetId);
+}
+
+/** patchOrigin 里的用户层来源（剥掉历史 preset 后缀，避免切换时字符串累加）。 */
+function basePatchOrigin(origin: string | undefined): string | undefined {
+  const base = origin?.split(' + preset:')[0]?.trim();
+  if (!base || /^preset:[a-z0-9-]+$/.test(base)) return undefined;
+  return base;
+}
+
+/** 记录来源：`用户层来源 + preset:<id>`；空 preset 只保留用户层来源。 */
+function patchOriginFor(origin: string | undefined, presetId: string, includePreset: boolean): string | undefined {
+  const base = basePatchOrigin(origin);
+  if (!includePreset) return base;
+  return base ? `${base} + preset:${presetId}` : `preset:${presetId}`;
+}
+
 /** **卷级选择**的校验面（S6 P1c）——与 `selectPreset` 同一把尺子 + 同一可见面
  *  （preset-store.error 仍只由 noteSelectionError 写），但**严一档**：id 不在册
  *  也拒绝。
@@ -247,12 +280,15 @@ export function isPresetKnown(presetId: string): boolean {
  *  记下却没生效）。
  *  返回 null = 可记录；否则为拒绝原因（同时进 preset-store.error 供面板显示）。 */
 export function sessionSelectionError(presetId: string): string | null {
-  if (!isPresetKnown(presetId)) {
-    const err = `组合「${presetId}」不在册（id 写错，或该 preset 已被删除/改名）`;
+  const entry = findPresetById(presetId);
+  if ((entry?.patch?.shell?.length ?? 0) > 0) {
+    const err =
+      `组合「${presetId}」包含壳行（shell）补丁——壳行是应用启动面，只能由全局默认在重启时应用，` +
+      '不能按卷切换；请设为全局默认后重启，或把 shell 域从该组合移除。';
     noteSelectionError(err);
     return err;
   }
-  const err = selectionError(presetId);
+  const err = strictSelectionError(presetId);
   noteSelectionError(err);
   return err;
 }
@@ -339,7 +375,7 @@ function applySelectionToStore(): void {
   const comp = useCompositionStore.getState();
   if (comp.status === 'error') return;
   const selected = usePresetStore.getState().selected;
-  const err = selectionError(selected);
+  const err = strictSelectionError(selected);
   noteSelectionError(err);
   if (err !== null) return;
   const patch = findPresetById(selected)?.patch;
@@ -348,11 +384,7 @@ function applySelectionToStore(): void {
     comp.resetToFactory(userLayerIdentity());
     return;
   }
-  const origin = empty
-    ? comp.patchOrigin
-    : comp.patchOrigin
-      ? comp.patchOrigin + ' + preset:' + selected
-      : 'preset:' + selected;
+  const origin = patchOriginFor(comp.patchOrigin, selected, !empty);
   // S6 P1d：连同**输入身份**一起写——装配面据此判定共享注册表是否就按这份组合建的
   // （引用比较在 factory 态恒不等，见 compositionIdentity 头注）。
   useCompositionStore.getState().setResolved(effectiveComposition(selected), origin, compositionIdentity(selected));
@@ -366,13 +398,10 @@ function applySelectionToStore(): void {
  *  旧选择与 settings 都不动；「选了却静默回退」比「拒绝并说明原因」更坏）
  *  或 settings 写失败（store 已切——内存态先行，持久化失败可见，下次启动回退旧值）。 */
 export function selectPreset(presetId: string): boolean {
-  const err = selectionError(presetId);
-  if (err !== null) {
-    noteSelectionError(err);
-    return false;
-  }
+  const err = strictSelectionError(presetId);
+  noteSelectionError(err);
+  if (err !== null) return false;
   usePresetStore.getState().select(presetId);
-  noteSelectionError(null);
   applySelectionToStore();
   try {
     saveSettings({ ...loadSettings(), composition: { preset: presetId } });
@@ -394,7 +423,7 @@ export function selectPreset(presetId: string): boolean {
  *  - 生效 preset patch 为空/缺失（standard / 未知 id / broken 行）→ 跳过
  *    （composition-store 保持 loadCompositionPatch 的产物——standard 下
  *    store 状态字节不变）；
- *  - 未知 id（非 standard）console.warn 可见（不静默吞选择错误）；
+ *  - 未知 id / broken entry → preset-store.error 可见（回退用户层组合）；
  *  - preset 层不可解析（行 id 不可寻址）→ 跳过 + 原因进 preset-store.error
  *    （F1 捕获网：boot 期不再抛错穿到 bootShell——旧行为会让 10 条壳行
  *    全不 boot，空壳且只落 console）。
@@ -403,11 +432,14 @@ export function applyDefaultPreset(): void {
   const comp = useCompositionStore.getState();
   if (comp.status === 'error') return;
   const { selected } = usePresetStore.getState();
-  const preset = findPresetById(selected);
-  if (!preset && selected !== 'standard') {
-    console.warn('[composition] 未知/损坏 preset "' + selected + '"——保持用户层组合');
+  const err = strictSelectionError(selected);
+  noteSelectionError(err);
+  if (err !== null) {
+    // 未知 id / broken entry 同样走回退：产物 = 用户层组合；原因已进错误面。
+    comp.noteResolvedKey(compositionIdentity(selected));
+    return;
   }
-  const patch = preset?.patch;
+  const patch = findPresetById(selected)?.patch;
   if (!patch || Object.keys(patch).length === 0) {
     // 空 patch = 无增量 = 不触碰产物（零漂移语义保持）；但**身份要补记**——
     // 此时 store 里的产物就是「用户层（可能为空）」那一份，装配面据此才能判定
@@ -415,17 +447,7 @@ export function applyDefaultPreset(): void {
     comp.noteResolvedKey(compositionIdentity(selected));
     return;
   }
-  // F1 捕获网：不可解析（行 id 不可寻址——写错 id / 对应插件被禁用）→ 保持
-  // loadCompositionPatch 的产物（用户层组合）+ 原因可见；**不写** preset 层
-  // 产物（否则 origin 会谎报 preset:X，且回退产物被当成选择结果）。
-  const err = selectionError(selected);
-  noteSelectionError(err);
-  if (err !== null) {
-    // 回退产物 = 用户层组合——身份同样按「未叠 preset 层」补记（同 compositionIdentity）
-    comp.noteResolvedKey(compositionIdentity(selected));
-    return;
-  }
   const resolved = resolveCurrentComposition(selected);
-  const origin = comp.patchOrigin ? comp.patchOrigin + ' + preset:' + selected : 'preset:' + selected;
+  const origin = patchOriginFor(comp.patchOrigin, selected, true);
   useCompositionStore.getState().setResolved(resolved, origin, compositionIdentity(selected));
 }

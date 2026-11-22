@@ -7,8 +7,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
+import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
-import { selectionError } from '../src/composition/preset-assembly';
+import { clearUserPatch, registerUserPatch, selectionError } from '../src/composition/preset-assembly';
 import { discoverPresets, presetsIndexOrigin } from '../src/composition/preset-discovery';
 import { builtinPresets } from '../src/composition/presets';
 import type { CompositionIo } from '../src/plugins/builtin/composition-domain/composition';
@@ -29,7 +30,7 @@ function memoryIo(files: Map<string, string>): CompositionIo {
     deleteFile: async (p) => {
       files.delete(p);
     },
-    rescan: async () => {},
+    rescan: async () => ({ ok: true, updated: true, userPresetCount: 0, skipped: [] }),
   };
 }
 
@@ -50,6 +51,31 @@ function fetchFrom(files: Map<string, string>) {
     return body === undefined ? { ok: false, status: 404, text: async () => '' } : ok(body);
   };
 }
+
+describe('creator 校验：必须按真实层序（用户层 + preset 草稿）', () => {
+  it('preset 与用户层 insert 撞 id：composition(validate) 与真实选择同判——拒绝', async () => {
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyPromptChannel(() =>
+        withFirstPartyCapabilityChannel(async () => {
+          registerUserPatch({ prompt: [{ insert: [{ id: 'layer-dup', text: '用户层段' }] }] });
+          try {
+            const tool = createCompositionTool(); // 生产 kernelDeps：resolvePresetDraft
+            const out = String(
+              await tool.execute({
+                action: 'validate',
+                yaml: 'prompt:\n  - insert:\n      - id: layer-dup\n        text: preset 段\n',
+              } as never),
+            );
+            expect(out).toContain('insert 段 id 冲突');
+            expect(out).not.toContain('通过');
+          } finally {
+            clearUserPatch();
+          }
+        }),
+      ),
+    );
+  });
+});
 
 describe('creator 链路端到端（write → 发现 → 可选中）', () => {
   it('造出来的组合出现在清单里，且解析面可用', async () => {

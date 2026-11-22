@@ -260,6 +260,25 @@ describe('S6 P4 程序入口：按组合起卷', () => {
     });
   });
 
+  it('④c 出生装配失败 → 不落卷 + 具名原因（不再把半装卷报成 ok）', async () => {
+    await withChannels(async () => {
+      const store = 'p4-assembly-fail';
+      resetPanel(store);
+      setAgentFactory(store, async () => {
+        throw new Error('插件激活失败，装配中止：acme/broken');
+      });
+
+      const r = await createSessionWithPreset(makeCtx(store), 'minimal');
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.reason).toContain('组合装配失败');
+      expect(r.reason).toContain('acme/broken');
+      expect(getChatStore(store).sess.getState().sessions).toHaveLength(0);
+      expect(agentSessionState.getRecordedPresetId(store, 1)).toBeNull();
+    });
+  });
+
   it('⑤ 不传参 = 今天语义：全局默认（零漂移）', async () => {
     await withChannels(async () => {
       const store = 'p4-default';

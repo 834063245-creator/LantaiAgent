@@ -152,8 +152,9 @@ export async function selectSessionPreset(
  *     返回具名原因且**一个卷都不建**。程序入口没有「可见提示」载体——容忍或回退
  *     对程序就等于静默（违「错误不静默」），故用严一档 `sessionSelectionError`，
  *     与 P1c 同尺（`selectionError` 的容忍语义仍留给「读旧卷」路径）；
- *   - **无工作区 / 在途切走工作区 = 失败可判**（不沿用 `createNewSession` 的静默
- *     return——那会让调用方把**旧活跃卷的 id** 当成新卷）；
+ *   - **无工作区 / 在途切走工作区 / 出生装配失败 = 失败可判**（不沿用
+ *     `createNewSession` 的静默 return——那会让调用方把**旧活跃卷的 id** 当成新卷；
+ *     装配失败经 strictAssembly 在落卷之前中止，卷一个都不建）；
  *   - 组合面只在**已登记面内**裁剪/回开（禁用行 / `defaultOff` 回开 / 插件激活），
  *     **不引入未注册能力**；**不与权限模式联动**（设计件 §6 R7：能起会话者本就能
  *     跑 shell——程序指定组合不是提权通道）。
@@ -170,9 +171,21 @@ export async function createSessionWithPreset(
     if (err !== null) return { ok: false, reason: err };
   }
 
-  // ② 起卷（显式组合在发号后、工厂前落卷级登记 ⇒ 出生即按它装配一次）
-  const created = await createNewSession(ctx, presetId === undefined ? undefined : { presetId });
+  // ② 起卷（显式组合在发号后、工厂前落卷级登记 ⇒ 出生即按它装配一次）。
+  //    strictAssembly：工厂装配失败时 createNewSession 不落卷，错误从这里具名返回
+  //    ——程序入口没有「可见提示」载体，不能把装配失败的卷报成 ok。
+  let assemblyError: unknown = null;
+  const created = await createNewSession(
+    ctx,
+    presetId === undefined
+      ? { strictAssembly: true, onAssemblyError: (e) => (assemblyError = e) }
+      : { presetId, strictAssembly: true, onAssemblyError: (e) => (assemblyError = e) },
+  );
   if (created === null) {
+    if (assemblyError !== null) {
+      const reason = assemblyError instanceof Error ? assemblyError.message : String(assemblyError);
+      return { ok: false, reason: '组合装配失败，未创建卷：' + reason };
+    }
     return { ok: false, reason: '起卷失败：需要先绑定工作区（无工作区不造零目录卷）' };
   }
   return { ok: true, sessionId: created };

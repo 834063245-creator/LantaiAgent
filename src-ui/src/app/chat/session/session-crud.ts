@@ -340,6 +340,11 @@ export function closeSession(ctx: SessionContext, idx: number): void {
  *  设置）。缺省 = 今天语义（工厂读 null → 全局默认）。 */
 export interface CreateSessionOptions {
   presetId?: string;
+  /** 程序入口用：工厂装配失败时**不落卷**（返回 null），错误经 onAssemblyError 上报。
+   *  缺省 false = 现行「句柄缺席、内容层照常、拟文路径再报」语义。 */
+  strictAssembly?: boolean;
+  /** 装配失败回调（strictAssembly 时调用方据此给出具名原因）。 */
+  onAssemblyError?: (error: unknown) => void;
 }
 
 /** 建卷。返回新卷 id（`null` = 未建：无工作区 / 在途切走工作区被代际丢弃）。
@@ -389,8 +394,17 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
       // 方案甲：新卷句柄按「出生时刻的组合」装配——程序入口给了 presetId 就按上一步
       // 的卷级登记；否则此刻尚无会话覆盖，工厂读 null ⇒ 全局默认（裸 live）。
       newAgent = await factory(id);
-    } catch {
-      /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
+    } catch (e) {
+      opts.onAssemblyError?.(e);
+      if (opts.strictAssembly) {
+        // 工厂在 sessions 追加**之前**调用 ⇒ 此刻卷尚未落账，可以真正不建卷。
+        // 发号下限不回退（既有纪律），但 recorded preset 必须清掉，避免烧掉的
+        // id 在 session-state 里留下幽灵记录。
+        if (opts.presetId) agentSessionState.setRecordedPresetId(ctx.storeId, id, null);
+        newAgent?.dispose();
+        return null;
+      }
+      /* 非严格路径：句柄缺席，内容层照常（错误由拟文路径可见） */
     }
   }
   // 在途期间已切走工作区 → 丢弃（同 loadSessionFromDisk：句柄就地 dispose，

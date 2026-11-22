@@ -168,15 +168,14 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     );
   });
 
-  it('code：programOnly 声明进解析产物；不剪任何工具行；卷首指南段在', async () => {
+  it('code：directOnly 声明进解析产物；不剪工具行；关键执行面上层禁用也能回开', async () => {
     await withFirstPartyToolChannel(() =>
       withFirstPartyCapabilityChannel(async () => {
         const r = resolvePresetComposition('code');
-        // ① 直调面扣集（程序内专属名）——判据归装配面，这里钉「声明没有丢」
-        expect(r.programOnly).toContain('fs');
-        expect(r.programOnly).toContain('shell');
-        expect(r.programOnly).toContain('agent');
-        expect(r.programOnly).toContain('memory');
+        // ① 直调面 allowlist——判据归装配面，这里钉「声明没有丢」
+        expect(r.directOnly).toEqual(
+          expect.arrayContaining(['code_execution', 'ask_user', 'wait', 'Skill', 'hologram_compaction_stats']),
+        );
         // ② 工具行**一条都没剪**（剪了 = 程序内也调不到，code 模式会被做成残废）
         expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools));
         // ③ 执行原语仍在；规划模式两项 capability 被本组合裁掉——plan 激活时
@@ -185,7 +184,19 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
         expect(r.capabilities.map((c) => c.id)).toContain('code-execution-tool');
         expect(r.capabilities.map((c) => c.id)).not.toContain('plan-tools');
         expect(r.capabilities.map((c) => c.id)).not.toContain('plan-injector');
-        // ④ 卷首指南段
+        // ④ 用户层禁过执行面 -> preset 顶层显式回开（否则 code 模式空转）
+        const layered = resolveRoster(factoryComposition(), [
+          {
+            capabilities: [
+              { id: 'code-execution-tool', disabled: true },
+              { id: 'converge-tools', disabled: true },
+            ],
+          },
+          builtinPresetById('code')?.patch ?? {},
+        ]);
+        expect(layered.capabilities.map((c) => c.id)).toContain('code-execution-tool');
+        expect(layered.capabilities.map((c) => c.id)).toContain('converge-tools');
+        // ⑤ 卷首指南段
         expect(r.prompt.map((s) => s.id)).toContain('code-mode/guide');
       }),
     );
@@ -195,6 +206,8 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     // 缺省：出厂组合与 standard 都没有程序内专属名
     expect(factoryComposition().programOnly).toEqual([]);
     expect(resolvePresetComposition('standard').programOnly).toEqual([]);
+    expect(factoryComposition().directOnly).toBeNull();
+    expect(resolvePresetComposition('standard').directOnly).toBeNull();
     // 覆盖：先标后撤 = 不在集里（与 disable 域同一「后写胜」语义）
     const r = resolveRoster(factoryComposition(), [
       {
@@ -206,6 +219,11 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
       { programOnly: [{ id: 'fs', programOnly: false }] },
     ]);
     expect(r.programOnly).toEqual(['shell']);
+    // directOnly 是 allowlist 集合：后层整体替换，不是逐 id 合并
+    const allow = resolveRoster(factoryComposition(), [{ directOnly: ['fs', 'shell'] }, { directOnly: ['ask_user'] }]);
+    expect(allow.directOnly).toEqual(['ask_user']);
+    const emptyAllow = resolveRoster(factoryComposition(), [{ directOnly: [] }]);
+    expect(emptyAllow.directOnly).toEqual([]);
   });
 
   it('PresetId 围栏规则：合法/非法形态', () => {

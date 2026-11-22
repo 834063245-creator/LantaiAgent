@@ -62,9 +62,11 @@ export interface ActivationHandle {
   plugin: string;
   /** 持有者（装配面传 Agent id；诊断与「同一持有者只计一次」的判据）。 */
   holder: string;
-  /** 该次激活是否成功（false = start 抛错——P3b 据此跳过该插件的行并进诊断第四栏）。 */
+  /** 该次激活是否成功（false = start 抛错——装配面上报并中止，避免半袖副作用面）。 */
   ok: boolean;
   failure: string | null;
+  /** 组合级独占声明句柄（不是插件激活句柄）：释放走独立 claim 账。 */
+  compositionClaim?: { token: string };
 }
 
 /** 激活账读面（诊断/测试：某插件当前几个持有者、起没起来、上一次失败原因）。 */
@@ -124,11 +126,98 @@ const ledger = new Map<string, LedgerEntry>();
 
 const claims = new Map<string, string>();
 
+const COMPOSITION_OWNER_PREFIX = 'composition:';
+
+/** 组合级独占账：token → 该组合声明过的资源 + 当前装配持有者。 */
+interface CompositionClaimEntry {
+  resources: Set<string>;
+  holders: Set<string>;
+}
+const compositionClaims = new Map<string, CompositionClaimEntry>();
+
+/** 同一个 ResolvedComposition 实例在多个 Agent 间共享同一个 token；不同组合
+ *  即使内容相同但对象不同 → 视为不同组合（冲突检测的安全方向）。 */
+let compositionTokens = new WeakMap<object, string>();
+let compositionTokenSeq = 0;
+
 /** 上一次独占冲突（null = 无）。 */
 let lastConflict: ActivationConflict | null = null;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.name + ': ' + e.message : String(e);
+}
+
+function compositionOwnerKey(token: string): string {
+  return COMPOSITION_OWNER_PREFIX + token;
+}
+
+/** 组合对象 → 稳定 token（同对象多卷共享；WeakMap 不阻止组合被 GC）。 */
+export function compositionTokenFor(comp: object): string {
+  let token = compositionTokens.get(comp);
+  if (!token) {
+    token = String(++compositionTokenSeq);
+    compositionTokens.set(comp, token);
+  }
+  return token;
+}
+
+/** 只释放某插件账上的资源 claim（不碰同组合的 composition claim）。 */
+function releasePluginClaims(plugin: string, entry: LedgerEntry): void {
+  for (const resource of entry.claims) {
+    if (claims.get(resource) === plugin) claims.delete(resource);
+  }
+  entry.claims = [];
+}
+
+/** 组合级独占声明：由组合（不是某个插件）持有；同一 token 的多卷共享，
+ *  不同组合在同一资源上冲突。返回一个特殊 handle，交给 releaseAll 对称释放。 */
+export function retainCompositionClaim(
+  token: string,
+  holder: string,
+  resources: readonly string[],
+): ActivationHandle | null {
+  if (resources.length === 0) return null;
+  const owner = compositionOwnerKey(token);
+  for (const resource of resources) {
+    const heldBy = claims.get(resource);
+    if (heldBy !== undefined && heldBy !== owner) {
+      const reason =
+        '独占资源冲突：「' +
+        resource +
+        '」已被 ' +
+        heldBy +
+        ' 持有，组合 ' +
+        owner +
+        ' 不能同时持有（两个组合都在位——关掉其中一个，或把资源声明改成可共享）';
+      lastConflict = { resource, heldBy, rejected: owner, reason };
+      throw new Error('[activation] ' + reason);
+    }
+  }
+  let entry = compositionClaims.get(token);
+  if (!entry) {
+    entry = { resources: new Set(), holders: new Set() };
+    compositionClaims.set(token, entry);
+  }
+  for (const resource of resources) {
+    claims.set(resource, owner);
+    entry.resources.add(resource);
+  }
+  entry.holders.add(holder);
+  return { plugin: owner, holder, ok: true, failure: null, compositionClaim: { token } };
+}
+
+function releaseCompositionClaim(handle: ActivationHandle): void {
+  const token = handle.compositionClaim?.token;
+  if (!token) return;
+  const entry = compositionClaims.get(token);
+  if (!entry) return;
+  if (!entry.holders.delete(handle.holder)) return;
+  if (entry.holders.size > 0) return;
+  const owner = compositionOwnerKey(token);
+  for (const resource of entry.resources) {
+    if (claims.get(resource) === owner) claims.delete(resource);
+  }
+  compositionClaims.delete(token);
 }
 
 /** 声明形状校验（装载期拒绝，错误不静默——对齐 ContributionChannel.validate 纪律）。 */
@@ -168,9 +257,26 @@ export function declareActivation(plugin: string, spec: ActivationSpec): () => v
     done = true;
     if (declarations.get(plugin) === spec) {
       declarations.delete(plugin);
-      // 声明撤销 = 该插件的账失去启动依据：账条目一并清（在途副作用归调用方
-      // 经 ctx.effect 的 release 收）；已启动的 stop 由 release 路径负责。
-      ledger.delete(plugin);
+      // 声明撤销 = 该插件不再有启动依据：ledger / claims 一并清，已启动的
+      // 副作用立即 stop（异步失败可见）。后续旧 handle 的 release 会因账已
+      // 不存在而幂等 no-op，不会二次 stop。
+      const entry = ledger.get(plugin);
+      if (entry) {
+        releasePluginClaims(plugin, entry);
+        ledger.delete(plugin);
+        const stopIfStarted = (): void => {
+          if (!entry.started || !spec.stop) return;
+          void Promise.resolve()
+            .then(() => spec.stop?.())
+            .catch((e: unknown) => {
+              console.warn('[activation] 插件 ' + plugin + ' 声明撤销时停用失败:', e);
+            });
+        };
+        // start 可能在声明撤销时仍在途：等它落地后再 stop，否则会漏掉一个
+        // 在撤销之后才真正启动的副作用。
+        if (entry.starting) void entry.starting.then(stopIfStarted);
+        else stopIfStarted();
+      }
     }
   };
 }
@@ -213,13 +319,15 @@ export function activationPlan(comp: CompositionActivationInput | null | undefin
  *  并集后参与持有表（同一个资源被两处声明 = 同一份约束，不重复登记）。 */
 
 /** 激活某插件（引用计数 ++）。未声明 ⇒ null（**no-op**——kill switch 语义）；
- *  首次激活 ⇒ `await start()`；start 抛错 ⇒ 记账可见（failure）且**不抛**给
- *  装配面（P3b 据此跳过行，装配本身不因一个插件起不来而整链失败）。
+ *  首次激活 ⇒ `await start()`；start 抛错 ⇒ 记账可见（failure）并退回该插件
+ *  的资源 claim。retain 本身不抛；装配面看到 `ok=false` 后必须中止本次装配
+ *  （当前工具/贡献面已物化，无法事后安全逐行剥离）。
  *  并发首次激活共享同一份在途 start（不重复启动副作用）。 */
 export async function retainActivation(
   plugin: string,
   holder: string,
   extraExclusive: readonly string[] = [],
+  compositionToken?: string,
 ): Promise<ActivationHandle | null> {
   const spec = declarations.get(plugin);
   if (!spec) return null;
@@ -229,13 +337,16 @@ export async function retainActivation(
   // ⚠ 冲突检查必须在**建账之前**：被拒绝的插件不得留下任何账目（连零计数
   // 空账也不行——否则诊断面会把它当成「在场的插件」，且它是装配被拒者）。
   const exclusive = [...new Set([...(spec.exclusive ?? []), ...extraExclusive])];
+  const compositionOwner = compositionToken ? compositionOwnerKey(compositionToken) : undefined;
   for (const resource of exclusive) {
     const heldBy = claims.get(resource);
-    if (heldBy !== undefined && heldBy !== plugin) {
+    // 同组合的 composition-level claim 与插件级 claim 不互斥：它们表达的是
+    // 同一个「本组合占用此资源」。其他插件 / 其他组合仍必须冲突。
+    if (heldBy !== undefined && heldBy !== plugin && heldBy !== compositionOwner) {
       const reason =
         '独占资源冲突：「' +
         resource +
-        '」已被插件 ' +
+        '」已被 ' +
         heldBy +
         ' 持有，插件 ' +
         plugin +
@@ -250,8 +361,11 @@ export async function retainActivation(
     ledger.set(plugin, entry);
   }
   for (const resource of exclusive) {
-    claims.set(resource, plugin);
-    if (!entry.claims.includes(resource)) entry.claims.push(resource);
+    // 组合级 claim 已经覆盖的资源不再改写成插件 owner；由组合 handle 统一释放。
+    if (compositionOwner === undefined || claims.get(resource) !== compositionOwner) {
+      claims.set(resource, plugin);
+      if (!entry.claims.includes(resource)) entry.claims.push(resource);
+    }
   }
   entry.holders.add(holder);
   if (!entry.started) {
@@ -268,6 +382,9 @@ export async function retainActivation(
           (e: unknown) => {
             target.failure = errText(e);
             target.starting = null;
+            // start 失败 = 插件没有真正上线：独占资源 claim 必须当场退回，
+            // 否则「失败的插件」会一直霸占资源，后续正确装配也被拒。
+            releasePluginClaims(plugin, target);
             console.warn('[activation] 插件 ' + plugin + ' 激活失败（副作用未启动）:', e);
           },
         );
@@ -281,6 +398,10 @@ export async function retainActivation(
  *  重复释放只减一次（持有者集合判据，不是裸计数）。 */
 export async function releaseActivation(handle: ActivationHandle | null | undefined): Promise<void> {
   if (!handle) return;
+  if (handle.compositionClaim) {
+    releaseCompositionClaim(handle);
+    return;
+  }
   const entry = ledger.get(handle.plugin);
   if (!entry) return;
   if (!entry.holders.delete(handle.holder)) return; // 幂等 / 陈旧句柄
@@ -305,7 +426,9 @@ export async function releaseActivation(handle: ActivationHandle | null | undefi
 /** 批量释放（装配面把句柄数组交给一个 ctx.effect disposer——组内串行逆序由
  *  fiber 负责；本函数按传入序释放）。 */
 export async function releaseActivations(handles: readonly ActivationHandle[]): Promise<void> {
-  for (const h of handles) await releaseActivation(h);
+  // 逆序：组合级 claim handle 恒在数组首（先占资源再激活插件），逆序可让
+  // 插件停止后再释放组合资源，避免短暂出现「资源已放、副作用仍在」。
+  for (let i = handles.length - 1; i >= 0; i--) await releaseActivation(handles[i]);
 }
 
 /** 激活账快照（诊断/测试面；只读拷贝）。 */
@@ -349,5 +472,8 @@ export function clearActivationsForTest(): void {
   declarations.clear();
   ledger.clear();
   claims.clear();
+  compositionClaims.clear();
+  compositionTokens = new WeakMap<object, string>();
+  compositionTokenSeq = 0;
   lastConflict = null;
 }

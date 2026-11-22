@@ -563,7 +563,18 @@ export class AgentRuntime implements RuntimePort {
    *  S2 零漂移）；AgentConfig 字段面冻结不受影响（覆盖走参数不走 config）。 */
   async createAgent(config: AgentConfig, compositionOverride?: ResolvedComposition): Promise<AgentHandle> {
     const { ctx, inputs } = this._contextFromConfig(config);
-    return this._assembleAgent(ctx, inputs, undefined, compositionOverride);
+    try {
+      return await this._assembleAgent(ctx, inputs, undefined, compositionOverride);
+    } catch (e) {
+      // 装配失败 = 本方法创建的 ctx 尚无句柄所有者：就地释放全部 effect
+      // （激活账、board 注销、lifecycle 等），否则半装 Agent 会泄漏。
+      try {
+        await ctx.dispose();
+      } catch (cleanupError) {
+        console.warn('[runtime] 装配失败后的 ctx 清理再失败:', cleanupError);
+      }
+      throw e;
+    }
   }
 
   /** 从 AgentContext 创建 Agent — Phase 3 收敛入口（RuntimePort 契约见 types.ts）。
@@ -777,7 +788,18 @@ export class AgentRuntime implements RuntimePort {
     if (activation) {
       const activationHandles: ActivationHandle[] = [];
       ctx.effect(() => () => activation.releaseAll(activationHandles), 'activation-release');
-      activationHandles.push(...(await activation.retainForComposition(composition, agentId)));
+      const retained = await activation.retainForComposition(composition, agentId);
+      activationHandles.push(...retained);
+      // 插件 start 失败 = 其工具/提示/副作用面只装了一半。当前 registry 的
+      // 工具行与贡献已先于激活面物化，无法事后安全地按插件逐行剥离；继续
+      // 开卷会把「看起来存在、实际没起来」的工具交给模型。这里选择装配
+      // 中止（可见错误），而不是带着残面运行。
+      const failed = retained.filter((h) => !h.compositionClaim && !h.ok);
+      if (failed.length > 0) {
+        const detail = failed.map((h) => `${h.plugin}: ${h.failure ?? '激活失败'}`).join('；');
+        await activation.releaseAll(activationHandles);
+        throw new Error(`[activation] 插件激活失败，装配中止：${detail}`);
+      }
     }
     const scope: BlueprintScope = {
       ctx,

@@ -63,6 +63,12 @@ import { UpdateSection } from './UpdateSection';
 // 页签 id 类型的真源在 `settings-tabs.ts`（表与类型同处——加页签只动那一处）。
 type Tab = SettingsTabId;
 
+function describePresetScan(r: { ok: boolean; userPresetCount: number; skipped: string[]; error?: string }): string {
+  if (!r.ok) return '重新扫描失败：' + (r.error ?? '未知原因') + '（现有列表保持不变）';
+  const extra = r.skipped.length ? '；跳过：' + r.skipped.join('、') : '';
+  return '已重新扫描：发现 ' + r.userPresetCount + ' 个用户 preset' + extra;
+}
+
 /** 保存回执的两阶段语义（R3）：非敏感配置先提交，凭据同步是独立第二阶段。
  *  `persisted` = provider.yml + saveSettings 已提交；凭据失败不再伪装成「设置未保存」。 */
 interface SavePipelineResult {
@@ -161,11 +167,10 @@ const SettingsPanelApp: React.FC<{
     setAuthoringBusy(true);
     setAuthoringMsg(null);
     try {
-      await rescanPresets();
-      const users = usePresetStore.getState().roster.filter((p) => !p.builtin);
-      setAuthoringMsg({ kind: 'ok', text: `已重新扫描：当前发现 ${users.length} 个用户 preset。` });
+      const result = await rescanPresets();
+      setAuthoringMsg({ kind: result.ok ? 'ok' : 'err', text: describePresetScan(result) });
     } catch (e) {
-      setAuthoringMsg({ kind: 'err', text: `重新扫描失败：${errTextOf(e)}` });
+      setAuthoringMsg({ kind: 'err', text: '重新扫描失败：' + errTextOf(e) });
     } finally {
       setAuthoringBusy(false);
     }
@@ -181,13 +186,19 @@ const SettingsPanelApp: React.FC<{
       return;
     }
     setNewPresetId('');
-    await rescanPresets();
-    setAuthoringMsg({ kind: 'ok', text: `已写出模板：${res.dir}（已重扫，可直接在上方选择它）` });
+    const scan = await rescanPresets();
+    setAuthoringMsg({
+      kind: scan.ok ? 'ok' : 'err',
+      text: scan.ok
+        ? '已写出模板：' + res.dir + '（' + describePresetScan(scan) + '）'
+        : '模板已写出：' + res.dir + '，但' + describePresetScan(scan),
+    });
     setAuthoringBusy(false);
   }, [newPresetId, newPresetFrom]);
+
   /** 复制一份 preset（2026-10-30 管理面）：内置也能复制（patch 序列化成 YAML 当起点）。 */
   const handleCopyPreset = useCallback(async (id: string) => {
-    const target = window.prompt(`把「${id}」复制为新的 preset id：`, `${id}-copy`);
+    const target = window.prompt('把「' + id + '」复制为新的 preset id：', id + '-copy');
     if (target === null) return;
     setAuthoringBusy(true);
     setAuthoringMsg(null);
@@ -197,14 +208,19 @@ const SettingsPanelApp: React.FC<{
       setAuthoringBusy(false);
       return;
     }
-    await rescanPresets();
-    setAuthoringMsg({ kind: 'ok', text: `已复制为 ${target.trim()}（已重扫）` });
+    const scan = await rescanPresets();
+    setAuthoringMsg({
+      kind: scan.ok ? 'ok' : 'err',
+      text: scan.ok
+        ? '已复制为 ' + target.trim() + '（' + describePresetScan(scan) + '）'
+        : '已复制为 ' + target.trim() + '，但' + describePresetScan(scan),
+    });
     setAuthoringBusy(false);
   }, []);
 
   /** 改名（只动用户 preset）：搬两件文件；已记着旧 id 的卷需在新卷重选。 */
   const handleRenamePreset = useCallback(async (id: string) => {
-    const target = window.prompt(`把「${id}」改名为：`, id);
+    const target = window.prompt('把「' + id + '」改名为：', id);
     if (target === null || target.trim() === '' || target.trim() === id) return;
     setAuthoringBusy(true);
     setAuthoringMsg(null);
@@ -214,13 +230,16 @@ const SettingsPanelApp: React.FC<{
       setAuthoringBusy(false);
       return;
     }
-    await rescanPresets();
+    const scan = await rescanPresets();
     setAuthoringMsg({
-      kind: 'ok',
-      text: `已改名为 ${target.trim()}（已重扫；已记着旧 id 的卷需在新卷重选该组合）`,
+      kind: scan.ok ? 'ok' : 'err',
+      text: scan.ok
+        ? '已改名为 ' + target.trim() + '（' + describePresetScan(scan) + '；已记着旧 id 的卷需在新卷重选该组合）'
+        : '已改名为 ' + target.trim() + '，但' + describePresetScan(scan),
     });
     setAuthoringBusy(false);
   }, []);
+
   /** 删除一个用户 preset（2026-10-30 管理面）：内置与「当前全局默认」在删除口本身会拒；
    *  这里只负责把结果说清楚 + 重扫。 */
   const handleDeletePreset = useCallback(async (id: string) => {
@@ -232,8 +251,13 @@ const SettingsPanelApp: React.FC<{
       setAuthoringBusy(false);
       return;
     }
-    await rescanPresets();
-    setAuthoringMsg({ kind: 'ok', text: `已删除 ${id}（已重扫）` });
+    const scan = await rescanPresets();
+    setAuthoringMsg({
+      kind: scan.ok ? 'ok' : 'err',
+      text: scan.ok
+        ? '已删除 ' + id + '（' + describePresetScan(scan) + '）'
+        : '已删除 ' + id + '，但' + describePresetScan(scan),
+    });
     setAuthoringBusy(false);
   }, []);
 

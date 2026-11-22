@@ -32,6 +32,7 @@ import {
   reapplyComposition,
   stringifyPatchYaml,
   typedRpc,
+  usePresetStore,
 } from './host';
 
 /** 作者面文件（固定两名——与发现层约定的目录形态一致）。 */
@@ -50,12 +51,15 @@ export async function compositionDir(open = false): Promise<string> {
  *  且 preset 子树不在 watcher 范围（`composition_watcher.rs` 只盯根级文件）——
  *  用户新建/修好一个 preset 后**看不到它**，会当成功能坏了。
  *
- *  语义：先发现后应用；发现失败（通道不可用）保持现有 roster 与应用面
- *  （「没有通道不是错误」——沿 discovery 纪律）；error 态跳过应用
- *  （用户层 patch 被拒时错误可见优先，沿 reapplyComposition 语义）。 */
-export async function rescanPresets(opts: DiscoverPresetsOptions = {}): Promise<void> {
-  await discoverPresets(opts);
+ *  语义：先发现后应用；发现失败时保持现有 roster 与应用面，
+ *  但把失败结果返回给 UI（不再伪装成已重扫）。error 态跳过应用。
+ */
+export async function rescanPresets(
+  opts: DiscoverPresetsOptions = {},
+): Promise<Awaited<ReturnType<typeof discoverPresets>>> {
+  const result = await discoverPresets(opts);
   reapplyComposition();
+  return result;
 }
 
 /** 作者面 IO（生产 = RPC；测试注入假件）。 */
@@ -123,6 +127,8 @@ export function templatePatchYaml(from: TemplateSource): string {
     '#   prompt:       [ { id: <段 id>, disabled: true } | { id: <段 id>, text: <整段替换> }',
     '#                   | { insert: [ { id: <新段 id>, text: <内容>, before|after: <锚点 id> } ] } ]',
     '#   seam/<域>:    [ { id: <provider 或事件 id>, disabled: true } ]  # 域 = llm|subagents|fs|shell|sessionPersistence|loopEvents',
+    '#   directOnly:   [ <模型工具名> ]   # 直调 allowlist（非 null 即 fail-closed；其余仅程序内）',
+    '#   programOnly:  [ { id: <模型工具名>, programOnly: true|false } ]  # 单名黑名单（兼容）',
     '#',
     '# 行 id 可寻址性由装配期校验（写错不会静默：选中该 preset 会被拒绝并给出原因）。',
     '# 文件位置：~/.lantai/composition/presets/<本目录名>/roster.patch.yml',
@@ -211,6 +217,9 @@ export async function deletePreset(id: string, io: PresetAuthoringIo = rpcAuthor
   if (builtinPresets().some((p) => p.id === trimmed)) {
     return { ok: false, error: `"${trimmed}" 是内置 preset（内置不可删除）` };
   }
+  if (usePresetStore.getState().selected === trimmed) {
+    return { ok: false, error: `"${trimmed}" 是当前全局默认组合——先在 设置 › Agent › 组合 里切到别的组合再删除` };
+  }
   let root: string;
   try {
     root = await io.compositionDir(false);
@@ -290,6 +299,9 @@ export async function renamePreset(
   if (src === dst) return { ok: false, error: '新 id 与原名相同' };
   if (builtinPresets().some((p) => p.id === src)) return { ok: false, error: `"${src}" 是内置 preset（不可改名）` };
   if (builtinPresets().some((p) => p.id === dst)) return { ok: false, error: `"${dst}" 是内置 id，换一个` };
+  if (usePresetStore.getState().selected === src) {
+    return { ok: false, error: `"${src}" 是当前全局默认组合——先在 设置 › Agent › 组合 里切到别的组合再改名` };
+  }
   let root: string;
   try {
     root = await io.compositionDir(false);

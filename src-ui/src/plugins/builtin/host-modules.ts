@@ -189,7 +189,7 @@ import { activationConflict, activationSkipped } from '../../composition/activat
 import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeFsProviders } from '../../composition/fs-service';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
-import { reapplyComposition, selectPreset } from '../../composition/preset-assembly';
+import { reapplyComposition, resolvePresetDraft, selectPreset } from '../../composition/preset-assembly';
 import { discoverPresets, parsePatchYamlText, stringifyPatchYaml } from '../../composition/preset-discovery';
 import { builtinPresets, isValidPresetId } from '../../composition/presets';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
@@ -508,6 +508,7 @@ const faceDeps = {
   // rescanPresets）已随 preset-authoring 进包 ⇒ 从 faceDeps 撤桥；改桥它们仍留内核的
   // 机制依赖（重扫应用 / 发现 / 内置表 / id 围栏 / patch 序列化）。
   reapplyComposition,
+  resolvePresetDraft,
   discoverPresets,
   stringifyPatchYaml,
   builtinPresets,

@@ -25,6 +25,7 @@ export const discoverPresets = impl.discoverPresets;
 export const parsePatchYamlText = impl.parsePatchYamlText;
 export const stringifyPatchYaml = impl.stringifyPatchYaml;
 export const reapplyComposition = impl.reapplyComposition;
+export const resolvePresetDraft = impl.resolvePresetDraft;
 export const builtinPresets = impl.builtinPresets;
 export const isValidPresetId = impl.isValidPresetId;
 export const usePresetStore = impl.usePresetStore;
