@@ -48,6 +48,10 @@ export function TipHost() {
   const shownRef = useRef(false);
   /** 当前目标（判断是否同一目标重复触发）。 */
   const targetRef = useRef<TipTarget | null>(null);
+  /** 「用户真动过」（指针真的位移 / 按键 / 点按）。窗口失焦期间与重获焦点后，
+   *  浏览器会补发焦点还回与 movement=0 的 hover 刷新——那些不是用户操作，
+   *  不挡住就会在切回时「自己冒出」提示（2026-11-22 用户报）。 */
+  const userActedRef = useRef(true);
 
   const [target, setTarget] = useState<TipTarget | null>(null);
   const [on, setOn] = useState(false);
@@ -98,12 +102,25 @@ export function TipHost() {
       }, LEAVE_GRACE_MS);
     };
 
+    /** 用户真动过——窗口切回时浏览器补发的事件不经过这里。 */
+    const markActed = () => {
+      userActedRef.current = true;
+    };
+
+    /** 只有真的位移才算；窗口激活时浏览器补的 mousemove 是 movement=0。 */
+    const onMove = (ev: MouseEvent) => {
+      if ((ev.movementX || 0) !== 0 || (ev.movementY || 0) !== 0) markActed();
+    };
+
     const onOver = (ev: MouseEvent) => {
       // 按住鼠标（拖拽）时不出提示——纯干扰
       if (ev.buttons !== 0) {
         disarm();
         return;
       }
+      // 窗口切回：浏览器会补一条 movement=0 的 mousemove/mouseover 刷新 hover 态，
+      // 物理鼠标没动——不能读作「用户悬停」。
+      if (!userActedRef.current) return;
       const t = readTarget(ev.target);
       if (!t) return;
       // 在同一目标的子元素间移动（mouseover 会反复触发）→ 不动
@@ -121,6 +138,9 @@ export function TipHost() {
     };
 
     const onFocusIn = (ev: FocusEvent) => {
+      // 窗口切回：WebView2 会把焦点还给上次的元素并重发 focus/focusin——
+      // 那不是键盘导航，不能出提示。
+      if (!userActedRef.current) return;
       const t = readTarget(ev.target);
       if (t) arm(t, FOCUS_DELAY_MS);
     };
@@ -133,19 +153,39 @@ export function TipHost() {
       disarmSoon();
     };
 
+    /** 切走 / 切回都进入「不可信」态，直到用户真的动一下鼠标或按一下键：
+     *  切走时收掉提示（回来时鼠标位置已不可信）；切回时 WebView2 还会重发
+     *  focusin 与 movement=0 的 hover 刷新，不挡住就会「自己冒出」提示。 */
+    const onWindowBlur = () => {
+      userActedRef.current = false;
+      disarm();
+    };
+
+    const onWindowFocus = () => {
+      userActedRef.current = false;
+      disarm();
+    };
+
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('keydown', markActed, true);
+    document.addEventListener('pointerdown', markActed, true);
     document.addEventListener('mouseover', onOver, true);
     document.addEventListener('mouseout', onOut, true);
     document.addEventListener('focusin', onFocusIn, true);
     document.addEventListener('focusout', onFocusOut, true);
-    // 窗口失焦（切到别的应用）时收掉——回来时鼠标位置已不可信
-    window.addEventListener('blur', disarm);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
 
     return () => {
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('keydown', markActed, true);
+      document.removeEventListener('pointerdown', markActed, true);
       document.removeEventListener('mouseover', onOver, true);
       document.removeEventListener('mouseout', onOut, true);
       document.removeEventListener('focusin', onFocusIn, true);
       document.removeEventListener('focusout', onFocusOut, true);
-      window.removeEventListener('blur', disarm);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current);
     };

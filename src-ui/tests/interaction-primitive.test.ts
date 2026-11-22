@@ -58,6 +58,8 @@ const LISTENER_REGISTRY: Record<string, string> = {
   'src-ui/src/app/interaction/use-drag-gesture.ts':
     '手势核心本体：setPointerCapture / 回退窗口监听都住在这里，其余全部经它',
   'src-ui/src/app/overlay.tsx': '外点关闭（useOutsideClose）与 Escape 的唯一实现',
+  'src-ui/src/app/tip/tip-host.tsx':
+    '窗口切回的可信判据：只读 mousemove/pointerdown 判断用户是否真的动了（不接管手势、不 preventDefault）',
   'src-ui/src/app/window-drag.ts': 'OS 标题栏拖动热区（另一范畴：原生窗口移动）',
   'src-ui/src/ui/resize-zones.ts': 'Linux 无边框窗口缩放热区（调 Tauri 原生缩放，另一范畴）',
   'src-ui/src/plugins/builtin/paper-shell/edge-scroll.ts':

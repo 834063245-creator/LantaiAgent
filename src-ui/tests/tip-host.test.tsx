@@ -12,7 +12,10 @@
 //      过一秒才冒出来」的手感是本批要治的主症状；
 //   ② 退场即时（移开就收，不赖着）；
 //   ③ 双层文案（主行 + 次行）与「相邻切换不重播」；
-//   ④ 定位翻转：顶部工具条的提示必须翻到下方，不能顶出视口。
+//   ④ 定位翻转：顶部工具条的提示必须翻到下方，不能顶出视口；
+//   ⑤ 窗口切回不是用户操作：WebView2 会把焦点还给上次的元素并重发 focusin，还会补一条
+//      movement=0 的 mousemove/mouseover 刷新 hover 态——两者都不许自己冒出提示
+//      （2026-11-22 用户报「切出去再切回来，有些位置自己弹提示」）。
 //
 // 刻意**不钉**的：具体像素坐标、动画曲线（那些属 §15 动效法，改 tokens 即变）。
 
@@ -142,6 +145,60 @@ describe('悬停提示宿主', () => {
     advance(149);
     expect(tipEl()?.classList.contains('is-on')).toBe(false);
     advance(1);
+    expect(tipEl()?.classList.contains('is-on')).toBe(true);
+  });
+
+  it('窗口切回：浏览器把焦点还给原元素并重发 focusin —— 不许自己冒提示', () => {
+    const el = trigger({ 'data-tip': '案卷行' });
+
+    // 切走前正常悬停显示过一次（留下「上次聚焦的控件」与提示态）
+    fire(el, 'mouseover');
+    advance(320);
+    expect(tipEl()?.classList.contains('is-on')).toBe(true);
+
+    // 切走：窗口失焦（宿主收掉提示并进入「不可信」态）
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    expect(tipEl()?.classList.contains('is-on')).toBe(false);
+
+    // 切回：WebView2 先发 window focus，再把焦点还给上次的元素并重发 focus/focusin。
+    // 用户没动鼠标也没按键盘——这不是「键盘聚焦」，不许出提示。
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      el.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    });
+    advance(400);
+    expect(tipEl()?.classList.contains('is-on')).toBe(false);
+
+    // 用户真按 Tab 导航，焦点提示照常（键盘用户不受影响）
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      el.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    });
+    advance(150);
+    expect(tipEl()?.classList.contains('is-on')).toBe(true);
+  });
+
+  it('窗口切回：浏览器补发的 movement=0 悬停刷新 —— 不许自己冒提示', () => {
+    const el = trigger({ 'data-tip': '发送本轮输入' });
+
+    // 切走：窗口失焦
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+
+    // 切回：WebView2 先补一条 movement=0 的 mousemove 刷新 hover 态，再补 mouseover。
+    // 物理鼠标没动——这不是用户悬停。
+    fire(el, 'mousemove', { movementX: 0, movementY: 0 });
+    fire(el, 'mouseover');
+    advance(400);
+    expect(tipEl()?.classList.contains('is-on')).toBe(false);
+
+    // 用户真动了一下鼠标：悬停提示恢复
+    fire(el, 'mousemove', { movementX: 3, movementY: 1 });
+    fire(el, 'mouseover');
+    advance(320);
     expect(tipEl()?.classList.contains('is-on')).toBe(true);
   });
 
