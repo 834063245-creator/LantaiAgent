@@ -414,7 +414,7 @@ export function PaperPanel() {
                       isRise ? ' pp-rise' : ''
                     }${isSettling ? ' pp-settling' : ''}${
                       !leaving && bandSessionId === r.sessionId ? ' pp-region--band' : ''
-                    }`}
+                    } pp-elev`}
                     {...(leaving ? ({ 'data-leaving': '', inert: true } as const) : null)}
                     style={
                       {

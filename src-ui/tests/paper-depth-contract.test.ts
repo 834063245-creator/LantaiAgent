@@ -14,13 +14,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ELEVATION } from '../src/paper/elevation';
+import { ELEVATION, zOf } from '../src/paper/elevation';
 
 const ROOT = join(__dirname, '..');
 const read = (p: string): string => readFileSync(join(ROOT, p), 'utf8');
 
 const SHELL = 'src/plugins/builtin/paper-shell';
 const ELEV_CSS = read(SHELL + '/paper-elev.css');
+const BLOCK_CSS = read(SHELL + '/paper-block.css');
 const PAPER_CSS = [
   'paper-base.css',
   'paper-inline.css',
@@ -63,6 +64,22 @@ describe('画布海拔契约（B5）', () => {
       String(ELEVATION.sheet.active),
     ]);
     expect(hits.every((v) => allowed.has(v))).toBe(true);
+  });
+
+  it('纸必须挂 pp-elev（否则 --elev-shadow 未定义 → 四层包边整条失效）', () => {
+    const start = PANEL_TSX.indexOf('className={`pp-region');
+    expect(start).toBeGreaterThan(-1);
+    expect(PANEL_TSX.slice(start, start + 700)).toContain('pp-elev');
+  });
+
+  it('流块是世界层兄弟：z 必须高于纸带、低于墨迹/待题纸/纸片件（2026-11-22 实机回归）', () => {
+    // 病灶：全带 z 后纸带升到 100–999，流块若仍写 z 2 就整片沉到纸下面（所有卷无字）。
+    const body = BLOCK_CSS.slice(BLOCK_CSS.indexOf('.pp-block {'));
+    const z = Number(/z-index:\s*(\d+)/.exec(body)?.[1]);
+    // 纸带现实叠放（100 卷级）之上；低于墨迹层 998 / 待题纸 999 / 纸片件 1000。
+    expect(z).toBeGreaterThan(zOf('sheet', 100));
+    expect(z).toBeLessThan(998);
+    expect(z).toBe(997);
   });
 
   it('流内排印件不挂 pp-elev：带海拔的只有待题纸 / 纸片件 / 架件', () => {
