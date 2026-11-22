@@ -192,22 +192,44 @@
 .sp-content {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 滚与不滚都预留书口：切到无溢出页签时内容列不横跳 12px。 */
+  scrollbar-gutter: stable;
   /* 2026-11-06 排版批：上距 36→28、下距 64→44（末行不再被页脚吃掉半截；
      左右 48→40 把版心让给注疏——注疏改走右列通栏后需要这一圈宽度）。 */
   padding: 28px 40px 44px;
   min-height: 0;
 }
 
+/* ── 内容滚动条：纸面「书口」细墨杆 ──
+ * 旧案 4px 宽 + --line-soft 拇指在插件页 6800px 长表上几乎不可见，页面读作被裁断。
+ * 现案 12px 滚动槽内收成 6px 墨杆（3px 透明边），轨道只留一根居中弱规线；
+ * 静止 --ink-3，悬停 --ink-2，拖动 --ink-1——越抓越实，仍是同一瓶墨。
+ * 只写 WebKit 伪元素：Chromium 121+ 的标准 scrollbar-* 属性会反过来压掉它
+ *（foundation.css 头注同款；WebView2 = 唯一运行时）。圆角保持 0（印刷品铁律）。 */
 .sp-content::-webkit-scrollbar {
-  width: 4px;
+  width: 12px;
 }
 
 .sp-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: linear-gradient(var(--line-soft), var(--line-soft)) center / 1px 100% no-repeat;
+  margin: 8px 0;
 }
 
 .sp-content::-webkit-scrollbar-thumb {
-  background: var(--line-soft);
+  background: var(--ink-3);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 0;
+  transition: background-color var(--snap);
+}
+
+.sp-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-2);
+}
+
+.sp-content::-webkit-scrollbar-thumb:active {
+  background-color: var(--ink-1);
 }
 
 /* ── 标签页内容：换景（§15，2026-10-15 批 4a）──
