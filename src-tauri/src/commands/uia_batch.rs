@@ -474,7 +474,16 @@ async fn exec_step(step: &Value, kind: &str, win: &Win) -> Result<String, String
             )
             .await
         }
-        "window_shot" => crate::uia::uia_window_shot(title, pid, hwnd).await,
+        "window_shot" => {
+            crate::uia::uia_window_shot(
+                title,
+                pid,
+                hwnd,
+                // 批 4：步内也可要 OCR 锚点（默认 false——OCR 有几百毫秒成本）
+                step.get("anchors").and_then(|v| v.as_bool()).unwrap_or(false),
+            )
+            .await
+        }
         other => Err(format!("desktop_uia_batch: 未知步动作 {other}")),
     }
 }

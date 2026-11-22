@@ -31,6 +31,7 @@ mod cache;
 mod e2e;
 pub(crate) mod errors;
 pub(crate) mod grants;
+mod ocr;
 mod shot;
 
 use serde_json::Value;
@@ -352,10 +353,13 @@ pub(crate) async fn uia_activate(
 }
 
 /// desktop_uia_window_shot — 按窗口矩形截图（worker 定位 + PS GDI 捕获）。
+/// `want_anchors`（批 4）：额外跑一次 WinRT OCR，把「文字 → 屏幕坐标」锚点一并返回——
+/// 自绘界面里「按文字找按钮」比让模型估坐标更省更准；OCR 失败只降级为「只给图」。
 pub(crate) async fn uia_window_shot(
     title: Option<&str>,
     pid: Option<u32>,
     hwnd: Option<u64>,
+    want_anchors: bool,
 ) -> Result<String, String> {
     let v = worker::request(|reply| worker::UiaRequest::WindowRect {
         loc: locator(title, pid, hwnd),
@@ -377,14 +381,32 @@ pub(crate) async fn uia_window_shot(
         })
         .ok_or_else(|| errors::err(errors::codes::INTERNAL, "窗口矩形解析失败"))?;
     let (path, bytes, rect_s) = shot::capture(rect.0, rect.1, rect.2, rect.3)?;
-    Ok(serde_json::json!({
+    let mut out = serde_json::json!({
         "path": path.to_string_lossy(),
         "bytes": bytes,
         "rect": rect_s,
         "window": { "pid": v["pid"], "title": v["title"], "hwnd": v["hwnd"] },
         "note": "窗口矩形截图已落盘(文本模型看不到内容,可交给用户确认; vision 模型可读路径)。",
-    })
-    .to_string())
+    });
+    // 批 4（P1-2）：文字锚点。失败不致命——图照给，ocrNote 说明原因，模型按图自估坐标。
+    if want_anchors {
+        match ocr::anchors(&path.to_string_lossy(), rect.0, rect.1) {
+            Ok(a) => {
+                out["anchors"] = a["anchors"].clone();
+                out["ocr"] = serde_json::json!({ "engine": a["engine"] });
+                out["ocrNote"] = serde_json::json!(
+                    "anchors = OCR 文字锚点（rect / center 均为屏幕虚拟坐标，可直接喂 \
+                     desktop_uia_click 的 x/y）；纯图标无文字的区域不会有锚点，仍需看图定位。"
+                );
+            }
+            Err(e) => {
+                out["ocrNote"] = serde_json::json!(format!(
+                    "OCR 不可用（{e}）——请按图自估坐标，或改用 desktop_uia_tree 拿控件 ref。"
+                ));
+            }
+        }
+    }
+    Ok(out.to_string())
 }
 
 /// 窗口信息（坐标动作的定位前置）：hwnd/title/pid/rect —— 授权键控与 rect 校验口径。

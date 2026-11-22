@@ -706,6 +706,12 @@ const UIA_CAP_SCHEMA = {
     hwnd: z.number().int().optional().describe('Window handle from desktop_probe'),
     pid: z.number().int().optional().describe('Process id'),
     title: z.string().optional().describe('Window title substring'),
+    anchors: z
+      .boolean()
+      .optional()
+      .describe(
+        'Also run OCR and return text anchors: [{text, rect:[x,y,w,h], center:[cx,cy]}] in SCREEN-VIRTUAL coordinates, ready to feed desktop_uia_click x/y. Costs a few hundred ms. Best for self-drawn UIs with Chinese/English labels; pure-icon areas yield no anchors (use the image).',
+      ),
   }),
   desktop_uia_batch: z.object({
     steps: z
@@ -759,7 +765,7 @@ const UIA_CAP_DESCRIPTION: Record<UiaCapAction, string> = {
   desktop_uia_activate:
     'Bring a window to the foreground (restore if minimized + SetForegroundWindow). Physical input — asks every time. Needed before coordinate clicks / clipboard paste into apps that require focus; pattern actions (Invoke/SetValue/Select) work without activation.',
   desktop_uia_window_shot:
-    'Capture a screenshot of a single window rect (not the full screen) - smaller privacy surface than desktop_screenshot, read-only. Locate window as in desktop_uia_tree (hwnd/pid/title/foreground). Returns {path, bytes, rect, window} PLUS {image, attachment, imageNote}: the window image is attached to the conversation by default, so a vision model can SEE the window — this is the entry point for self-drawn controls that UIA cannot see (WeChat/QQ/DingTalk), chart/render checks, and layout verification. Text-only models only get an explanatory placeholder. Typical flow for self-drawn apps: desktop_probe (route.channel="vision") → desktop_uia_window_shot → act, then shot again to verify the result.',
+    'Capture a screenshot of a single window rect (not the full screen) - smaller privacy surface than desktop_screenshot, read-only. Locate window as in desktop_uia_tree (hwnd/pid/title/foreground). Returns {path, bytes, rect, window} PLUS {image, attachment, imageNote}: the window image is attached to the conversation by default, so a vision model can SEE the window — this is the entry point for self-drawn controls that UIA cannot see (WeChat/QQ/DingTalk), chart/render checks, and layout verification. Pass anchors:true to ALSO get OCR text anchors ({anchors:[{text, rect, center}]} in screen-virtual coordinates, ready to feed x/y clicks) — the cheapest way to locate a labeled button in a self-drawn UI; pure-icon areas still need the image. Text-only models only get an explanatory placeholder. Typical flow for self-drawn apps: desktop_probe (route.channel="vision") → desktop_uia_window_shot (anchors:true) → click the anchor center → shot again to verify.',
   desktop_uia_batch:
     'Run several desktop actions in ONE tool call, executed serially under a SINGLE approval — the way to cut round-trips on multi-step jobs (fill a form: click field → type → click next → type) and the reason long tasks stop costing one approval per click. Contract: (a) all steps run inside ONE window (pass hwnd/pid/title once at top level); (b) allowed step actions only — click/right_click/type/scroll/select/expand/read/wait/tree/find/window_shot (keys/activate/grant/screenshot/probe/audit/status/nested batch must be called separately); (c) a sensitive target anywhere (submit/pay/delete/password/overwrite) rejects the whole batch — call that action alone; (d) on_error defaults to "stop" (the failed step halts the batch), set "continue" to keep going; (e) max 20 steps; (f) physical steps share ONE global input lease. Returns {steps:[{i,action,ok,result|error}], total, executed, failed, stopped_at, elapsed_ms, window}. The approval prompt lists the first 5 steps: the user approves the batch, not each click — keep batches short and coherent, and never pack a destructive sequence into one batch.',
   desktop_audit:

@@ -429,8 +429,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       'coordinate mode and pattern-less physical paths — flow without asking; sensitive targets (submit/pay/delete/password/overwrite) ' +
       'always ask, and so do SendKeys hotkeys and bringing a window to the foreground; a global input lease serializes physical injection. ' +
       'desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. ' +
-      'Self-drawn apps (WeChat/QQ/DingTalk): desktop(uia_window_shot) attaches the window image so a vision model can see it, ' +
-      'then click by x/y coordinates. ' +
+      'Self-drawn apps (WeChat/QQ/DingTalk): desktop(uia_window_shot, anchors:true) attaches the window image AND returns OCR text anchors ' +
+      '(screen-virtual rect/center) so a vision or text model can click by x/y; pure-icon areas only have the image. ' +
       'Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate).',
     actions: {
       probe: 'desktop_probe',

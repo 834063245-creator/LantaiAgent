@@ -717,6 +717,10 @@ async fn desktop_uia_window_shot(gate: &UiaGate<'_>, args: &Value) -> Result<Str
         arg_str(args, "title").as_deref(),
         opt_u32_of(args, "pid"),
         opt_u64_of(args, "hwnd"),
+        // 批 4：anchors:true → 附 OCR 文字锚点（屏幕虚拟坐标，可直接喂坐标点击）
+        args.get("anchors")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     )
     .await?;
     // 附图通道（批 1）：窗口截图**默认接**——「模型看得见窗口」是自绘应用
