@@ -210,16 +210,17 @@ export const BlockView = memo(function BlockView({
           />
         )}
         {/* 出处行（2026-09-18 出处引导批）：页边注第三行——「摘自 卷名」常显，
-            点行溯源。mousedown 停传：页边注是拖拽把手（整块拖出），而出处行是
-            行内的点击件——不停传则「点一下」变成「起拖」（松手无位移才回到
-            点击，手感与语义都不对）。 */}
+            点行溯源。**这一下归按钮自己**——由拖拽起手面的交互件判据让出来
+            （use-paper-drag 的 isInteractiveTarget / app/interaction/interactive-target），
+            本按钮不自己停传事件：旧写法是在 onMouseDown 上停传，批 C3（2026-11-17）
+            把手换到 pointerdown 后失效（浏览器不再派发 mousedown），点击被指针捕获
+            送到把手 → 「点出处行没反应」（2026-11-21 用户报）。 */}
         {prov !== undefined && (
           <button
             type="button"
             className={`pp-prov${provTraceable ? ' pp-prov--trace' : ''}`}
             data-tip={provTitle}
             aria-disabled={!provTraceable}
-            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               if (provTraceable) onProvClick?.(block.id);

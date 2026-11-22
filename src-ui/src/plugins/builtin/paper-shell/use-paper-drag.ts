@@ -15,6 +15,7 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isInteractiveTarget } from '../../../app/interaction/interactive-target';
 import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
@@ -271,6 +272,13 @@ export function usePaperDrag(params: {
   const onBlockPointerDown = useCallback(
     (e: React.PointerEvent, block: SourcedBlock) => {
       if (e.button !== 0) return;
+      /* 交互件归它自己（2026-11-21 出处行点击失效批）：本把手是拖出起手面，而
+       * 把手内嵌着出处行按钮（.pp-prov「摘自 卷名」）。gesture.begin 一拍
+       * setPointerCapture(.pp-kind)，此后 click 一律送到把手 ⇒ 按钮的 onClick
+       * 永不触发（用户读作「点出处行没反应」）。出处行过去在 onMouseDown 上停传，
+       * 批 C3（2026-11-17）把手换到 pointerdown 后那条防法失效——pointerdown 之后
+       * 浏览器不再派发 mousedown。判据表见 app/interaction/interactive-target。 */
+      if (isInteractiveTarget(e.target)) return;
       e.stopPropagation(); // 不触发画布平移/流区激活
       e.preventDefault();
       const rect = canvasRef.current?.getBoundingClientRect();

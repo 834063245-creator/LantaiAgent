@@ -91,6 +91,7 @@
       "state/card-quote.ts",
       "state/volume-name.ts",
       "ui/tool-semantics.ts",
+      "app/interaction/interactive-target.ts",
       "app/interaction/lost-focus.ts",
       "app/interaction/pointer-claims.ts",
       "app/interaction/use-drag-gesture.ts"

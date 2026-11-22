@@ -20,13 +20,15 @@
 //    按下那一刻整屏块一起变样。这里改成给出「哪一块」，纸面只标那一块。
 
 import { useCallback, useRef, useState } from 'react';
+import { INTERACTIVE_SELECTOR } from '../../../app/interaction/interactive-target';
 import { quoteCardOf } from './card-quote-of';
 import type { SourcedBlock } from './host';
 import { useToastStore } from './host';
 import { useQuoteHold } from './quote-drop';
 
-/** 块内这些位置**不归长按管**：它们有各自的点击/拖拽语义，捕获会掐断它们。 */
-const INTERACTIVE = 'button, a, input, textarea, select, [role="button"], .pp-kind, .pp-drag-handle';
+/** 块内这些位置**不归长按管**：交互件有各自的点击（基集见
+ *  app/interaction/interactive-target——拖拽起手面共用同一张表），拖拽把手则归起拖。 */
+const NOT_HOLD = `${INTERACTIVE_SELECTOR}, .pp-kind, .pp-drag-handle`;
 
 export function useQuoteHoldCanvas(params: {
   /** 本面板的 chat store id（写槽与取 core 都经它）。 */
@@ -67,7 +69,7 @@ export function useQuoteHoldCanvas(params: {
       if (!block.asset) return;
       const target = e.target as Element | null;
       // ① 交互件归它们自己（否则收回/抄录这些按钮的 click 会被捕获掐断）
-      if (typeof target?.closest === 'function' && target.closest(INTERACTIVE)) return;
+      if (typeof target?.closest === 'function' && target.closest(NOT_HOLD)) return;
       held.current = { block, sessionNum };
       setHoldingBlockId(block.id);
       hold.begin(e);

@@ -1571,6 +1571,45 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(prov?.getAttribute('data-tip')).toContain('回到出处');
   }, 30_000);
 
+  /* 2026-11-21 用户报「钉住卡片右上角点出处行，回到出处位置失效」的考官。
+   * 病灶 = 指针捕获改 click 目标：把手 .pp-kind 一拍 setPointerCapture，click 全送到
+   * 把手，按钮的 onClick 永不运行（旧防法「按钮停传 onMouseDown」在批 C3 换 pointerdown
+   * 后失效）。判据 = app/interaction/interactive-target。
+   * jsdom 没有真捕获，**测的是判据本身**：交互件上的按下不许起手；把手本体照常起手。 */
+  it('出处行按住不起拖（交互件让出），把手本体照常起拖——「回到出处」失效回归', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const { el, id } = await pinFirstBlock();
+    const before = getCanvasStore(panel.panelId).getState().pins[id];
+    const prov = el.querySelector('.pp-prov') as Element;
+    expect(prov).not.toBeNull();
+    await act(async () => {
+      fire(prov, 'mousedown', { button: 0, clientX: 700, clientY: 400 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 790, clientY: 470 });
+    });
+    expect(container?.querySelector('.pp-block.pp-dragging')).toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 790, clientY: 470 });
+    });
+    // 起拖后松手会落钉在新位——判据说的是「没起手」，钉位必须原地
+    const after = getCanvasStore(panel.panelId).getState().pins[id];
+    expect(after?.x).toBe(before?.x);
+    expect(after?.y).toBe(before?.y);
+    // 反证：同一手势落在把手本体（非交互件）上 ⇒ 拖拽照常起手（判据只让出交互件）
+    await act(async () => {
+      fire(el.querySelector('.pp-zh') as Element, 'mousedown', { button: 0, clientX: 700, clientY: 400 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 790, clientY: 470 });
+    });
+    expect(container?.querySelector('.pp-block.pp-dragging')).not.toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 790, clientY: 470 });
+    });
+  }, 30_000);
+
   it('引线：hover 钉块才落笔（一屏一线），笔道与朱点投在正确的屏上位置；移出即撤', async () => {
     const canvas = await mountCanvas();
     stubCanvasRect(canvas);
