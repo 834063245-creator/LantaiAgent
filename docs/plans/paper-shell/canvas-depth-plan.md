@@ -4,6 +4,7 @@
 > 其实就是兰台现在画布上的所有东西分不出谁在上谁在下」。
 > 状态：**P1 模型 + P2a 架件 + P3a 活跃纸已落地（2026-11-22）；P2b/P3b/P4 待排**。
 > 拍板：**坞不要动**（用户 2026-11-22）——坞留在「纸上的墨」，不接海拔（§7）。
+> 施工单：[canvas-depth-build.md](canvas-depth-build.md)（批次 / 文件 / 测试 / 待批准）。
 > 判读件：[canvas-depth-ab.jpg](../../assets/canvas-depth-ab.jpg) · 台子 `prototype/canvas-depth-ab.html`
 >（台子里的窗光是示意；产品**不模拟受光**——光影引擎同日判死撤除，见 §9）。
 
