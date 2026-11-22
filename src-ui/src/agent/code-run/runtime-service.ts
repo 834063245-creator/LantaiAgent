@@ -23,6 +23,7 @@ import {
   type CodeDispatchRecord,
   type CodeRunHostOptions,
   type CodeWorkerLike,
+  type LateNestedResult,
   runCode,
 } from './host';
 import type { CodeRunResult } from './protocol';
@@ -45,6 +46,9 @@ export interface CodeRunRequest {
   /** 程序内调用落定旁路（2026-11-21 纸面显形批）——展示面用，不改变程序
    *  看到的返回值。透传给宿主，见 host.ts 的 CodeDispatchRecord。 */
   onDispatch?: (d: CodeDispatchRecord) => void;
+  /** 程序结束后才落定的调用（P1-2 待领信箱）——透传给宿主，消费者负责
+   *  存到下一轮注入。 */
+  onLateResult?: (entry: LateNestedResult) => void;
 }
 
 declare module '../../cordis/context' {
@@ -82,6 +86,7 @@ export class CodeRuntimeService extends Service {
       signal: request.signal,
       createWorker: request.createWorker,
       onDispatch: request.onDispatch,
+      onLateResult: request.onLateResult,
     };
     return runCode(request.program, opts);
   }
@@ -114,6 +119,7 @@ export function runViaRuntime(request: CodeRunRequest): Promise<CodeRunResult> {
         signal: req.signal,
         createWorker: req.createWorker,
         onDispatch: req.onDispatch,
+        onLateResult: req.onLateResult,
       };
       return runCode(req.program, opts);
     },

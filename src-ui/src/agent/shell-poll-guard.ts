@@ -85,10 +85,10 @@ export function shellPollVerdict(prev: ShellPollState | undefined, jobId: number
  *  模型调用）；③ 该改用什么（`wait` 一次等到结束，超时就再 wait——不是再 output）。 */
 export function shellPollNudge(jobId: number, emptyReads: number): string {
   return (
-    `\n\n[poll guard] bash_output(${jobId}) has now returned no new bytes ${emptyReads} times in a row — ` +
+    `\n\n[poll guard] shell(action:'output') for job ${jobId} has now returned no new bytes ${emptyReads} times in a row — ` +
     'each of those reads cost a full model round and told you nothing but "still running". ' +
-    `Stop polling. Call bash_wait(${jobId}) to wait for completion (a timed-out wait leaves the job running: ` +
-    'call bash_wait again with a larger timeoutMs). The completion also arrives as a bg notice, so you can ' +
-    'leave the job alone and do other work. Use bash_output again only when you genuinely want partial output.'
+    `Stop polling. Call shell(action:'wait', jobId:${jobId}) to wait for completion (a timed-out wait leaves the job running: ` +
+    'call it again with a larger timeoutMs). The completion also arrives as a bg notice, so you can ' +
+    'leave the job alone and do other work. Read the output again only when you genuinely want partial output.'
   );
 }

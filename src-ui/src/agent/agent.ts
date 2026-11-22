@@ -29,6 +29,7 @@ import type { AgentRecord, AgentStore } from './agent-store';
 import { type AgentEvent, type AgentUINotifier, EventKind, type EventSink, type ToolEvent } from './agent-types';
 import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
+import type { LateNestedResult } from './code-run/host';
 import type { CodeReplyCode } from './code-run/protocol';
 import {
   COMPACT_OUTPUT_RESERVE_TOKENS,
@@ -488,6 +489,11 @@ export class Agent {
   // 待处理的记忆更新（从 memory:saved 事件排队，在安全边界应用）
   private _pendingMemoryUpdates: string[] = [];
 
+  /** 程序结束后才返回的嵌套调用结果（P1-2 待领信箱）——已格式化好的一行一条。
+   *  写入 = code_execution 的 onLateResult；读取 = `_applyPendingMemoryUpdates`
+   *  每步投递（splice 清空，只投递一次）。上限见 noteLateNestedResult。 */
+  private _lateNestedResults: string[] = [];
+
   // 追踪本轮 runLoop 已注入的 inbox 消息 — 防止 LLM 不 ack/reply 时
   // 无限唤醒循环（消息留在 inbox，finally 块会不断重新触发 _onMessageDelivered）。
   private _injectedMsgIds = new Set<string>();
@@ -678,6 +684,20 @@ export class Agent {
    *  下一个安全边界作为 system-reminder 注入。 */
   notifyMemorySaved(text: string): void {
     this._pendingMemoryUpdates.push(text);
+  }
+
+  /** 记下一条「程序结束后才返回」的嵌套调用结果（P1-2 待领信箱）。
+   *  为什么留：code_execution 超时/中止时，不可后台化的长调用（MCP / office /
+   *  子 Agent）可能几秒后就成功了——丢掉等于让模型把同一件事重做一遍。
+   *  容量上限 8 条 / 每条 800 字：这是补救面，不是上下文垃圾桶。 */
+  noteLateNestedResult(entry: LateNestedResult): void {
+    const body = entry.output.trim();
+    const clipped = body.length > 800 ? `${body.slice(0, 800)}…（已截断）` : body;
+    const verdict = entry.isError ? '失败' : '成功';
+    this._lateNestedResults.push(
+      `- ${entry.name}（程序结束后 ${(entry.elapsedMs / 1000).toFixed(1)}s 返回，${verdict}）：${clipped || '(无输出)'}`,
+    );
+    if (this._lateNestedResults.length > 8) this._lateNestedResults.shift();
   }
 
   /** 设置/刷新记忆库快照（装配期一次 + 记忆保存后 —— workspace 的 onSaved）。 */
@@ -1215,12 +1235,24 @@ export class Agent {
 
   /** 在安全边界应用排队的记忆更新。
    *  作为临时 system-reminder 注入，使 Agent 在会话中途看到更新的记忆。
-   *  不持久化到会话 — 记忆文件本身是持久层。 */
+   *  不持久化到会话 — 记忆文件本身是持久层。
+   *
+   *  P1-2（2026-11）：同一口也投递「程序结束后才返回的嵌套调用结果」。为什么是这里：
+   *  它是**每步唯一**的「挂起注入落地」钩子（default-loop 在清空 reminder 之后、
+   *  建载荷之前调它）；另开一个注入方法就要动 agent-loop 的契约面（types.ts /
+   *  default-loop.ts 属四步升版范围），为一批待领结果不值得。 */
   private _applyPendingMemoryUpdates(): void {
-    if (!this._pendingMemoryUpdates?.length) return;
-    const text = this._pendingMemoryUpdates.join('\n');
-    this._transientReminders.push(`<system-reminder>${text}</system-reminder>`);
-    this._pendingMemoryUpdates = [];
+    if (this._pendingMemoryUpdates?.length) {
+      const text = this._pendingMemoryUpdates.join('\n');
+      this._transientReminders.push(`<system-reminder>${text}</system-reminder>`);
+      this._pendingMemoryUpdates = [];
+    }
+    if (this._lateNestedResults.length > 0) {
+      const lines = this._lateNestedResults.splice(0);
+      this._transientReminders.push(
+        `<system-reminder>\n⏳ 上一段程序结束后才返回的调用（属于已经结束的那次 code_execution，不是本轮发起的；结果有效，不要重做）：\n${lines.join('\n')}\n</system-reminder>`,
+      );
+    }
   }
 
   /** 将未读 inbox 消息注入为 system-reminder。非破坏性 —
@@ -1316,6 +1348,8 @@ export class Agent {
     this.compactFailCount = 0;
     this.compactionTracker.reset();
     this._transientReminders = [];
+    // 待领结果不跨卷（P1-2）：上一卷的超时残余不该在新卷冒出来（INVARIANTS #1 同族）。
+    this._lateNestedResults = [];
     // token 账本随新会话归零（与 cacheHitTotal/lastUsage 同批——旧账不跨卷）
     this._tokenMeter = requireTokenMeter().createLedger();
     this._tokenMeter.setContextWindow(this.contextWindow);

@@ -65,7 +65,7 @@ function parseResolvedCwd(raw: string): string | null {
 function promotedText(jobId: number, outputSoFar: string): string {
   const head =
     `[命令超时，已转入后台继续运行 —— job ${jobId}（没有失败，不要重跑）]\n` +
-    `接下来：用 bash_wait(${jobId}) 等它结束（超时就再 wait 一次）；` +
+    `接下来：shell(action:'wait', jobId:${jobId}) 等它结束并拿退出码与全文（超时就再调一次）；` +
     `完成时也会自动收到通知。`;
   const body = outputSoFar.trim();
   return body ? `${head}\n\n──── 目前已产生的输出 ────\n${body}` : head;

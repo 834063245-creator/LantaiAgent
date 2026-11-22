@@ -545,7 +545,9 @@ async fn exec_command(
             Some(app.clone()),
         )?;
         let hint = cmd_syntax_hint.unwrap_or_default();
-        return Ok(format!("{hint}[后台任务已启动, ID: {}]\n使用 bash_output({}) 查看输出, bash_wait({}) 等待完成, bash_kill({}) 终止任务", id, id, id, id));
+        return Ok(format!(
+            "{hint}[后台任务已启动, ID: {id}]\n取结果：shell(action:'wait', jobId:{id}) 等它结束并拿退出码与全文；shell(action:'output', jobId:{id}) 只看已有输出；shell(action:'kill', jobId:{id}) 终止。"
+        ));
     }
 
     // ── 落点捕获包装（capture_cwd=true 且 fg；权限检查与构建锁之后，spawn 之前）──

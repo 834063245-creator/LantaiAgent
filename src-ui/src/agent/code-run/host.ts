@@ -113,6 +113,14 @@ export interface CodeRunHostOptions {
    *  （审计在 capability 段的 invoke 闭包里，两本账互不替代）。
    *  为什么挂在宿主侧：这是唯一同时知道 name / args / outcome / 序的位置。 */
   onDispatch?: (d: CodeDispatchRecord) => void;
+  /** 程序结束后才落定的一次调用（P1-2 待领信箱）：每落定一条回调一次。
+   *  与 onDispatch 的分工：onDispatch 只在 run 活着时报展示面；本回调专收「程序
+   *  已经结束、结果迟到」的那些——消费者（Agent）负责存到下一轮注入，只投递一次。 */
+  onLateResult?: (entry: LateNestedResult) => void;
+  /** 程序返回后等写链排空的宽限（ms）。缺省 3000（对齐 DSH stopGraceMs）：
+   *  不理会取消的写调用（MCP / office）不该把「完成」拖成「超时」——到点照样
+   *  结算为完成，迟到的结果走待领信箱（onLateResult）。 */
+  settleGraceMs?: number;
   /** Worker 工厂（注入面 — 测试用 fake；缺省真实 Web Worker）。 */
   createWorker?: (source: string) => CodeWorkerLike;
 }
@@ -277,10 +285,10 @@ interface InflightCall {
   startedAt: number;
 }
 
-/** 程序已结束后才落定的调用（P1-2 待领结果信箱的原料；P0 先只报个数）。
- *  为什么现在就收：`settled` 之后的结果按旧语义直接丢，连「丢了几条」都不知道；
- *  先把事实留下来，投递面（信箱）是独立一步。 */
-interface LateSettledCall {
+/** 程序已结束后才落定的调用（P1-2 待领信箱的原料）。
+ *  为什么必须留：程序超时/中止时，不可后台化的长调用（MCP / office / 子 Agent）
+ *  可能几秒后**成功了**——旧行为在这里静默 return，等于让模型把同一件事重做一遍。 */
+export interface LateNestedResult {
   name: string;
   elapsedMs: number;
   output: string;
@@ -289,7 +297,7 @@ interface LateSettledCall {
 
 /** 给失败结果补一段在途清算（INV-3：超时不得只回一句 typing）。
  *  只补有在途的场合——程序自身异常时它已经拿到了自己的栈，再垫一段清单是噪音。 */
-function withInflightNote(result: CodeRunResult, pending: InflightCall[], late: LateSettledCall[]): CodeRunResult {
+function withInflightNote(result: CodeRunResult, pending: InflightCall[], late: LateNestedResult[]): CodeRunResult {
   if (!result.error || (pending.length === 0 && late.length === 0)) return result;
   const lines: string[] = [];
   if (pending.length > 0) {
@@ -331,6 +339,7 @@ function applyBudget(
 export async function runCode(program: string, opts: CodeRunHostOptions): Promise<CodeRunResult> {
   const maxOutputBytes = opts.maxOutputBytes ?? 64 * 1024;
   const timeoutMs = opts.timeoutMs ?? 120_000;
+  const settleGraceMs = opts.settleGraceMs ?? 3_000;
   const bindingMap = new Map(opts.bindings.map((b) => [b.name, b]));
   const createWorker = opts.createWorker ?? createRealWorker;
   const signal = opts.signal ?? null;
@@ -350,8 +359,8 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
   const runSignal = runController.signal;
   // 在途台账（INV-3）：调用开始登记、落定删除；run 结束时剩下什么就报什么。
   const inflight = new Map<number, InflightCall>();
-  // 程序结束后才返回的调用（P0 只报个数；P1-2 起把它们的结果投递给下一轮）。
-  const lateSettled: LateSettledCall[] = [];
+  // 程序结束后才返回的调用（P0 报个数 / P1-2 起把它们的结果投递给下一轮）。
+  const lateSettled: LateNestedResult[] = [];
 
   // 写调度闸：读不进闸；写按 lockKey 分片（缺省 '*' = 与旧「一条写链」逐字等价）
   const gate = createWriteGate();
@@ -476,14 +485,19 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
           /* 已经 abort 过 */
         }
         // 等写链排空再收尾——审计完整（结果值不依赖写，但 dispatch-end 事件
-        // 必须全部落账后才 finish，否则审计缺口）
-        void gate.drain().then(() =>
+        // 必须全部落账后才 finish，否则审计缺口）。
+        // 宽限（对齐 DSH stopGraceMs）：不理会取消的写调用（MCP / office）不能
+        // 把「完成」拖成「超时」——到点照样结算成完成，迟到的结果走待领信箱。
+        const finishDone = (): void => {
+          clearTimeout(graceTimer);
           finish({
             logs,
             ...(value !== undefined ? { result: value } : {}),
             ...(truncated ? { truncated } : {}),
-          }),
-        );
+          });
+        };
+        const graceTimer = setTimeout(finishDone, settleGraceMs);
+        void gate.drain().then(finishDone);
         return;
       }
     }
@@ -551,14 +565,20 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
       }
       inflight.delete(id);
       if (settled) {
-        // 程序已结束才落定：P0 只记账（P1-2 起投递给下一轮）。旧行为在这里静默
-        // return——连「丢了一条结果」都无从得知（INV-3）。
-        lateSettled.push({
+        // 程序已结束才落定：存进台账（结果里报个数）并投递给待领信箱（P1-2）——
+        // 旧行为在这里静默 return，连「丢了一条结果」都无从得知（INV-3）。
+        const late: LateNestedResult = {
           name,
           elapsedMs: Date.now() - startedAt,
           output: outcome.output,
           isError: outcome.isError,
-        });
+        };
+        lateSettled.push(late);
+        try {
+          opts.onLateResult?.(late);
+        } catch {
+          /* 投递面故障不阻断收尾（与 onDispatch 同款降级） */
+        }
         return;
       }
       // 展示面旁路（2026-11-21）：落定时刻才知道胜负与输出，这里正好齐了。

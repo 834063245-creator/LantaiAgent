@@ -355,6 +355,34 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     expect(result.error?.message).toContain('slow');
   });
 
+  it('P1 待领信箱：程序完成后仍不返回的写调用不把「完成」拖成「超时」，迟到结果交给 onLateResult', async () => {
+    const late: Array<{ name: string; output: string; isError: boolean }> = [];
+    const result = await runCode(
+      // 先等一拍让 slow 真正启动（否则"启动前再查"那道闸会拦下它——那是另一条
+      // 正确语义：程序已结束时排队的调用不该启动），再 return。
+      `tools.slow({}); await new Promise((r) => setTimeout(r, 40)); return 'done';`,
+      {
+        createWorker: makeFakeWorker,
+        timeoutMs: 10_000,
+        settleGraceMs: 80, // 宽限期调小，测试不必等 3s
+        bindings: [
+          // 不理会 abort：模拟「不可后台化的长调用」（MCP / office / 子 Agent）自己跑完
+          binding('slow', false, async () => {
+            await new Promise((r) => setTimeout(r, 250));
+            return { output: 'late-payload', isError: false };
+          }),
+        ],
+        onLateResult: (e) => late.push({ name: e.name, output: e.output, isError: e.isError }),
+      },
+    );
+    // 关键：程序早已完成 ⇒ 结果必须是「完成」，不是 timeout（宽限起的就是这个作用）
+    expect(result.error).toBeUndefined();
+    expect(result.result).toContain('done');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(late).toHaveLength(1);
+    expect(late[0]).toEqual({ name: 'slow', output: 'late-payload', isError: false });
+  });
+
   it('敌意校验：未声明绑定名 → 调用即抛 unknown-binding（程序侧拦截，宿主层双保险）', async () => {
     let hostCalls = 0;
     const result = await runCode(

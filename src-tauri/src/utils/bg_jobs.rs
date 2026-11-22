@@ -355,7 +355,7 @@ fn spawn_monitor(id: u32, label: String, app: Option<tauri::AppHandle>) {
                     if stall_elapsed > STALL_THRESHOLD {
                         let owner = job.owner.clone();
                         let msg = format!(
-                            "⚠️ 后台任务可能已停滞: {} 已 {}s 无输出 (job_id: {})。考虑用 bash_output({}) 检查或 bash_kill({}) 终止。",
+                            "⚠️ 后台任务可能已停滞: {} 已 {}s 无输出（job {}）。可用 shell(action:'output', jobId:{}) 查看进度，或 shell(action:'kill', jobId:{}) 终止。",
                             label, stall_elapsed.as_secs(), id, id, id
                         );
                         job.last_output_time = std::time::Instant::now();
@@ -374,8 +374,8 @@ fn spawn_monitor(id: u32, label: String, app: Option<tauri::AppHandle>) {
             push_note(
                 owner.clone(),
                 format!(
-                    "后台任务已完成: {} (exit code: {}, 耗时: {}s)。使用 bash_output({}) 查看输出。",
-                    label, ec, elapsed, id
+                    "后台任务已完成: {} (exit code: {}, 耗时: {}s) —— job {}。取结果：shell(action:'wait', jobId:{}) 拿退出码与全文，或 shell(action:'output', jobId:{}) 读增量输出。这条命令已经跑完，不要重跑。",
+                    label, ec, elapsed, id, id, id
                 ),
             );
             emit_bg_note(&app, id, owner);
@@ -794,8 +794,8 @@ pub(crate) fn job_kill_human(
         push_note(
             owner.clone(),
             format!(
-                "后台任务已被用户停止: {}（{}）。使用 bash_output({}) 查看输出。",
-                label, reason, id
+                "后台任务已被用户停止: {}（{}）—— job {}。已产生的输出：shell(action:'output', jobId:{})。",
+                label, reason, id, id
             ),
         );
         emit_bg_note(&app, id, owner);

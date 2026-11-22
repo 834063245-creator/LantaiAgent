@@ -37,7 +37,7 @@
 import { z } from 'zod';
 import type { Tool } from '../tool';
 import { defineTool } from '../tools/define-tool';
-import type { CodeBindingSpec } from './host';
+import type { CodeBindingSpec, LateNestedResult } from './host';
 import { runViaRuntime } from './runtime-service';
 
 /** code_execution 的宿主依赖 — 由装配层（blueprint capability）注入。 */
@@ -51,6 +51,9 @@ export interface CodeExecutionDeps {
   maxOutputBytes?: number;
   /** 墙钟上限（ms）。缺省 120s。 */
   timeoutMs?: number;
+  /** 程序结束后才落定的调用（P1-2 待领信箱）：透传给 runtime → 宿主。
+   *  装配层（segments）把它接到 Agent 的待领队列，下一步注入。 */
+  onLateResult?: (entry: LateNestedResult) => void;
   /** Worker 工厂注入面（测试 fake；缺省真实 blob worker）。 */
   createWorker?: (source: string) => import('./host').CodeWorkerLike;
 }
@@ -191,6 +194,7 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
         timeoutMs: deps.timeoutMs,
         createWorker: deps.createWorker,
         signal,
+        onLateResult: deps.onLateResult,
         // 程序内调用 → 展示面旁路（2026-11-21）：一行一笔，走 onProgress 的
         // 文本通道（线格式见文件头的 CODE_CALL_MARK 注）。
         onDispatch: onProgress ? (d) => onProgress(CODE_CALL_MARK + JSON.stringify(d)) : undefined,

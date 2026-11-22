@@ -167,7 +167,7 @@ describe('前台超时转后台（promoted）', () => {
     expect(result).toContain('没有失败');
     expect(result).toContain('不要重跑');
     // 可操作指引 = wait（不是 output 轮询）
-    expect(result).toContain('bash_wait(42)');
+    expect(result).toContain("shell(action:'wait', jobId:42)");
     expect(result).not.toContain('bash_output(42)');
     // 已产生的输出照常带上（转后台不等于丢输出）
     expect(result).toContain('compiling...');
@@ -182,7 +182,7 @@ describe('前台超时转后台（promoted）', () => {
     const result = await withSentinel(p);
     expect(result).not.toBe(NEVER);
     expect(result).toContain('job 7');
-    expect(result).toContain('bash_wait(7)');
+    expect(result).toContain("shell(action:'wait', jobId:7)");
   });
 
   it('没带 promotedJobId 的 done 仍走原路径（普通超时/失败文案不变）', async () => {

@@ -50,8 +50,8 @@ describe('shell poll guard — 判据（纯函数）', () => {
 
     state = shellPollVerdict(state.next ?? undefined, 7, RUNNING_EMPTY);
     expect(state.next).toEqual({ jobId: 7, emptyReads: SHELL_POLL_NUDGE_THRESHOLD, nudged: true });
-    expect(state.nudge).toContain(`[poll guard] bash_output(7)`);
-    expect(state.nudge).toContain('bash_wait(7)');
+    expect(state.nudge).toContain(`[poll guard] shell(action:'output')`);
+    expect(state.nudge).toContain(`shell(action:'wait', jobId:7)`);
     expect(state.nudge).toContain('full model round');
 
     // 第 4 次：同一段只喝止一次（不刷屏、不重复代等）
@@ -79,7 +79,7 @@ describe('shell poll guard — 判据（纯函数）', () => {
 
   it('喝止文案点名「超时就再 wait」，不教它回去轮询', () => {
     const text = shellPollNudge(11, 3);
-    expect(text).toContain('bash_wait(11)');
+    expect(text).toContain("shell(action:'wait', jobId:11)");
     expect(text).toContain('larger timeoutMs');
     expect(text).not.toContain('poll again');
   });

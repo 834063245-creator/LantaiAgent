@@ -275,6 +275,9 @@ export function firstPartyCapabilities(): AgentCapability[] {
             // 构建期冻结的实例，装配期取会晚一次收敛——计划 §3.4 取证（实测
             // snapshot=["fs"] vs live=["fs","agent"]）。描述本身惰性求值。
             catalog: () => scope.tools.visibleTools(),
+            // P1-2 待领信箱：程序结束后才返回的调用结果存进 Agent，由每步的
+            // applyPendingMemoryUpdates 注入一次（不可后台化的长调用不再白丢）。
+            onLateResult: (entry) => agent.noteLateNestedResult(entry),
           }),
         );
       },
