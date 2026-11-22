@@ -903,7 +903,8 @@
   background-image: url("../../../assets/paper/paper-sheet.jpg");
   background-size: 900px 900px;
   box-shadow:
-    var(--shadow-sheet),
+    /* 海拔（2026-11-22）：钉块是纸片件（5px），影由 --h 与光向给；fallback 保留旧硬影 */
+    var(--elev-shadow, var(--shadow-sheet)),
     inset 3px 4px 5px var(--sheet-lit),
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 1px var(--ink-2);

@@ -20,6 +20,9 @@ const TOC_CSS = read('src/plugins/builtin/paper-shell/paper-toc.css');
 const MINIMAP_CSS = read('src/plugins/builtin/paper-minimap/minimap.css');
 const TOC_TSX = read('src/plugins/builtin/compose-dock/TocStrip.tsx');
 const MINIMAP_TSX = read('src/plugins/builtin/paper-minimap/MinimapView.tsx');
+const BASE_CSS = read('src/plugins/builtin/paper-shell/paper-base.css');
+const PANEL_TSX = read('src/plugins/builtin/paper-shell/PaperPanel.tsx');
+const DRAFT_TSX = read('src/plugins/builtin/paper-shell/DraftSheet.tsx');
 
 describe('海拔表（paper/elevation.ts）', () => {
   it('带序严格递增，且带内 900 个位置不顶穿下一带', () => {
@@ -78,6 +81,38 @@ describe('影配方（paper-elev.css）', () => {
     expect(ELEV_CSS).toMatch(/\.pp-region-active \{\s*z-index: 1;/);
     // 本文件只有这两条 z（窗光/钉块/家具/坞/小地图的 z 是 P3b 全带重排的事）
     expect((ELEV_CSS.match(/z-index:/g) ?? []).length).toBe(2);
+  });
+});
+
+describe('纸与待题纸（B1，2026-11-22）', () => {
+  it('纸的三档高度来自模型：静置/活跃/拖带都在 PaperPanel 读 ELEVATION', () => {
+    expect(PANEL_TSX).toContain("'--h':");
+    expect(PANEL_TSX).toContain('ELEVATION.sheet.height');
+    expect(PANEL_TSX).toContain('ELEVATION.sheet.active');
+    expect(PANEL_TSX).toContain('ELEVATION.sheet.lifted');
+    expect(BASE_CSS).toContain('var(--elev-shadow)');
+  });
+
+  it('纸片件与顶浮件的高度也来自模型（5 / 12）', () => {
+    expect(PANEL_TSX).toContain('ELEVATION.piece.height');
+    expect(PANEL_TSX).toContain('ELEVATION.piece.lifted');
+    expect(PANEL_TSX).toContain('ELEVATION.furniture.height');
+    expect(PANEL_TSX).toContain('pp-chrome pp-elev');
+    expect(BASE_CSS).toContain('var(--elev-shadow, var(--elev-raise))');
+  });
+
+  it('待题纸就是一张纸：pp-elev + --h = sheet.height（"新"靠 z 顶，不靠高度）', () => {
+    expect(DRAFT_TSX).toContain('pp-elev');
+    expect(DRAFT_TSX).toContain("'--h': ELEVATION.sheet.height");
+  });
+
+  it('拿纸过冲只动 --h，三帧与模型同源（@property 注册过）', () => {
+    expect(ELEV_CSS).toContain('@property --h');
+    const take = /@keyframes pp-region-take \{([\s\S]*?)\n\}/.exec(BASE_CSS)?.[1] ?? '';
+    expect(take).toContain(`--h: ${ELEVATION.sheet.height}`);
+    expect(take).toContain(`--h: ${ELEVATION.sheet.lifted}`);
+    expect(take).toContain(`--h: ${ELEVATION.sheet.active}`);
+    expect(take).not.toContain('box-shadow');
   });
 });
 

@@ -78,6 +78,7 @@
       "paper/asset-rack.ts",
       "paper/code-calls.ts",
       "paper/code-view.ts",
+      "paper/elevation.ts",
       "paper/fence.ts",
       "paper/grammar.ts",
       "paper/ink.ts",

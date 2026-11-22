@@ -23,6 +23,8 @@ export interface ElevationBand {
   z: number;
   /** 静置高度（显示 px，1x；影的输入） */
   height: number;
+  /** 活跃高度（纸的"在手里"档；缺省 = height） */
+  active?: number;
   /** 拿起高度（点/拖中） */
   lifted: number;
 }
@@ -35,7 +37,7 @@ export const ELEVATION = {
   /** 桌面本体（.pp-desk） */
   desk: { z: 0, height: 0, lifted: 0 },
   /** 纸：流区纸、待题纸（带内 900 个位置，100 卷场景不溢出） */
-  sheet: { z: 100, height: 3, lifted: 14 },
+  sheet: { z: 100, height: 3, active: 10, lifted: 14 },
   /** 纸片件：钉住的块、纸条、签、卡（离开流、躺在纸上） */
   piece: { z: 1000, height: 5, lifted: 9 },
   /** 环境：云影 / 窗光 / 辉光（盖在纸上，不参与拿起） */

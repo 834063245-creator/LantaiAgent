@@ -40,7 +40,7 @@
     inset 3px 4px 5px var(--sheet-lit),
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 7px color-mix(in oklch, var(--paper-deep) 30%, transparent),
-    var(--shadow-sheet);
+    var(--elev-shadow);
   animation: pp-draft-in var(--m-sheet) backwards;
   /* 曲线走 longhand：简写里再叠一段 curve 是非法简写（同 paper-base 的 pp-spread 注） */
   animation-timing-function: var(--m-ease-io);

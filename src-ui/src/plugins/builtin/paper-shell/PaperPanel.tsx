@@ -39,6 +39,7 @@
 // 改域逻辑去装配根，改单块渲染去表现件，改版面留在这里。
 
 import { type CSSProperties, Fragment, useCallback, useEffect, useState } from 'react';
+import { ELEVATION } from '../../../paper/elevation';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { DockTetherLayer } from './DockTetherLayer';
 import { DraftSheet } from './DraftSheet';
@@ -421,6 +422,14 @@ export function PaperPanel() {
                         '--sheet-ox': `${sheet.ox}px`,
                         '--sheet-oy': `${sheet.oy}px`,
                         '--sheet-j': `${sheet.j}`,
+                        /* 海拔（2026-11-22）：纸的高度——静置 3 / 活跃 10 / 拖带 14。
+                         * 影由 paper-elev.css 的一条配方按 --h 算；数值真源 = paper/elevation.ts。 */
+                        '--h':
+                          !leaving && bandSessionId === r.sessionId
+                            ? ELEVATION.sheet.lifted
+                            : isActive
+                              ? ELEVATION.sheet.active
+                              : ELEVATION.sheet.height,
                       } as CSSProperties
                     }
                     data-session-id={r.sessionId}
@@ -525,9 +534,16 @@ export function PaperPanel() {
                 return (
                   <div
                     key={s.id}
-                    className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
+                    className={`pp-strip pp-elev${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
                     data-strip-id={s.id}
-                    style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
+                    style={
+                      {
+                        left: stripPos.x,
+                        top: stripPos.y,
+                        width: stripW,
+                        '--h': stripDragged ? ELEVATION.piece.lifted : ELEVATION.piece.height,
+                      } as CSSProperties
+                    }
                     onPointerDown={(e) => onStripPointerDown(e, s)}
                   >
                     <div className="pp-strip-head">
@@ -586,12 +602,16 @@ export function PaperPanel() {
                       'pp-block',
                       `pp-${snapshotBlock.kind}`,
                       'pp-pinned',
+                      'pp-elev',
                       isDragged ? 'pp-dragging' : '',
                     ].join(' ')}
-                    style={{
-                      transform: `translate(${pos.x}px, ${pos.y}px)`,
-                      width: resizePreview?.id === pinId ? resizePreview.w : pin.w,
-                    }}
+                    style={
+                      {
+                        transform: `translate(${pos.x}px, ${pos.y}px)`,
+                        width: resizePreview?.id === pinId ? resizePreview.w : pin.w,
+                        '--h': isDragged ? ELEVATION.piece.lifted : ELEVATION.piece.height,
+                      } as CSSProperties
+                    }
                     data-block-id={pinId}
                     /* 钉住的公共物：块状态 + 建钉时冻的卷名（抽纸条的「拖出卡片成条」
                       判据与纸条报头都读这两个属性——孤儿钉没有活流区/消息锚，
@@ -752,10 +772,16 @@ export function PaperPanel() {
                       )}
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
                       <div
-                        className={`pp-block pp-${b.kind} pp-pinned${isDragged ? ' pp-dragging' : ''}${
+                        className={`pp-block pp-${b.kind} pp-pinned pp-elev${isDragged ? ' pp-dragging' : ''}${
                           settleId === b.id ? ' pp-settle' : ''
                         }${r.writingBlockId === b.id ? ' pp-writing' : ''}`}
-                        style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: pinW }}
+                        style={
+                          {
+                            transform: `translate(${pos.x}px, ${pos.y}px)`,
+                            width: pinW,
+                            '--h': isDragged ? ELEVATION.piece.lifted : ELEVATION.piece.height,
+                          } as CSSProperties
+                        }
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         data-block-id={b.id}
@@ -899,7 +925,12 @@ export function PaperPanel() {
               `画布` 二字是浮件上唯一的非交互件，即抓手（另有系统级移动通道）。
               常显、无悬停揭示（见 CSS 头注与 taste-ledger 拖动锁二版教训）。 */}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
-          <div className="pp-chrome" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
+          <div
+            className="pp-chrome pp-elev"
+            style={{ '--h': ELEVATION.furniture.height } as CSSProperties}
+            onPointerDown={onTopbarPointerDown}
+            onDoubleClick={onTopbarDoubleClick}
+          >
             <span className="pp-title" data-tip="按住拖动窗口（双击最大化）">
               画布
             </span>

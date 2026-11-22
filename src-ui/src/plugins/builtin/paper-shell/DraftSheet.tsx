@@ -33,6 +33,7 @@
 
 import type React from 'react';
 import { type CSSProperties, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { ELEVATION } from '../../../paper/elevation';
 import { DraftFolioLine } from './DraftFolioLine';
 import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
@@ -317,7 +318,7 @@ function PaperView({
 
   return (
     <div
-      className="pp-region pp-draft-sheet"
+      className="pp-region pp-draft-sheet pp-elev"
       data-draft-sheet
       data-paper-id={paperId}
       data-body-state={notice ? 'rejected' : 'ready'}
@@ -345,6 +346,8 @@ function PaperView({
               '--sheet-ox': `${sheet.ox}px`,
               '--sheet-oy': `${sheet.oy}px`,
               '--sheet-j': `${sheet.j}`,
+              /* 海拔：待题纸就是一张纸（静置 3）。它的"新"由 z 顶说，不由高度说。 */
+              '--h': ELEVATION.sheet.height,
             } as CSSProperties)
           : { visibility: 'hidden' }
       }
@@ -445,7 +448,7 @@ function MorphView({
 
   return (
     <div
-      className="pp-region pp-draft-sheet pp-draft-morph"
+      className="pp-region pp-draft-sheet pp-draft-morph pp-elev"
       data-draft-sheet
       data-paper-id={paperId}
       data-morph="out"

@@ -125,26 +125,30 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(region).toContain('var(--sheet-lit)');
     expect(region).toContain('var(--sheet-shade)');
     expect(region).toContain('var(--sheet-band)');
-    expect(region).toContain('var(--shadow-sheet)');
+    // 落影末位 = 海拔配方（2026-11-22：影由 --h 给，不再按组件手调第二套栈）
+    expect(region).toContain('var(--elev-shadow)');
     const active = ruleBody(PANEL_CSS, '.pp-region-active {');
-    // 活跃卷「变色」判死：洗底退役，只走结构墨阶（落影加深一档）
+    // 活跃卷「变色」判死：洗底退役，只走结构墨阶（高度 10 由内联 --h 给）
     expect(active).not.toContain('background');
     expect(active).not.toContain('var(--seal)');
-    expect(active).toContain('var(--shadow-sheet-active)');
+    expect(active).toContain('animation: pp-region-take');
+    expect(active).not.toContain('var(--shadow-sheet-active)');
   });
 
-  it('拿纸动效（2026-09-10 拍板「拿纸 + 朱笔划界」）：激活落影过冲 lift 档再落「在手」——帧内只许 box-shadow', () => {
+  it('拿纸动效（2026-11-22 改档）：激活 --h 过冲 14 再落 10——帧内只许 --h', () => {
     // keyframes 红线（同 pp-enter / settle 立法）：帧内禁 transform（世界坐标
-    // 换算与 InkLayer 对位）、禁 background（变色判死延伸到帧——纸纹层）
+    // 换算与 InkLayer 对位）、禁 background（变色判死延伸到帧——纸纹层）；
+    // 2026-11-22 起连投影栈也不许写——只动 --h，影由 paper-elev.css 一条配方算。
     const take = keyframesBody(PANEL_CSS, 'pp-region-take');
     expect(take).not.toBe('');
     expect(take).not.toMatch(/transform\s*:/);
     expect(take).not.toMatch(/background/);
-    // 三档全字面复用既有影值（零新魔数）：from 平放 → 60% 过冲 lift（拖拽
-    // 手势既有最高档）→ to 在手；to 帧 = 静态 active 值（播放完自然回落）
-    expect(take).toContain('var(--shadow-sheet)');
-    expect(take).toContain('var(--shadow-sheet-lift)');
-    expect(take).toContain('var(--shadow-sheet-active)');
+    expect(take).not.toMatch(/box-shadow/);
+    // 三档 = 高度：from 平放 3 → 60% 过冲 lift 14 → to 在手 10（与
+    // paper/elevation.ts 的 sheet 组同源，由 paper-elevation 对拍）。
+    expect(take).toContain('--h: 3');
+    expect(take).toContain('--h: 14');
+    expect(take).toContain('--h: 10');
     expect(ruleBody(PANEL_CSS, '.pp-region-active {')).toContain('animation: pp-region-take');
     // 基座缓退：换主时旧卷影缓退非瞬移；整句钉死 = 单属性（只 box-shadow）
     // + 家风档，一石二鸟。**2026-10-15 §15 动效法批规格变更**：时长/曲线由
@@ -215,7 +219,7 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
 });
 
 describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户拍板「甲+丙」）', () => {
-  it('钉住块 = 纸片件：纸内白边 + sheet 细纹 + 四层包边 + --shadow-sheet 落影（§11 纸片件，2026-09-23 翻案）', () => {
+  it('钉住块 = 纸片件：纸内白边 + sheet 细纹 + 四层包边 + 海拔影（--h 5，2026-11-22）（§11 纸片件，2026-09-23 翻案）', () => {
     const pin = ruleBody(PANEL_CSS, '.pp-block.pp-pinned {');
     // 甲·留白：墨不再贴纸缘（流内 720 墨借 1440 纸的白边，钉住后必须自付）
     expect(pin).toContain('var(--pp-ch-pin-padTop)');
@@ -229,9 +233,10 @@ describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户�
     // 四层物理包边（受光左上 / 背光右下）——与流区同配方
     expect(pin).toContain('inset 3px 4px 5px var(--sheet-lit)');
     expect(pin).toContain('inset -2px -3px 6px var(--sheet-shade)');
-    // 落影：钉住块已离开流、躺在桌面上，按「**纸片件**」适用 --shadow-sheet 硬偏移族。
+    // 落影：钉住块已离开流、躺在桌面上——2026-11-22 起走海拔配方（--h 5 × 光向），
+    // 旧硬影只作 fallback（paper-elev.css 未载时不至于无影）。
     // §11「纸内件无投影」原表列**于 2026-09-23 翻案**——那行说的是仍被夹在纸内的排印件。
-    expect(pin).toContain('var(--shadow-sheet');
+    expect(pin).toContain('var(--elev-shadow, var(--shadow-sheet))');
     expect(pin).not.toContain('var(--sheet-band)');
     expect(pin).toContain('var(--sheet-lit)');
     // 框取单线（双线加包边会互相吃，见 CSS 注释）
@@ -279,7 +284,7 @@ describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户�
     expect(strip).toContain('background-size: 900px 900px');
     expect(strip).toContain('inset 3px 4px 5px var(--sheet-lit)');
     expect(strip).toContain('inset -2px -3px 6px var(--sheet-shade)');
-    expect(strip).toContain('var(--shadow-sheet');
+    expect(strip).toContain('var(--elev-shadow, var(--shadow-sheet))');
     expect(strip).not.toContain('var(--sheet-band)');
     // 内距定档走 token（真源 CHROME_TOKENS.strip）：10/12 → 18/20
     expect(TYPE_TOKENS_TS).toContain('strip: { size: 12.5, lh: 1.7, padV: 18, padH: 20 }');
@@ -328,14 +333,11 @@ describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户�
     expect(ghost).toContain('var(--ink-4)');
   });
 
-  it('带显形：拖拽领域 = 接触落影第三档（lift token）——变色判死判例延续', () => {
-    expect(TOKENS_CSS).toContain('--shadow-sheet-lift:');
-    const band = ruleBody(PANEL_CSS, '.pp-region--band {');
-    expect(band).toContain('var(--shadow-sheet-lift)');
-    expect(band).not.toContain('background');
-    expect(band).not.toContain('var(--seal)');
-    // JSX 挂类（region 容器）
+  it('带显形（2026-11-22 改档）：拖拽领域 = --h 14（TSX 内联），类只作语义标记', () => {
+    // 旧的第二套 lift 影栈退役：带内高度由 PaperPanel 内联 --h = sheet.lifted 给。
+    expect(PANEL_CSS).not.toContain('.pp-region--band {');
     expect(PANEL_TSX).toContain('pp-region--band');
+    expect(PANEL_TSX).toContain('ELEVATION.sheet.lifted');
   });
 
   it('松手定夺：路径 B（拖选跨带成条）退役——拖选只做选择，抽纸条唯二入口', () => {
@@ -612,14 +614,15 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(region).toContain('background-blend-mode: multiply');
     expect(region).toContain('var(--sheet-ox');
     expect(region).toContain('var(--sheet-j');
-    // 接触落影仍在列序末位（2026-09-02 起前面叠裱边带/受光缘/背光缘——物理包边）
-    expect(region).toContain('var(--shadow-sheet)');
+    // 落影仍在列序末位（2026-09-02 起前面叠裱边带/受光缘/背光缘——物理包边；
+    // 2026-11-22 起末位是海拔配方 var(--elev-shadow)）
+    expect(region).toContain('var(--elev-shadow)');
     expect(TOKENS_CSS).toContain('--shadow-sheet:');
-    // active 2026-09-02 改档：洗底退役（「变色」判死）——不动任何 background，
-    // 只换落影一档；background 简写禁令延续（会抹纸纹层）
+    // active 2026-09-02 改档：洗底退役（「变色」判死）——不动任何 background；
+    // 2026-11-22 起活跃只换 --h（10），不再写第二套影栈
     const active = ruleBody(PANEL_CSS, '.pp-region-active {');
     expect(active).not.toContain('background');
-    expect(active).toContain('var(--shadow-sheet-active)');
+    expect(active).not.toContain('var(--shadow-sheet-active)');
   });
 });
 

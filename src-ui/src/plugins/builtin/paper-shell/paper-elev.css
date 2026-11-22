@@ -11,6 +11,14 @@
  *   · 只有**离开纸面**的件挂 .pp-elev；流内排印件永远不挂（§11「万物皆浮」判例）。
  *   · **坞不挂**（2026-11-22 用户定「坞不要动」）：它是纸上的墨，不是桌上的板。
  */
+/* --h 注册成可动画的 number：拿纸过冲（pp-region-take）要按 3 → 14 → 10 插值。
+ * 不支持 @property 的宿主退化为离散帧（无过冲，不炸）；initial 0 = 没高度就没影。 */
+@property --h {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 :where(.pp-root) {
   --light-dx: 0.62;
   --light-dy: 0.95;
