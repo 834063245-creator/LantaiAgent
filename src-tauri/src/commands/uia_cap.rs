@@ -164,19 +164,13 @@ async fn desktop_screenshot(gate: &UiaGate<'_>, args: &Value) -> Result<String, 
     let out = crate::desktop::desktop_screenshot()?;
     // 附图通道（批 1）：全屏截屏**默认不接**——整屏像素进上下文 = 高隐私 + 高 token，
     // 必须调用方显式 attach_image:true 才转附件（窗口截图则默认接，见 window_shot）。
-    Ok(if attach_image_arg(args) {
-        attach_shot_ref(gate.state, out)
+    Ok(if super::uia_shot_attach::attach_image_arg(args) {
+        super::uia_shot_attach::attach_shot_ref(gate.state, out)
     } else {
         out
     })
 }
 
-/// `attach_image` 参数（缺省 false——保守默认：图不进上下文）。
-fn attach_image_arg(args: &Value) -> bool {
-    args.get("attach_image")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-}
 
 async fn desktop_uia_tree(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = agent_of(gate, args);
@@ -256,7 +250,7 @@ async fn desktop_uia_wait(gate: &UiaGate<'_>, args: &Value) -> Result<String, St
 async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Result<String, String> {
     // 批 2（P0-2）坐标模式：x/y 同时给出 → 坐标分支（自绘界面唯一交互路径）。
     if let (Some(x), Some(y)) = (opt_i32_of(args, "x"), opt_i32_of(args, "y")) {
-        return desktop_uia_write_at(gate, args, kind, x, y).await;
+        return super::uia_cap_at::desktop_uia_write_at(gate, args, kind, x, y).await;
     }
     let agent_id = agent_of(gate, args);
     let title = arg_str(args, "title");
@@ -481,122 +475,6 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
     outcome
 }
 
-/// 坐标模式写动作（批 2，P0-2）：click / right_click / scroll 带 x/y 时进入。
-///
-/// 与控件模式的区别：**不 resolve 控件**（自绘界面根本没有可 resolve 的控件），但窗口定位
-/// 仍必需——授权按 (agent, hwnd) 键控，且 com 侧用窗口 rect 校验坐标边界（防误点其它应用）。
-/// 分类走 `click_at` / `right_click_at` / `scroll_at`（天然物理路径）：已接管窗口 → Passthrough，
-/// 未接管 → 一次物理 Ask（批准即接管）。敏感词表在坐标模式不适用（拿不到控件名）——
-/// 审批文案已写实「该位置是哪一控件由像素决定」。
-async fn desktop_uia_write_at(
-    gate: &UiaGate<'_>,
-    args: &Value,
-    kind: &str,
-    x: i32,
-    y: i32,
-) -> Result<String, String> {
-    let agent_id = agent_of(gate, args);
-    let title = arg_str(args, "title");
-    let pid = opt_u32_of(args, "pid");
-    let hwnd = opt_u64_of(args, "hwnd");
-    let at_kind = match kind {
-        "click" => "click_at",
-        "right_click" => "right_click_at",
-        "scroll" => "scroll_at",
-        other => {
-            return Err(format!(
-                "desktop_uia_{other}: 坐标模式只支持 click / right_click / scroll"
-            ))
-        }
-    };
-    // 窗口定位（授权键控 + rect 校验口径）
-    let info = crate::uia::window_info(title.as_deref(), pid, hwnd).await?;
-    let Some(res_hwnd) = info["hwnd"].as_u64() else {
-        return Err(format!(
-            "desktop_uia_{kind}: 坐标模式必须能定位到窗口（给 hwnd / pid / title 之一）"
-        ));
-    };
-    let res_title = info["title"].as_str().unwrap_or("").to_string();
-
-    let granted = crate::uia::has_grant(agent_id.as_deref(), Some(res_hwnd));
-    let tool_action = crate::tools::classify_uia_action(
-        at_kind,
-        "",
-        false,
-        "",
-        &crate::tools::UiaTargetCaps::default(),
-        granted,
-    );
-
-    // 权限（Ask 走异步确认；deny 原文进审计）
-    {
-        let tool = crate::tools::DesktopTool {
-            action: tool_action.into(),
-            agent_id: agent_id.clone(),
-            hwnd: Some(res_hwnd),
-            window_title: Some(res_title.clone()),
-        };
-        if let Err(e) = check_desktop_raw(&tool, gate.state, gate.app).await {
-            crate::uia::desktop_audit_log(
-                agent_id.as_deref(),
-                &format!("desktop_uia_{kind}_at_denied"),
-                &format!("at=({x},{y}) hwnd={res_hwnd}"),
-                &e,
-            );
-            return Err(format!("权限拒绝: {e}"));
-        }
-    }
-    // 批准即接管（与控件模式的物理档同语义：敏感目标不在此列）
-    if matches!(tool_action, "uia_grant" | "uia_physical") {
-        crate::uia::grant(agent_id.as_deref(), res_hwnd);
-    }
-
-    let direction = arg_str(args, "direction").unwrap_or_else(|| "down".into());
-    let amount = args.get("amount").and_then(|v| v.as_f64()).unwrap_or(1.0);
-    let lease =
-        crate::uia::acquire_input_lease(agent_id.as_deref(), std::time::Duration::from_secs(3))
-            .await;
-    let outcome = match lease {
-        Ok(_l) => match kind {
-            "click" => {
-                crate::uia::uia_click_at(title.as_deref(), pid, Some(res_hwnd), x, y, false).await
-            }
-            "right_click" => {
-                crate::uia::uia_click_at(title.as_deref(), pid, Some(res_hwnd), x, y, true).await
-            }
-            _ => {
-                crate::uia::uia_scroll_at(
-                    title.as_deref(),
-                    pid,
-                    Some(res_hwnd),
-                    x,
-                    y,
-                    &direction,
-                    amount,
-                )
-                .await
-            }
-        },
-        Err(e) => Err(e),
-    };
-
-    let target_desc = format!("at=({x},{y}) hwnd={res_hwnd}");
-    match &outcome {
-        Ok(s) => crate::uia::desktop_audit_log(
-            agent_id.as_deref(),
-            &format!("desktop_uia_{kind}_at"),
-            &target_desc,
-            s,
-        ),
-        Err(e) => crate::uia::desktop_audit_log(
-            agent_id.as_deref(),
-            &format!("desktop_uia_{kind}_at_failed"),
-            &target_desc,
-            e,
-        ),
-    }
-    outcome
-}
 
 /// desktop_uia_keys — 热键（物理输入：Ask + 输入租约）。
 async fn desktop_uia_keys(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
@@ -726,98 +604,9 @@ async fn desktop_uia_window_shot(gate: &UiaGate<'_>, args: &Value) -> Result<Str
     // 附图通道（批 1）：窗口截图**默认接**——「模型看得见窗口」是自绘应用
     // （微信/QQ/钉钉这类 UIA 树为空的界面）可用的前提。纯增益：转存任何一步
     // 不成 → 输出原样返回（路径仍在，老行为不破）。
-    Ok(attach_shot_ref(gate.state, out))
+    Ok(super::uia_shot_attach::attach_shot_ref(gate.state, out))
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 截图附图转存（批 1，P0-1：窗口截图进模型上下文）
-// ═══════════════════════════════════════════════════════════════
-
-/// 截图附件转存上限（8MiB，与 fs_cap 读字节上限 / browser 截图同档）——超过则
-/// 只回路径，不把巨图灌进用户项目目录。
-const SHOT_ATTACH_MAX_BYTES: usize = 8 * 1024 * 1024;
-
-/// 是否本套件自己产的截图（源文件必须落在 uia/cdp 共用截图目录内）——
-/// 任何形态的外部路径一律不转附件（防路径注入）。
-fn is_shot_path(p: &std::path::Path) -> bool {
-    p.parent() == Some(crate::uia::shot_dir().as_path())
-}
-
-/// 读一张**本套件自己产**的截图并认出它的真实格式与尺寸。
-///
-/// 三道闸顺序即安全序：目录白名单（防路径注入）→ 字节上限（防巨图灌工作区）
-/// → 字节嗅探（`image_probe`，与 fs(read) 附图同口径，不信任扩展名）。
-/// 任一不成立 → None（调用方落回「只回路径」）。
-fn load_shot(src: &str) -> Option<(Vec<u8>, crate::image_probe::ImageProbe)> {
-    let p = std::path::Path::new(src);
-    if !is_shot_path(p) {
-        return None;
-    }
-    let bytes = std::fs::read(p).ok()?;
-    if bytes.len() > SHOT_ATTACH_MAX_BYTES {
-        return None;
-    }
-    let probe = crate::image_probe::probe(&bytes)?;
-    Some((bytes, probe))
-}
-
-/// 把截图转存为工作区内容寻址附件，并在输出里补 `image` 引用
-/// （`image` / `attachment` / `imageNote` 三键，形状与 browser_cap 的
-/// `attach_screenshot_ref` 逐字节同构——TS 侧 `parseToolImageOutput` 是唯一解析点）。
-///
-/// 为何在 Rust 侧写：截图落 `%TEMP%`（工作区外），Agent 通道读会撞权限闸；
-/// 本口已持 WorkspaceState，直接写 attachments 零摩擦。落盘走
-/// `attachments::store_attachment`（内容寻址单一权威，与 fs(read)/browser 截图同一份）。
-///
-/// 纯增益纪律：解析失败 / 非本套件路径 / 超限 / 认不出图片字节 / 无工作区
-/// —— 任一不成立都原样返回，截图本身仍成功。
-fn attach_shot_ref(state: &State<'_, crate::WorkspaceState>, output: String) -> String {
-    let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&output) else {
-        return output;
-    };
-    let Some(src) = val.get("path").and_then(|v| v.as_str()) else {
-        return output;
-    };
-    let src_path = std::path::Path::new(src);
-    let Some((bytes, probe)) = load_shot(src) else {
-        return output;
-    };
-    // 无工作区（未打开项目）→ 不落附件，只回路径（截图本身仍成功）
-    let Ok(ws) = crate::utils::workspace_path(state) else {
-        return output;
-    };
-    let Ok((id, dst)) = crate::attachments::store_attachment(&ws, &bytes, probe.ext) else {
-        return output;
-    };
-    let name = src_path
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| format!("{id}.{}", probe.ext));
-    if let Some(obj) = val.as_object_mut() {
-        obj.insert(
-            "image".to_string(),
-            serde_json::json!({
-                "id": id,
-                "mediaType": probe.media_type,
-                "bytes": bytes.len(),
-                "width": probe.width,
-                "height": probe.height,
-                "name": name,
-            }),
-        );
-        obj.insert(
-            "attachment".to_string(),
-            serde_json::json!(dst.to_string_lossy()),
-        );
-        obj.insert(
-            "imageNote".to_string(),
-            serde_json::json!(
-                "本图已作为附图进入上下文：视觉模型可直接观察窗口内容（纯文本模型只看到本占位说明）。"
-            ),
-        );
-    }
-    val.to_string()
-}
 
 /// desktop_audit — 只读:desktop 操作审计查询(对齐 browser_audit)。
 async fn desktop_audit(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
@@ -949,76 +738,5 @@ mod tests {
         for a in ["desktop_frobnicate", "probe", "desktop_uia_", ""] {
             assert!(!known.contains(a), "{a} 不应在 17 动作表内");
         }
-    }
-
-    // ── 批 1（P0-1）截图附图转存：白名单 / 字节嗅探 / 参数缺省 ──
-
-    use super::{attach_image_arg, is_shot_path, load_shot, SHOT_ATTACH_MAX_BYTES};
-
-    /// 最小 PNG（签名 + IHDR 宽高）——只够 image_probe 读尺寸。
-    fn png_head(w: u32, h: u32) -> Vec<u8> {
-        let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-        v.extend_from_slice(&13u32.to_be_bytes()); // IHDR 数据长度
-        v.extend_from_slice(b"IHDR");
-        v.extend_from_slice(&w.to_be_bytes());
-        v.extend_from_slice(&h.to_be_bytes());
-        v
-    }
-
-    #[test]
-    fn shot_path_whitelist_is_own_dir_only() {
-        let own = crate::uia::shot_dir();
-        assert!(is_shot_path(&own.join("uia-win-1.png")), "本套件截图目录内的图应放行");
-        assert!(
-            !is_shot_path(std::path::Path::new("C:/Windows/System32/notepad.exe")),
-            "外部路径必须拒绝（防路径注入）"
-        );
-        assert!(
-            !is_shot_path(std::path::Path::new("uia-win-1.png")),
-            "裸文件名（无 parent）必须拒绝"
-        );
-    }
-
-    #[test]
-    fn load_shot_reads_own_png_and_reports_real_dims() {
-        let dir = crate::uia::shot_dir();
-        std::fs::create_dir_all(&dir).expect("建截图目录");
-        let p = dir.join(format!("test-attach-{}.png", std::process::id()));
-        std::fs::write(&p, png_head(600, 300)).expect("写测试 PNG");
-        let got = load_shot(&p.to_string_lossy());
-        let _ = std::fs::remove_file(&p);
-        let (bytes, probe) = got.expect("本套件目录内的 PNG 应可转附件");
-        assert_eq!(bytes.len(), png_head(600, 300).len());
-        assert_eq!(
-            (probe.media_type, probe.ext, probe.width, probe.height),
-            ("image/png", "png", 600, 300)
-        );
-    }
-
-    #[test]
-    fn load_shot_rejects_foreign_missing_and_non_image() {
-        assert!(load_shot("C:/Windows/System32/notepad.exe").is_none());
-        assert!(load_shot("").is_none());
-        // 本目录内的非图片字节同样不转（不信任扩展名）
-        let dir = crate::uia::shot_dir();
-        std::fs::create_dir_all(&dir).expect("建截图目录");
-        let p = dir.join(format!("test-notimage-{}.png", std::process::id()));
-        std::fs::write(&p, b"plain text, not a png").expect("写测试文件");
-        let got = load_shot(&p.to_string_lossy());
-        let _ = std::fs::remove_file(&p);
-        assert!(got.is_none(), "认不出图片字节必须拒绝");
-    }
-
-    #[test]
-    fn attach_image_arg_defaults_false() {
-        let empty = serde_json::json!({});
-        assert!(!attach_image_arg(&empty), "缺省必须 false（全屏图默认不进上下文）");
-        assert!(attach_image_arg(&serde_json::json!({ "attach_image": true })));
-        assert!(!attach_image_arg(&serde_json::json!({ "attach_image": "true" })));
-    }
-
-    #[test]
-    fn shot_attach_limit_is_8mib() {
-        assert_eq!(SHOT_ATTACH_MAX_BYTES, 8 * 1024 * 1024);
     }
 }

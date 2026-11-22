@@ -95,19 +95,10 @@ const DEBT: Record<string, number> = {
   /* 2026-11-30 并行批落盘后实测 1769：该批作者未同 commit 换档，门禁在主分支已红。
    * 这里只补登记现状档，不是许可；下一批动该文件优先拆会话动作层再销账。 */
   'src-ui/src/plugins/builtin/canvas-nav/SessionSidebar.tsx': 1800, // 现 1769
-  /* 2026-11-22 升档 1600 → 1800（现 1706）：computer use 批 2（P0-2）把坐标动作
-   * （req_click_at / req_scroll_at + 窗口 rect 边界校验 + ClickAt/ScrollAt 派发）落在
-   * COM 核心内。**为什么不抽成 uia/coords.rs**：这两个函数要用 locate_window /
-   * snap_target / action_result / phys 四件内部私有设施，抽出去得把四者全部
-   * pub(super) 化——面比收益大，且 world-diff 与控件路径必须保持同一口径。
-   * 下一批若还要长，优先把「坐标动作」整段连设施一起搬出去再销账。 */
-  'src-tauri/src/uia/com.rs': 1800, // 现 1706
-  /* 2026-11-22 补登记（computer use 批 1+批 2 把它推到 1015，此前 900 在 LIMIT 之下）：
-   * 批 1 截图附图转存（attach_shot_ref/load_shot/is_shot_path，约 100 行）+ 批 2 坐标
-   * 分支（desktop_uia_write_at，约 120 行）落在能力口内。登记的是现状不是许可——
-   * 下一批动它**优先把这两块拆成 commands/uia_shot_attach.rs 与 commands/uia_cap_at.rs
-   * 销账**，而不是继续抬档。 */
-  'src-tauri/src/commands/uia_cap.rs': 1100, // 现 1015
+  /* 2026-11-22 升档 1600 → 1800（computer use 批 2 把坐标动作落进 COM 核心），**同日体量
+   * 清账回落 1600**：物理输入（SendInput / SetCursorPos / 滚轮 / 热键，157 行）抽成
+   * `uia/phys.rs` 兄弟模块，com.rs 现 1544 行。 */
+  'src-tauri/src/uia/com.rs': 1600, // 现 1544
   'src-tauri/src/permissions/bash.rs': 1400, // 现 1365
   'engine/src/graph/resolver.rs': 1400, // 现 1380
   'src-tauri/src/commands/plugin_install.rs': 1400, // 现 1306

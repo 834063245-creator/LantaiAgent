@@ -32,6 +32,7 @@ mod e2e;
 pub(crate) mod errors;
 pub(crate) mod grants;
 mod ocr;
+mod phys;
 mod shot;
 
 use serde_json::Value;
