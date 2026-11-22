@@ -62,7 +62,6 @@ import {
   WinControls,
 } from './host';
 import { InkLayer } from './InkLayer';
-import { LightLayer } from './LightLayer';
 import { blockHasView, needsObservedHeight, observedKeyOf } from './measure';
 import { BlockView, DeskShelf, EMPTY_OPS, folioSubLine } from './paper-panel-parts';
 import { type ProvenanceState, provenanceText, provenanceTitle, provenanceTraceable } from './provenance';
@@ -276,11 +275,6 @@ export function PaperPanel() {
     <PaperDockContext.Provider value={dockContext}>
       <PaperRegionContext.Provider value={regionContext}>
         <div className="pp-root" ref={paperRootRef}>
-          {/* 光影层（2026-11-22）——**全画布一套**，按视口坐标算：纸在光下面滑过去，
-              不是每卷一盏。场景表 = paper/light-scenes.ts（加一种光影 = 加一段数据）；
-              引擎与两向护栏 = paper/light.ts；样式与层序见 paper-base.css 的
-              .pp-light / .pp-glow 段（multiply 管影子 · screen 管发光）。 */}
-          <LightLayer />
           {/* 钉住可发现性（一次性眉批）：提示长在功能所在处——左缘即文类签列。
            * 视觉走 .pp-eyebrow-hint 族（6s 淡出自散动画）+ .pp-hint-canvas 落位。 */}
           {pinHint && <div className="pp-eyebrow-hint pp-hint-canvas">按住块左侧文类签，可把任意块拖出钉在案上</div>}

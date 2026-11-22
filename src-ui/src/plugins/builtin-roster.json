@@ -81,8 +81,6 @@
       "paper/fence.ts",
       "paper/grammar.ts",
       "paper/ink.ts",
-      "paper/light-scenes.ts",
-      "paper/light.ts",
       "paper/markdown.ts",
       "paper/marks.ts",
       "paper/measure-seam.ts",

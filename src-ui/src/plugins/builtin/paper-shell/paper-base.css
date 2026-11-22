@@ -376,38 +376,6 @@
  * 过冲 lift 档（拖拽手势既有最高影档）再落「在手」档——「刚把这张纸拿起来」
  * 的物理过场；基座 transition 承接缓退，keyframes 承接过冲。class 不变不重放
  * （幂等再点同卷无动效）。 */
-/* 光影层（2026-11-22）：**两个通道，各管一件事**（数据见 paper/light.ts 与
- * paper/light-scenes.ts）。
- *
- *   .pp-light  multiply —— 光在纸上照出的**影子**（减色，只能变暗）→ 白天场景靠它
- *   .pp-glow   screen   —— 光本身**发亮**（加色，可以把纸提到超过本色）→ 灯/月光才挂
- *
- * 为什么必须分两层：multiply 永远乘不亮——想要"灯是亮的"，只能另开一层加色；
- * 而白天场景不需要加色（会把纸洗白），所以 glow 层没有场景时不显示。
- * 参照系 = **视口**（用户 2026-11-22 定）：fixed 铺满窗口，纸在它下面滑过去。
- * 第一版挂在每张纸上（absolute + 每卷一盏，亮斑随纸平移）= 一屋子三个太阳，已拆。
- * 层序：压卷（1）与云影（2）、托纸内浮件（30 起：坞 / 钮 / 浮卡）——光照纸，不照家具。
- * pointer-events: none 必须留（流区激活判 e.target === currentTarget，吃掉指针 = 点纸不激活）。
- * ⚠ 禁挪到 30 以上（会盖坞与钮）；禁改回 absolute（影子会粘回纸上）；
- * 禁把 glow 并进 multiply（加色变减色 = 灯永远不亮）。 */
-.pp-light {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  mix-blend-mode: multiply;
-  z-index: 3;
-}
-.pp-glow {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  z-index: 4;
-}
 .pp-region-active {
   animation: pp-region-take var(--m-sheet);
   box-shadow:
