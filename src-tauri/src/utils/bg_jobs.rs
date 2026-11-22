@@ -288,6 +288,31 @@ fn push_history(record: SettledRecord) {
     }
 }
 
+/// 已归档 job 的**状态文本**（不是错误）。
+///
+/// 为什么必须有（2026-11-22 P0-2）：`wait` / `output` / `kill` 撞上一个已被
+/// 消费或淘汰的 id 时，事实是「它完成了」，不是「它不存在」。把状态写成 `Err`
+/// 会在 code_execution 的程序里变成抛异常——一次正常的重复查询就能掀掉整段程序
+/// （卷 167 的 exception 同源：等待超时被当失败）。
+///
+/// 不重发正文：`output` 的契约是增量、`wait` 的完整输出已经交付过一次；重发
+/// 会让同一段字节在会话里出现两遍。正文在 `SettledRecord` 里有尾巴，役册可查。
+fn archived_status(id: u32) -> Option<String> {
+    let history = lock_or_recover(&SETTLED_HISTORY);
+    let rec = history.iter().find(|r| r.id == id)?;
+    let elapsed = rec.finished_ms.saturating_sub(rec.started_ms) / 1000;
+    let stopped = rec
+        .detail
+        .as_deref()
+        .map(|d| format!(", stopped: {d}"))
+        .unwrap_or_default();
+    Some(format!(
+        "[任务已完成(已归档), exit code: {}, 耗时: {}s{stopped}] 账本已归档：不要再等或重跑；正文请查本卷账本/役册",
+        rec.exit_code.unwrap_or(-1),
+        elapsed
+    ))
+}
+
 /// 已结算未读 job 超限时，把最旧的迁进历史（先到先出）。
 fn enforce_settled_cap() {
     let victim = {
@@ -574,7 +599,14 @@ pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     // 先看是否已完成；若已完成，先等 drain 收尾再读最终输出（不持锁等待）。
     let drain_to_wait = {
         let mut jobs = crate::utils::lock_or_recover(&BG_JOBS);
-        let job = jobs.get_mut(&id).ok_or("后台任务不存在或已完成")?;
+        // 锁序纪律（同 job_list / job_read_at）：**先放 BG_JOBS 再取 SETTLED_HISTORY**。
+        let Some(job) = jobs.get_mut(&id) else {
+            drop(jobs);
+            return match archived_status(id) {
+                Some(text) => Ok(text),
+                None => Err(format!("后台任务不存在（id {id} 未登记）")),
+            };
+        };
         let terminal = match job.status.is_terminal() {
             true => true,
             false => match job.child.try_wait() {
@@ -598,7 +630,13 @@ pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     }
 
     let mut jobs = crate::utils::lock_or_recover(&BG_JOBS);
-    let job = jobs.get_mut(&id).ok_or("后台任务不存在或已完成")?;
+    let Some(job) = jobs.get_mut(&id) else {
+        drop(jobs);
+        return match archived_status(id) {
+            Some(text) => Ok(text),
+            None => Err(format!("后台任务不存在（id {id} 未登记）")),
+        };
+    };
     let terminal = job.status.is_terminal();
 
     let (mut stdout_inc, mut stderr_inc, lost_notes) = read_increment(job);
@@ -663,8 +701,13 @@ pub(crate) fn wait_bg(id: u32, timeout_ms: u64) -> Result<String, String> {
         let (status, drain_done, started) = {
             let mut jobs = crate::utils::lock_or_recover(&BG_JOBS);
             let Some(job) = jobs.get_mut(&id) else {
-                // 已结算且被归档 —— 与"已完成"同义（模型读到的是同一条文案）。
-                return Err("后台任务不存在或已完成".to_string());
+                // 已结算且被归档 —— 这是「完成」这个状态，不是错误（P0-2）。
+                // 旧实现在这里回 Err：进了 code_execution 就变成抛异常、掀掉整段程序。
+                drop(jobs);
+                return match archived_status(id) {
+                    Some(text) => Ok(text),
+                    None => Err(format!("后台任务不存在（id {id} 未登记）")),
+                };
             };
             if job.status.is_terminal() {
                 (Some(job.exit_code.unwrap_or(-1)), None, job.start_time)
@@ -697,7 +740,14 @@ pub(crate) fn wait_bg(id: u32, timeout_ms: u64) -> Result<String, String> {
                     wait_for_drain(&d, 2, std::time::Duration::from_secs(3));
                 }
                 let mut jobs = crate::utils::lock_or_recover(&BG_JOBS);
-                let job = jobs.get_mut(&id).ok_or("后台任务不存在或已完成")?;
+                let Some(job) = jobs.get_mut(&id) else {
+                    // 竞态：另一条消费路径刚把它结算走——仍是「完成」，不是错误（P0-2）。
+                    drop(jobs);
+                    return match archived_status(id) {
+                        Some(text) => Ok(text),
+                        None => Err(format!("后台任务不存在（id {id} 未登记）")),
+                    };
+                };
                 let stdout_str = job.shared.stdout.decode_all();
                 let stderr_str = job.shared.stderr.decode_all();
                 let ec = job.exit_code.unwrap_or(-1);
@@ -723,7 +773,15 @@ pub(crate) fn wait_bg(id: u32, timeout_ms: u64) -> Result<String, String> {
             }
             None => {
                 if std::time::Instant::now() >= deadline {
-                    return Err(format!("等待超时 ({}ms)", timeout_ms));
+                    // 等不到 = 状态（还在跑），不是错误（P0-2）。工具文档本来就写着
+                    // 「超时就再 wait 一次」；写成 Err 会让程序里的 await 抛异常。
+                    // 首行与 read_bg_output 的 [任务运行中, 已运行: Ns] 同形——
+                    // 纸面 SHELL_RUNNING_RE 与模型的心智模型都不必分叉。
+                    return Ok(format!(
+                        "[任务运行中, 已运行: {}s]\n(等待 {}s 到期：任务仍在跑，没有失败。接着等就再 shell(action:'wait', jobId:{id})，别重跑)",
+                        started.elapsed().as_secs(),
+                        timeout_ms / 1000
+                    ));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }
@@ -735,7 +793,14 @@ pub(crate) fn wait_bg(id: u32, timeout_ms: u64) -> Result<String, String> {
 pub(crate) fn kill_bg(id: u32, caller: Option<&str>) -> Result<String, String> {
     let (lock_key, output) = {
         let mut jobs = crate::utils::lock_or_recover(&BG_JOBS);
-        let job = jobs.get_mut(&id).ok_or("后台任务不存在或已完成")?;
+        let Some(job) = jobs.get_mut(&id) else {
+            drop(jobs);
+            // 已经结束的 job 不需要终止——同样是「状态」不是「错误」。
+            return match archived_status(id) {
+                Some(text) => Ok(format!("{text}（无需终止）")),
+                None => Err(format!("后台任务不存在（id {id} 未登记）")),
+            };
+        };
         if let Some(caller) = caller {
             match job.owner.as_deref() {
                 None => {

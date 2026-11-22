@@ -34,6 +34,11 @@ import {
  *  用它。惰性求值：域门面是构建期快照，闭包捕获会读到过期实例（同 readOnlyFor 的取证）。 */
 const SHELL_RUN_DEFAULT_TIMEOUT_MS = 300_000;
 
+/** shell `wait` 的缺省等待预算——与 Rust 同源（`process_cap.rs` 的
+ *  `wait_timeout_ms.unwrap_or(60_000)`）。用于判断「模型没给 timeoutMs 时，
+ *  60s 的缺省等待会不会撞穿外层墙」。守护测试逐字对拍两处。 */
+const SHELL_WAIT_DEFAULT_TIMEOUT_MS = 60_000;
+
 function shellRunDefaultTimeoutMs(parameters: unknown): number {
   const props = (parameters as { properties?: Record<string, { default?: unknown }> } | undefined)?.properties;
   const d = props?.timeoutMs?.default;
@@ -242,17 +247,30 @@ export function firstPartyCapabilities(): AgentCapability[] {
                 const p = args.filePath;
                 return typeof p === 'string' && p.length > 0 ? `file:${codeWriteKey(scope.ctx.projectPath, p)}` : '*';
               },
-              // 长任务策略（P0，2026-11）：shell 的 run 超时语义是**转后台**（Rust
-              // promote），压它的 timeoutMs 是无损的——命令不会失败，只是更早拿到
-              // job id。这是「vitest 永远跑不完」的正解：内层 300s 预算 > 外层 120s
-              // 墙时，宿主按剩余预算把它压到 promote 点之前。
+              // 前台窗口预算（P0-2，2026-11-22）：按**动作**声明可压超时。
+              //   run  ：超时 = 转后台（Rust promote）。内层 300s > 外层 120s 墙时的
+              //          「vitest 永远跑不完」正解——压到 promote 点之前是无损的。
+              //   wait ：超时 = 还在跑（Rust 返回 [任务运行中]）。压短只让它更早回话，
+              //          也是卷 167 exception 的修复点（旧声明让 wait 借走了 run 的语义）。
+              //   output/kill：不压。它们没有前台窗口，压了只会往审计塞模型没给过的参数。
               ...(t.name() === 'shell'
                 ? {
-                    deadline: 'promote' as const,
-                    defaultTimeoutMs: () => shellRunDefaultTimeoutMs(scope.tools.get('shell')),
-                    // 后台命令不需要前台窗口：Rust 的 timeout_ms 只作用于前台分支，
-                    // 压它无行为效果，却会把模型没传过的值写进审计（卷 155 实证）。
-                    backgrounded: (a: Record<string, unknown>) => a.runInBackground === true,
+                    softTimeout: {
+                      run: {
+                        defaultTimeoutMs: () => shellRunDefaultTimeoutMs(scope.tools.get('shell')),
+                        // 后台命令不需要前台窗口（卷 155：压它只污染审计）。
+                        detached: (a: Record<string, unknown>) => a.runInBackground === true,
+                        // 尾部窗口：压不出一个前台窗口就**直接给句柄**。让外层墙把刚起的
+                        // 进程 kill 掉是最坏结局（工作没了，模型还以为是失败）。
+                        onExhausted: (a: Record<string, unknown>) => ({ ...a, runInBackground: true }),
+                      },
+                      // wait 没有 promote 宽限窗：余量只留给 IPC；压到 2s 以上都无害。
+                      wait: {
+                        defaultTimeoutMs: () => SHELL_WAIT_DEFAULT_TIMEOUT_MS,
+                        marginMs: 3_000,
+                        floorMs: 2_000,
+                      },
+                    },
                   }
                 : {}),
               invoke: async (args, ctx) => {
@@ -260,10 +278,13 @@ export function firstPartyCapabilities(): AgentCapability[] {
                 // 审计用独立快照（P2-4）：分发与日志共用同一个 args 引用时，工具在
                 // execute 里 mutate 参数会把已落账的 dispatch-start 一起改掉——
                 // session-log.append 只浅冻结事件对象，`data.args` 仍是同一引用。
+                // P0-2：预算改写时 args 是**改写后**的——落账记模型给的原值 + 改写台账，
+                // 否则日志会声称模型传过一个它没传的数（卷 155/167 的 1119xx 就是这么来的）。
                 sessionLog.append('tool/code-dispatch-start', {
                   seq,
                   name: t.name(),
-                  args: structuredClone(args),
+                  args: structuredClone(ctx?.budget?.args ?? args),
+                  ...(ctx?.budget ? { budget: ctx.budget.rewrite } : {}),
                 });
                 // P0：把 run 作用域信号传下去——超时/中止时工具本体收到取消，
                 // shell 据此 kill 子进程（不做这件事就是刷孤儿 vitest）。

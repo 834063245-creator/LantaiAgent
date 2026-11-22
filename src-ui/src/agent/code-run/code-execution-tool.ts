@@ -227,6 +227,11 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
       if (result.error) {
         lines.push(`── code run failed (${result.error.kind}) ──`);
         lines.push(result.error.message);
+        if (result.error.kind === 'exception') {
+          // 卷 167 实证：嵌套工具失败会 reject 程序里的 await，程序不接就整段阵亡。
+          // 这不是替模型兜底，是把它「为什么会掀桌」说清楚（可预期的失败该 try/catch）。
+          lines.push('（程序内嵌套工具失败会抛异常并结束整段程序；可预期的失败请自己 try/catch。）');
+        }
         // 失败走正常返回（分类文本可读，模型可自我修正）
         return `[code_execution 失败] kind=${result.error.kind}\n${lines.join('\n')}`;
       }

@@ -373,3 +373,64 @@ fn spawn_bg_with_uses_given_job_id() {
     let out = wait_bg(id, 10_000).expect("wait_bg failed");
     assert!(out.contains("bg-id-ok"), "unexpected output: {out}");
 }
+
+// ── P0-2（2026-11-22）：后台任务的三态是**状态**，不是错误 ─────────────────
+// 病灶：卷 167 的 code_execution 里 `wait` 超时拿到 `Err(等待超时)` → 程序里的
+// await 抛异常 → 整段程序以 exception 收场。用户看到的是一张「错误 · exception」
+// 卡片，而任务本身好端端跑完（554 文件 / 5586 用例全绿、exit 0）。
+
+#[test]
+fn wait_bg_timeout_is_a_state_not_an_error() {
+    let _g = serial();
+    clear_history();
+    let id = spawn_bg_with(
+        next_job_id(),
+        "sleep 30 # wait-timeout-state",
+        ".",
+        crate::os_sandbox::ShellInterpreter::Auto,
+        None,
+        None,
+        None,
+    )
+    .expect("spawn_bg_with failed");
+    let out = wait_bg(id, 300).expect("等待超时必须是状态（Ok），不能是 Err");
+    assert!(out.contains("[任务运行中"), "首行必须是运行态：{out}");
+    assert!(
+        out.contains("再 shell(action:'wait'"),
+        "必须告诉模型下一步怎么等：{out}"
+    );
+    kill_bg(id, None).expect("kill_bg failed");
+}
+
+#[test]
+fn wait_bg_archived_job_returns_completed_state() {
+    let _g = serial();
+    clear_history();
+    let id = spawn_bg_with(
+        next_job_id(),
+        "echo archived-state-ok",
+        ".",
+        crate::os_sandbox::ShellInterpreter::Auto,
+        None,
+        None,
+        None,
+    )
+    .expect("spawn_bg_with failed");
+    let first = wait_bg(id, 10_000).expect("首次 wait 应拿到完整结果");
+    assert!(first.contains("archived-state-ok"), "first: {first}");
+    // 首次 wait 已消费并归档 —— 再问同一个 id 是「已完成」，不是「不存在」。
+    let again = wait_bg(id, 1_000).expect("重复 wait 必须返回状态而不是 Err");
+    assert!(again.contains("已归档"), "again: {again}");
+    assert!(again.contains("exit code: 0"), "again: {again}");
+    let read = read_bg_output(id).expect("重复 output 同样必须是状态");
+    assert!(read.contains("已归档"), "read: {read}");
+}
+
+#[test]
+fn wait_bg_unknown_id_stays_an_error() {
+    let _g = serial();
+    clear_history();
+    let err = wait_bg(9_999_999, 20)
+        .expect_err("未登记的 id 仍然是错误（否则拼错 id 会被静默吞掉）");
+    assert!(err.contains("未登记"), "err: {err}");
+}

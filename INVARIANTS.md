@@ -448,33 +448,48 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
 
 **文件**: `src-ui/src/agent/code-run/host.ts`（`runCode` / `applyBudget` / `finish`）·
 `src-ui/src/agent/agent.ts`（`dispatchNestedTool` 第三参 / `noteLateNestedResult`）·
-`src-ui/src/plugins/builtin/capability-segments/segments.ts`（`deadline` 声明与 signal 透传）
+`src-ui/src/plugins/builtin/capability-segments/segments.ts`（`softTimeout` 声明与 signal 透传）·
+`src-tauri/src/utils/bg_jobs.rs`（`wait_bg` 三态 / 归档查询）
 
 ```
-⚠️ INVARIANT：执行原语的墙钟是**唯一**知道「还剩多少真实时间」的地方，三条缺一不可。
-   1. **预算穿透**：内层工具声明的超时不得超过外层剩余预算。能把超时**转成后台作业**的
-      工具（当前 = shell）声明 `deadline:'promote'`，宿主按剩余预算压它的 `timeoutMs`，
-      让 promote 发生在外层死之前；**没有这套语义的工具不许压**——压超时 = 提前杀它。
+⚠️ INVARIANT：执行原语的墙钟是**唯一**知道「还剩多少真实时间」的地方，四条缺一不可。
+   1. **预算穿透按动作**：`softTimeout` 只列「压短不改变结果类别」的动作——run（超时 =
+      转后台）、wait（超时 = 还在跑）。压别的动作 = 提前杀它（output/kill 没有前台窗口，
+      压了只会把模型没给过的值塞进审计）。余量 `SOFT_TIMEOUT_MARGIN_MS` 必须 ≥ 对端
+      自己的收尾延迟（Rust `PROMOTE_GRACE_MS` + IPC/drain 头寸），否则 promote 落在
+      外层墙之后 = 外层先 abort、顺手 kill 掉刚起的进程。压不出前台窗口（尾部）时按
+      `onExhausted` 改写（run → `runInBackground`，给句柄，不是给尸体）。
    2. **永不孤儿**：程序以任何方式结束（完成/超时/中止/崩溃）时 `runController.abort()`
       必须在 `worker.terminate()` **之前**触发（内层据此 kill 子进程）；run 结束后才到的
       调用不启动（含「写类在排他闸排队期间 run 已结束」的场合）。
    3. **完成不被拖成超时**：程序 `return` 后等写链排空要有宽限（`settleGraceMs` 3s）——
       不理会取消的长写调用否则会把「完成」拖成「超时」，模型看到的是假失败。
-   4. **超时清账**：失败结果必须报出在途清单（谁、跑了多久）；程序结束后才落定的
-      结果经 `onLateResult` 进待领信箱，由下一步注入**一次**（不静默丢弃）。
+   4. **超时清账 + 失败身份**：失败结果必须报出在途清单（谁、跑了多久）；嵌套失败的错误
+      文本必须带调用身份（`name(action:…, jobId:N)`）——程序只有 message 一个通道回模型；
+      程序结束后才落定的结果经 `onLateResult` 进待领信箱，由下一步注入**一次**（不静默丢弃）。
 
-✅ 正确：新增内层工具先问「它超时了会怎样」——能转后台就声明 promote，不能就老实响应 signal
+✅ 正确：新增内层工具先问两句——「它超时了会怎样」（是数据还是失败）「对端收尾要多久」
 ❌ 错误：只把外层超时调大（vitest 跑 8 分钟照样撞）；给不认识 promote 的工具压 `timeoutMs`；
+   余量只算 IPC 不算对端宽限窗；把「还在跑 / 已归档」写成 Err；
    在 `finish` 里先 terminate 后 abort（abort 就传不到内层了）
 ```
 
+**三态纪律（P0-2，2026-11-22）**：后台任务的 `wait` 超时、已归档 job 的 `wait|output|kill`
+一律回**状态文本**（`[任务运行中, 已运行: Ns]` / `[任务已完成(已归档), exit code: N]`）；
+只有「未登记的 id / 所有权不符 / IO 失败」才是 `Err`。把状态写成 `Err` 的代价：
+`code_execution` 程序里的 `await` 直接抛异常，一次正常等待就掀掉整段程序（卷 167 实证）。
+
 **炸过**: 2026-11 用户报「code 组合下跑 vitest 永远跑不完」——外层 120s 墙短于 shell 的 300s 预算，
 外层先死且不 abort 内层，孤儿进程叠加导致越跑越慢（每次重试都在给下一次加负重）。
+**又炸（2026-11-22 卷 167）**: 修完预算穿透后仍弹「错误 · exception」——`wait` 借走 `run` 的
+工具级 promote 声明被压到 111986ms；余量只减 8s 而 Rust 宽限窗是 10s；超时再以 Err 回程序。
+实际上 job 3 在 248s 后 exit 0（554 文件 / 5586 用例全绿），六秒后一次 `output` 就拿到了结果。
 
-**守护**: `tests/code-execution.test.ts`（预算穿透压参 / 零漂移透传 / 结束即 abort /
-超时清单 / 并发配额 / 默认预算）· `tests/code-late-results.test.ts`（待领信箱注入一次 /
-容量与截断）· `tests/shell-done-watchdog.test.ts`（promote 文案可照做）·
-`tests/shell-poll-guard.test.ts`（忙等喝止文案）。
+**守护**: `tests/code-execution.test.ts`（预算穿透压参 / 零漂移透传 / 结束即 abort / 超时清单 /
+并发配额 / 默认预算 / 尾部 detach / 失败身份）· `tests/code-budget-contract.test.ts`（按动作声明 +
+余量 ≥ 宽限窗 + 跨语言常量对拍）· `src-tauri/src/utils/bg_jobs_tests.rs`（wait 三态：超时=状态 /
+已归档=状态 / 未登记=错误）· `tests/code-late-results.test.ts`（待领信箱注入一次 / 容量与截断）·
+`tests/shell-done-watchdog.test.ts`（promote 文案可照做）· `tests/shell-poll-guard.test.ts`（忙等喝止文案）。
 
 ---
 

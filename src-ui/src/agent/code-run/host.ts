@@ -69,6 +69,59 @@ export interface CodeBindingContext {
   /** run 作用域中止信号：外层中止、超时、任何 finish 都会触发（INV-1 永不孤儿）。
    *  内层工具据此 kill 子进程——不再出现「程序死了、进程还在跑」。 */
   signal: AbortSignal;
+  /** 宿主侧预算改写（P0-2，2026-11-22）：只在真改写时出现。
+   *  `args` = 改写**前**的 args —— 审计必须记模型给的那一份，否则日志会撒谎
+   *  （卷 155/167 的 `timeoutMs: 111983` 就是这么写进历史的）。 */
+  budget?: {
+    args: Record<string, unknown>;
+    rewrite: BudgetRewrite;
+  };
+}
+
+/** 前台窗口预算（P0-2，2026-11-22）：**按动作**声明哪些超时可以压。
+ *
+ *  判据只有一条：**压短不改变结果类别**。
+ *  - `run`：超时 = 转后台（Rust promote），命令继续跑、模型拿到 job id；
+ *  - `wait`：超时 = 「还在跑」（Rust 返回 `[任务运行中]`），再等一次即可。
+ *  两者压短都只让「结果更早到」，不制造失败。其余动作（`output`/`kill`…）没有
+ *  前台窗口这回事，压它们只会往 args 里塞模型没给过的参数——卷 167 的
+ *  `DISPATCH#7 shell output 3 tmo=111991` 就是这么来的（审计污染）。
+ *
+ *  为什么按动作而不是按工具（2026-11-22 卷 167 事故）：旧声明 `deadline:'promote'`
+ *  是**整条工具**的属性，于是 shell 的 `wait` 借走了 `run` 的「无损」语义——
+ *  可 wait 的超时当时是 Err，压完就变成「程序里 await 抛异常」。工具级声明
+ *  太粗：它把兄弟动作的语义一起借走了。 */
+export interface SoftTimeoutPlan {
+  /** 模型面超时参数名（缺省 `'timeoutMs'`）。 */
+  arg?: string;
+  /** 模型没给时的请求预算（惰性——读**活 schema** 的 default，别闭包捕获死实例）。
+   *  缺省 = 不参与判定（只有模型显式给了 timeoutMs 才压）。 */
+  defaultTimeoutMs?: () => number | undefined;
+  /** 已不需要前台窗口的调用：原样透传（不压也不改）。
+   *  卷 155 实证：`runInBackground:true` 的命令压 timeoutMs 没有任何行为效果，
+   *  只会把模型没传过的值写进审计。 */
+  detached?: (args: Record<string, unknown>) => boolean;
+  /** 压缩余量（缺省 = SOFT_TIMEOUT_MARGIN_MS）。wait 没有 promote 宽限窗，
+   *  余量只留给 IPC，可以小得多。 */
+  marginMs?: number;
+  /** 压缩下限（缺省 = MIN_FOREGROUND_MS）：低于它时按 `onExhausted` 改写；
+   *  没声明 `onExhausted` 就压到极短窗口兜底（软动作，仍然无损）。 */
+  floorMs?: number;
+  /** 剩不下前台窗口时的**改写**（返回改写后的 args；缺省 = 不改，交 abort）。
+   *  shell run 用 `runInBackground:true`：给模型一个句柄，而不是让外层墙把
+   *  刚起的进程 kill 掉（尾部窗口里唯一无损的处置）。 */
+  onExhausted?: (args: Record<string, unknown>) => Record<string, unknown>;
+}
+
+/** 一次预算改写的台账（审计要同时记「模型给的原值」与「改写」，缺一不可）。 */
+export interface BudgetRewrite {
+  /** 被改写的参数名。 */
+  arg: string;
+  /** 请求原值（模型显式给的，或动作缺省算出来的——改写只在拿到数值时发生）。 */
+  from: number;
+  /** 压到的值（detach 时无）。 */
+  to?: number;
+  kind: 'clamp' | 'detach';
 }
 
 /** 绑定声明（P3）：一个可被程序调用的宿主能力。
@@ -86,19 +139,9 @@ export interface CodeBindingSpec {
   /** 写锁键：null = 不加锁；'*' = 排他闸；其余 = 键控（同键串行、异键并行）。
    *  缺省（undefined）= '*'（保守：未声明分片的写仍全局串行）。 */
   lockKey?: (args: Record<string, unknown>) => string | null;
-  /** 长任务策略（INV-2 预算穿透）：'promote' = 宿主可把本次 `timeoutMs` 压到
-   *  剩余预算内，让工具自己转后台（promote）并交付 job id；'abort'（缺省）=
-   *  不压，超时由 run 作用域 abort 兜底。只给**能把超时转成后台作业**的工具声明。 */
-  deadline?: 'promote' | 'abort';
-  /** 'promote' 策略下，模型没给 `timeoutMs` 时的请求预算来源（惰性函数——
-   *  要从**活 schema** 的 default 读，域门面是构建期快照，别闭包捕获死实例）。
-   *  缺省/undefined = 缺省参数不参与压制（只有模型显式给了 timeoutMs 才压）。 */
-  defaultTimeoutMs?: () => number | undefined;
-  /** 'promote' 策略下：本次调用是否**已经交给后台**（= 不需要前台窗口，不该压 timeout）。
-   *  shell 的 `runInBackground:true` 即此类——Rust 的 `timeout_ms` 只作用于前台分支，
-   *  压它没有任何行为效果，却会让审计日志里出现一个模型没传过的值（实测卷 155：
-   *  模型只传了 `runInBackground:true`，落账的 args 却带着 `timeoutMs: 111983`）。 */
-  backgrounded?: (args: Record<string, unknown>) => boolean;
+  /** 前台窗口预算（P0-2）：动作名 → 压制策略。未列出的动作原样透传。
+   *  非域工具（没有 action 参数）用 `'*'` 键。 */
+  softTimeout?: Record<string, SoftTimeoutPlan>;
   /** 执行体：返回结果文本 + 是否失败（+ 可选分类码/提示——P3；+ P0 的运行时上下文）。 */
   invoke: (args: Record<string, unknown>, ctx?: CodeBindingContext) => Promise<CodeBindingOutcome>;
 }
@@ -175,6 +218,21 @@ function firstLine(text: string): string {
   const line = text.split('\n').find((l) => l.trim() !== '') ?? '';
   const t = line.replace(/\s+/g, ' ').trim();
   return t.length > 80 ? `${t.slice(0, 80)}…` : t;
+}
+
+/** 失败回复里的**调用身份**（P0-2）：`name(action:"…", jobId:N)`。
+ *  程序内的一条失败只有 message 能回到模型；没有身份时「等待超时」这种文本
+ *  无法定位是哪个调用、哪个 job——下一次排查等于重跑一遍。 */
+function callLabel(name: string, args: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (typeof args.action === 'string') parts.push(`action:"${args.action}"`);
+  if (typeof args.jobId === 'number') parts.push(`jobId:${args.jobId}`);
+  return parts.length > 0 ? `${name}(${parts.join(', ')})` : name;
+}
+
+/** 工具层已把失败统一写成 `error: <msg>`——再加身份时不重复这个前缀。 */
+function stripErrorPrefix(output: string): string {
+  return output.startsWith('error: ') ? output.slice('error: '.length) : output;
 }
 
 /** UTF-8 字节计长（与 worker 侧 byteLen 同语义；宿主侧独立计账用）。 */
@@ -279,16 +337,23 @@ function createWriteGate(): WriteGate {
   };
 }
 
-/** 预算穿透的两个常数（INV-2，2026-11 长任务批）。
+/** Rust 前台超时后的**宽限窗**（`src-tauri/src/commands/process_cap.rs` 的
+ *  `PROMOTE_GRACE_MS`）：超时点之后 Rust 还会再等这么久让命令自己收尾；真没完
+ *  才 promote 成 job，并把 `shell:done{promotedJobId}` 发回来。
  *
- *  `PROMOTE_MARGIN_MS`：留给「shell 超时 → Rust promote → 事件回到宿 → 程序拿到
- *  job id → 程序继续跑完」这条链的余量。实测一次 promote 往返是几十 ms 级，
- *  8s 是保守值：既不会因为机器抖动把余量吃掉，又不会把可用的前台窗口压得太小。
- *  `MIN_FOREGROUND_MS`：压到这个下限以下就不再压——那说明外层预算已经不够跑完
- *  任何有意义的命令，应该让它走 abort 兜底（并由清单如实报出），而不是把命令
- *  刚起就 promote 成后台。 */
-const PROMOTE_MARGIN_MS = 8_000;
+ *  跨语言同源数字，**必须与 Rust 逐字一致**——守护测试
+ *  `tests/code-budget-contract.test.ts` 直接读 process_cap.rs 对拍。
+ *  卷 167 的教训：宿主只减了 8s 余量，而宽限窗是 10s，于是「无损压缩」差 2s 就
+ *  变成「外层先死 → abort 把刚起/刚 promote 的进程 kill 掉」。预算算术必须把
+ *  **对端自己的收尾延迟**算进去，不能只算 IPC 往返。 */
+export const PROMOTE_GRACE_MS = 10_000;
+/** 压缩余量 = 宽限窗 + IPC/drain 头寸（5s：事件回传、drain 线程、调度抖动）。 */
+export const SOFT_TIMEOUT_MARGIN_MS = PROMOTE_GRACE_MS + 5_000;
+/** 前台下限：压到这里以下就不再压——尾部窗口改走 `onExhausted`（给句柄），
+ *  没声明 `onExhausted` 的软动作则压到极短窗口兜底（见 `MIN_TINY_WINDOW_MS`）。 */
 const MIN_FOREGROUND_MS = 15_000;
+/** 软动作的极短窗口下限：再小就不压（程序本身已经要结束了）。 */
+const MIN_TINY_WINDOW_MS = 1_000;
 /** 程序墙钟硬上限（P2-1）：模型可传 timeoutMs，但不得超过它（对齐 shell 的 10 分钟）。 */
 const MAX_TIMEOUT_MS = 600_000;
 
@@ -324,29 +389,48 @@ function withInflightNote(result: CodeRunResult, pending: InflightCall[], late: 
   return { ...result, error: { ...result.error, message: `${result.error.message}\n\n${lines.join('\n')}` } };
 }
 
-/** INV-2 预算穿透：把本次调用的 `timeoutMs` 压到外层剩余预算内。
+/** INV-2 预算穿透（P0-2 改写）：把本次调用的超时压到外层剩余预算内。
  *
- *  只对声明 `deadline:'promote'` 的 binding 生效（当前 = shell run）——这类工具的
- *  超时语义是「转后台」而不是「杀死」，压缩它是**无损**的：命令不会失败，只是更早
- *  拿到 job id。对没有这套语义的工具压缩超时等于提前杀它，所以必须由 binding 显式
- *  声明，不能按名字猜。
+ *  只对 `softTimeout` 里**显式列出的动作**生效——判据是「压短不改变结果类别」
+ *  （run → 转后台；wait → 还在跑）。压别的动作 = 提前杀它，所以必须由 binding
+ *  按动作声明，不能按工具名猜（旧的工具级 `deadline:'promote'` 让 wait 借走了
+ *  run 的语义，见卷 167）。
  *
- *  三条不压的例外：预算本来就够（零漂移）、压完低于前台下限（交给 abort 兜底并
- *  如实报账）、请求值根本拿不到（模型没给且 binding 没交缺省来源）。 */
-function applyBudget(
+ *  三条不压：预算本来就够（零漂移）、动作没声明、调用已交后台或请求值拿不到。
+ *  压不出一个前台窗口时（尾部窗口）按 `onExhausted` 改写——shell run 直接给
+ *  job id，而不是压出一个「刚起就超时」的命令、更不是让外层墙把进程 kill 掉。 */
+export function applyBudget(
   binding: CodeBindingSpec,
   args: Record<string, unknown>,
   remaining: number,
-): Record<string, unknown> {
-  if (binding.deadline !== 'promote') return args;
-  // 已经交给后台的调用不需要前台窗口（见 CodeBindingSpec.backgrounded 的取证）。
-  if (binding.backgrounded?.(args)) return args;
-  const requested = typeof args.timeoutMs === 'number' ? args.timeoutMs : binding.defaultTimeoutMs?.();
-  if (typeof requested !== 'number') return args;
-  const budget = remaining - PROMOTE_MARGIN_MS;
-  if (requested <= budget) return args;
-  if (budget < MIN_FOREGROUND_MS) return args;
-  return { ...args, timeoutMs: Math.floor(budget) };
+): { args: Record<string, unknown>; rewrite?: BudgetRewrite } {
+  const plan = binding.softTimeout;
+  if (!plan) return { args };
+  const action = typeof args.action === 'string' ? args.action : '*';
+  const entry = plan[action] ?? plan['*'];
+  if (!entry) return { args };
+  if (entry.detached?.(args)) return { args };
+  const arg = entry.arg ?? 'timeoutMs';
+  const raw = args[arg];
+  const requested = typeof raw === 'number' ? raw : entry.defaultTimeoutMs?.();
+  if (typeof requested !== 'number') return { args };
+  const budget = remaining - (entry.marginMs ?? SOFT_TIMEOUT_MARGIN_MS);
+  if (requested <= budget) return { args };
+  const floor = entry.floorMs ?? MIN_FOREGROUND_MS;
+  if (budget >= floor) {
+    const to = Math.floor(budget);
+    return { args: { ...args, [arg]: to }, rewrite: { arg, from: requested, to, kind: 'clamp' } };
+  }
+  if (entry.onExhausted) {
+    return { args: entry.onExhausted(args), rewrite: { arg, from: requested, kind: 'detach' } };
+  }
+  // 软动作的尾部兜底：极短的前台窗口也比「让外层墙把进程 kill 掉」好——
+  // 压到 1s 起仍然无损（run 会立刻 promote，wait 会立刻回「还在跑」）。
+  const tiny = Math.floor(budget);
+  if (tiny >= MIN_TINY_WINDOW_MS) {
+    return { args: { ...args, [arg]: tiny }, rewrite: { arg, from: requested, to: tiny, kind: 'clamp' } };
+  }
+  return { args };
 }
 
 /** 运行一次 code run。resolve 恒为 CodeRunResult（失败也在 error 字段里，
@@ -575,8 +659,9 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
       return;
     }
     activeCalls++;
-    // INV-2 预算穿透（只对声明 promote 的工具生效；见 applyBudget）
-    const callArgs = applyBudget(binding, args, remainingMs());
+    // INV-2 预算穿透（只对 softTimeout 里声明的动作生效；见 applyBudget）
+    const decision = applyBudget(binding, args, remainingMs());
+    const callArgs = decision.args;
     const startedAt = Date.now();
     inflight.set(id, { name, startedAt });
 
@@ -590,7 +675,11 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
         }
         let outcome: CodeBindingOutcome;
         try {
-          outcome = await binding.invoke(callArgs, { remainingMs: remainingMs(), signal: runSignal });
+          outcome = await binding.invoke(callArgs, {
+            remainingMs: remainingMs(),
+            signal: runSignal,
+            ...(decision.rewrite ? { budget: { args, rewrite: decision.rewrite } } : {}),
+          });
         } catch (e) {
           outcome = {
             output: (e as { message?: string })?.message ?? String(e),
@@ -637,7 +726,8 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
                 t: 'reply',
                 id,
                 ok: false,
-                message: outcome.output,
+                // 身份进 message：程序只有一个字段能把失败带回模型（P0-2）。
+                message: `${callLabel(name, args)}: ${stripErrorPrefix(outcome.output)}`,
                 code: outcome.code ?? 'tool-error',
                 ...(outcome.hint ? { hint: outcome.hint } : {}),
               } as const)

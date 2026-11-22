@@ -261,16 +261,15 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
             seen.push(args.timeoutMs as number);
             return { output: 'ok', isError: false };
           }),
-          deadline: 'promote',
-          defaultTimeoutMs: () => 300_000,
+          softTimeout: { run: { defaultTimeoutMs: () => 300_000 } },
         },
       ],
     });
     expect(result.error).toBeUndefined();
-    // 300s 请求 > 30s 墙 ⇒ 压到 30_000 - 8_000 = 22_000（减去启动耗时后的极小误差）
+    // 300s 请求 > 30s 墙 ⇒ 压到 30_000 - 15_000 = 15_000（余量 = Rust 宽限窗 10s + 5s）
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toBeLessThanOrEqual(22_000);
-    expect(seen[0]).toBeGreaterThan(21_000);
+    expect(seen[0]).toBeLessThanOrEqual(15_000);
+    expect(seen[0]).toBeGreaterThan(14_000);
   });
 
   it('P0 预算穿透：预算充足时原样透传；模型没给 timeoutMs 时不注入（零漂移）', async () => {
@@ -284,8 +283,7 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
             seen.push(args);
             return { output: 'ok', isError: false };
           }),
-          deadline: 'promote' as const,
-          defaultTimeoutMs: () => 300_000,
+          softTimeout: { run: { defaultTimeoutMs: () => 300_000 } },
         },
       ],
     };
@@ -314,9 +312,7 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
               seen.push(args);
               return { output: 'job started', isError: false };
             }),
-            deadline: 'promote',
-            defaultTimeoutMs: () => 300_000,
-            backgrounded: (a) => a.runInBackground === true,
+            softTimeout: { run: { defaultTimeoutMs: () => 300_000, detached: (a) => a.runInBackground === true } },
           },
         ],
       },
@@ -325,6 +321,114 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     // 卷 155 实测病灶：模型只传了 runInBackground，落账的 args 却带着 timeoutMs: 111983
     expect(seen[0].runInBackground).toBe(true);
     expect('timeoutMs' in seen[0]).toBe(false);
+  });
+
+  it('P0-2 未声明的动作不被注入 timeoutMs（output/kill 没有前台窗口）', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const result = await runCode(`return await tools.shell({action:'output', jobId:3});`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 30_000,
+      bindings: [
+        {
+          ...binding('shell', true, async (args) => {
+            seen.push(args);
+            return { output: '[任务运行中, 已运行: 3s]', isError: false };
+          }),
+          softTimeout: { run: { defaultTimeoutMs: () => 300_000 } },
+        },
+      ],
+    });
+    expect(result.error).toBeUndefined();
+    expect(seen[0].action).toBe('output');
+    // 卷 167 实证：DISPATCH#7 shell output 3 tmo=111991 —— output 不收 timeoutMs，
+    // 却被旧实现塞了一个。审计与 RPC 都不该出现模型没给过的字段。
+    expect('timeoutMs' in seen[0]).toBe(false);
+  });
+
+  it('P0-2 尾部窗口：run 直接改成后台句柄（不压成「刚起就超时」）', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const result = await runCode(`return await tools.shell({action:'run', command:'npx vitest run'});`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 20_000,
+      bindings: [
+        {
+          ...binding('shell', false, async (args) => {
+            seen.push(args);
+            return { output: '[后台任务已启动, ID: 9]', isError: false };
+          }),
+          softTimeout: {
+            run: {
+              defaultTimeoutMs: () => 300_000,
+              onExhausted: (a) => ({ ...a, runInBackground: true }),
+            },
+          },
+        },
+      ],
+    });
+    expect(result.error).toBeUndefined();
+    // 20s 墙 - 15s 余量 = 5s < 前台下限 15s ⇒ 不再压，直接给句柄：
+    // 让外层墙把刚起的进程 kill 掉是最坏结局（工作没了，模型还以为失败）。
+    expect(seen[0].runInBackground).toBe(true);
+    expect('timeoutMs' in seen[0]).toBe(false);
+  });
+
+  it('P0-2 wait 的超时是状态：压短后正常回话，程序不抛异常', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const result = await runCode(`const r = await tools.shell({action:'wait', jobId:3}); return r;`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 40_000,
+      bindings: [
+        {
+          ...binding('shell', true, async (args) => {
+            seen.push(args);
+            return { output: '[任务运行中, 已运行: 37s]', isError: false };
+          }),
+          softTimeout: { wait: { defaultTimeoutMs: () => 60_000, marginMs: 3_000, floorMs: 2_000 } },
+        },
+      ],
+    });
+    expect(result.error).toBeUndefined();
+    expect(seen[0].timeoutMs).toBeLessThanOrEqual(37_000);
+    expect(seen[0].timeoutMs).toBeGreaterThan(35_000);
+    expect(result.result).toContain('任务运行中');
+  });
+
+  it('P0-2 嵌套失败带调用身份（模型能看出是哪个调用、哪个 job）', async () => {
+    const result = await runCode(`await tools.shell({action:'wait', jobId:3});`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 30_000,
+      bindings: [binding('shell', true, async () => ({ output: 'error: 等待超时 (111986ms)', isError: true }))],
+    });
+    expect(result.error?.kind).toBe('exception');
+    expect(result.error?.message).toContain('shell(action:"wait", jobId:3)');
+    expect(result.error?.message).toContain('等待超时');
+    // 工具层已写 "error: "，再加身份时不重复
+    expect(result.error?.message).not.toContain('error: error:');
+  });
+
+  it('P0-2 审计记原值与改写：ctx.budget 带改写前的 args，不把改写当模型输入', async () => {
+    let captured:
+      | { args: Record<string, unknown>; rewrite: { arg: string; from: number; to?: number; kind: string } }
+      | undefined;
+    const result = await runCode(`return await tools.shell({action:'run', command:'x'});`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 30_000,
+      bindings: [
+        {
+          ...binding('shell', false, async (_args, ctx) => {
+            captured = ctx?.budget;
+            return { output: 'ok', isError: false };
+          }),
+          softTimeout: { run: { defaultTimeoutMs: () => 300_000 } },
+        },
+      ],
+    });
+    expect(result.error).toBeUndefined();
+    expect(captured?.args).toEqual({ action: 'run', command: 'x' });
+    expect(captured?.rewrite.arg).toBe('timeoutMs');
+    expect(captured?.rewrite.from).toBe(300_000);
+    expect(captured?.rewrite.kind).toBe('clamp');
+    expect(captured?.rewrite.to).toBeLessThanOrEqual(15_000);
   });
 
   it('P0 永不孤儿：程序结束时未完成的调用收到 abort（shell 据此 kill 子进程）', async () => {

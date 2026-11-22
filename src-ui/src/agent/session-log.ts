@@ -115,7 +115,15 @@ export interface SessionEventDataMap {
   'preset/selected': { presetId: string };
   /** code_execution 子分发开始（P2/D5）：每次程序内嵌套工具调用开始时一条。
    *  无消息投影（审计流）；args 为宿主侧归一后的无损 JSON 参数。 */
-  'tool/code-dispatch-start': { seq: number; name: string; args: Record<string, unknown> };
+  'tool/code-dispatch-start': {
+    seq: number;
+    name: string;
+    /** **模型给的原值**（不是宿主改写后的——改写另记 budget）。 */
+    args: Record<string, unknown>;
+    /** 前台窗口改写（P0-2）：压了哪个参数、从多少到多少；detach 无 to。
+     *  缺省 = 未改写（零漂移照旧）。 */
+    budget?: { arg: string; from: number; to?: number; kind: 'clamp' | 'detach' };
+  };
   /** code_execution 子分发落定（P2/D5）：与 dispatch-start 的 seq 一一配对。
    *  output 已过截断；isError=true 时 output 即错误文本。无消息投影。 */
   'tool/code-dispatch': {
