@@ -427,9 +427,9 @@ describe('①c 无缓存行：wait/ask + memory/skill/task/agent 六族', () => 
     const ctxA = {
       ...makeRowCtx(recordingExec([])),
       ui: {
-        askUser: (req: { id: string; callback: (res: string[]) => void }) => {
+        askUser: (req: { id: string; callback: (res: Array<{ selected: string[]; custom?: string }>) => void }) => {
           callsA.push(req.id);
-          req.callback(['ok']);
+          req.callback([{ selected: ['ok'] }]);
         },
       },
     };

@@ -20,6 +20,7 @@ export const defineTool = impl.defineTool;
 export const pauseWhileAwaitingUser = impl.pauseWhileAwaitingUser;
 
 export type Tool = import('./host').Tool;
+export type AskUserAnswer = import('./host').AskUserAnswer;
 export type AskUserQuestionItem = import('./host').AskUserQuestionItem;
 export type AskUserRequest = import('./host').AskUserRequest;
 export type CodingToolsUI = import('./host').CodingToolsUI;

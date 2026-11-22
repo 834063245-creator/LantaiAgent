@@ -261,10 +261,28 @@ export interface AskUserQuestionItem {
   multiSelect?: boolean;
 }
 
+/** 用户对**一道题**的作答（2026-11-22 重构：答案从「string[] 里塞文本」改为
+ *  「选中项 + 自写文本」两栏——旧形状没有放文本的位置，于是每条收集路径各自
+ *  决定丢不丢：卡内输入框回车才入账、点确认钮则文本静默消失）。语义沿 DSH
+ *  user-questions：
+ *   - 单选（含开放式）：custom 有值 ⇒ selected 为空（文本**取代**选择）；
+ *   - 多选：custom 与 selected 并存（文本是追加的一项）；
+ *   - 跳过/未答：两者皆空（工具侧编码为 null）。 */
+export interface AskUserAnswer {
+  /** 选中的选项 label（保持点击序）。开放式问题恒为空。 */
+  selected: string[];
+  /** 用户自写的自由文本（trim 后非空才出现）。 */
+  custom?: string;
+}
+
 /** ask_user 工具的 UI 请求 — 由 workspace 注入的回调转发到 UI 总线。
  *  保持 agent 层不 import ui/ 模块。
- *  单问：question/options/multiSelect + callback(answer)；
- *  批量：questions 一次推全部 + callback(answers)（与 questions 对齐，未答/跳过为 null）。
+ *  单问：question/options/multiSelect + callback(answers)；
+ *  批量：questions 一次推全部 + callback(answers)。
+ *  **答案恒为「每题一条」的数组**（单问 = 长度 1）——单问/批量共用同一形状，
+ *  不再有 `string[] | (string[]|null)[]` 的联合类型（那个联合正是文本丢失的温床：
+ *  同一条 `string[]` 既当 label 列表又当自由文本，UI 只能二选一）。
+ *  null = 用户取消整次提问；跳过/未答 = `{ selected: [] }`。
  *  并发会话（2026-08-26）：agentId = 发起 Agent 的 bus id（executor 注入
  *  _owner_id，主 Agent 即 main-<ts>-<rand>）——UI 据此路由到所属卷的提问卡。 */
 export interface AskUserRequest {
@@ -276,7 +294,7 @@ export interface AskUserRequest {
   multiSelect?: boolean;
   /** 批量多问：完整题目列表，UI 分页收集后一次性返回 */
   questions?: AskUserQuestionItem[];
-  callback: (answer: string[] | null | (string[] | null)[]) => void;
+  callback: (answers: AskUserAnswer[] | null) => void;
 }
 
 /** 工具族装配期注入的 UI 袋（当前只有 ask_user 回调）。 */

@@ -410,6 +410,43 @@
   margin-left: 10px;
 }
 
+/* ── 他卷待答提示（2026-11-22 二轮）────────────────────────────────
+   卡架是全局单架：别的卷在等作答/批准时，本框敲的字仍发给**当前卷**（不抢答）。
+   旧形态只有卡片上的卷名徽标——用户在本框里答完才发现没送出去。这行把事实
+   摆在输入行**上方**（敲字之前就能看见），右侧一个「切过去」入口。
+   零他卷待答 = 组件不渲染，这里也就没有占位。 */
+.pp-ask-elsewhere {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  margin: 0 0 2px;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+}
+.pp-ask-elsewhere-what {
+  color: var(--seal-deep);
+  font-weight: 600;
+}
+.pp-ask-elsewhere-note {
+  color: var(--ink-3);
+}
+.pp-ask-elsewhere-go {
+  margin-left: auto;
+  padding: 1px 2px;
+  font: inherit;
+  color: var(--seal-deep);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in oklch, var(--seal) 45%, transparent);
+  cursor: pointer;
+  transition: border-color var(--snap);
+}
+.pp-ask-elsewhere-go:hover {
+  border-bottom-color: var(--seal);
+}
+
 /* ── 设置行（2026-11-09 用户裁定：模型与权限另起一行）──────────────────
  * 用户原话：「模型选择和权限选择还是得另起一行，现在的 UX 好奇怪」。
  * 判据翻案（对 2026-11-08 丙案"模型是书眉级身份"）：书眉是**这一卷的账**

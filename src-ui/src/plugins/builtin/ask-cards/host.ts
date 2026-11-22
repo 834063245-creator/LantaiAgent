@@ -11,9 +11,11 @@
 // 类型再出口：包内组件从 './host' 一处取形状，产物域由 host.aliased 提供同名类型面。
 
 export type {
+  AskAnswerDisposition,
   AskBatchPrompt,
   AskPrompt,
   AskQuestionItem,
+  AskUserAnswer,
   PermissionPrompt,
   PromptData,
   PromptOwner,

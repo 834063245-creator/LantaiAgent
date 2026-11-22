@@ -1372,8 +1372,10 @@ export class ChatCore {
     if (active.type !== 'ask' && active.type !== 'ask-batch') return false;
     const owner = active.ownerSid ?? null;
     if (owner != null && owner !== this.activeSessionId) return false; // 他卷的卡不抢答
-    if (!shelf.answerActiveText(text)) return false;
-    showToast('已作为提问回答提交', 'info');
+    const disposition = shelf.answerActiveText(text);
+    if (!disposition) return false;
+    // 批量中间页只「填进当前题」，说成已提交会让用户以为答完了（本次迭代前的旧文案）
+    showToast(disposition === 'submitted' ? '已作为提问回答提交' : '已填进当前提问（点「提交」发送全部答案）', 'info');
     return true;
   }
 

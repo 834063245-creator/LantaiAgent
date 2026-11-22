@@ -14,9 +14,11 @@
 /* eslint-disable */
 import type { ReactNode } from 'react';
 import type {
+  AskAnswerDisposition,
   AskBatchPrompt,
   AskPrompt,
   AskQuestionItem,
+  AskUserAnswer,
   PermissionPrompt,
   PromptData,
   PromptOwner,
@@ -55,9 +57,11 @@ export const useAskPendingStore = impl.useAskPendingStore;
 
 // 形状面（类型在产物域由内核契约直接给出——契约文件是内核源码，随包内联零状态）
 export type {
+  AskAnswerDisposition,
   AskBatchPrompt,
   AskPrompt,
   AskQuestionItem,
+  AskUserAnswer,
   PermissionPrompt,
   PromptData,
   PromptOwner,

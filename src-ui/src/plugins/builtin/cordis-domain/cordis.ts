@@ -39,9 +39,10 @@ function approvalFromUi(ui: CodingToolsUI | undefined, agentId?: string): Dynami
           { label: '允许', description: '本次会话内激活该包（可 stop / undefine 回收）' },
           { label: '拒绝', description: '不运行该包' },
         ],
-        callback: (answer) => {
-          const first = Array.isArray(answer) ? answer[0] : answer;
-          resolve(first === '允许');
+        callback: (answers) => {
+          // 单选审批：只有「选中允许」才算批准；自写文本（用户改主意/说明）不是批准。
+          const first = answers?.[0];
+          resolve(first?.selected.includes('允许') === true && (first.custom ?? '').trim() === '');
         },
       });
     });

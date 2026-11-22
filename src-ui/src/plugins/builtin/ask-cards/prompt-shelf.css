@@ -239,33 +239,54 @@
   color: var(--seal-deep);
 }
 
-/* ── 底部：自定义回答行 + 主动作 ── */
-.prompt-shelf__foot {
+/* ── 自定义回答行（2026-11-22：与选项同构的一行）──
+   旧实现把输入框塞在动作行里当「副输入」：无标记、无选中态，用户不知道它算不算答案
+   （事实是：不打回车就不算）。现在它是一条正式的答案行——多选带方印、单选带笔标，
+   文本与选项在视觉上属于同一层。 */
+.prompt-shelf__custom-row {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: calc(12px * var(--font-scale));
-  padding-top: calc(10px * var(--font-scale));
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: calc(9px * var(--font-scale)) 10px calc(9px * var(--font-scale)) 2px;
   border-top: 1px solid color-mix(in oklch, var(--ink-4) 55%, transparent);
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
 }
-.prompt-shelf__custom {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  gap: 6px;
+.prompt-shelf__custom-row--active {
+  background: color-mix(in srgb, var(--ink-1) 6%, var(--paper));
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.prompt-shelf__custom-mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  color: var(--ink-4);
 }
 .prompt-shelf__custom-input {
   flex: 1;
   min-width: 0;
-  padding: calc(6px * var(--font-scale)) 10px calc(6px * var(--font-scale)) 2px;
+  /* field-sizing: content —— 随内容长高（Chromium 123+/WebView2）；不支持的引擎
+     退回 rows=1 的单行滚动框，不炸版。Shift+Enter 换行，所以是 textarea 不是 input。 */
+  field-sizing: content;
+  min-height: calc(1.5em + 2px);
+  max-height: 9em;
+  padding: 0 2px 2px 0;
   font-family: var(--f-song);
   font-size: var(--fs-body);
+  line-height: 1.5;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--ink-4);
+  border-bottom: 1px solid transparent;
   border-radius: 0;
   color: var(--ink-1);
   outline: none;
+  resize: none;
   transition: border-color var(--snap);
 }
 .prompt-shelf__custom-input:focus {
@@ -275,6 +296,41 @@
   color: var(--ink-3);
   font-size: var(--fs-caption);
   letter-spacing: 0.02em;
+}
+
+/* ── 底部：状态 + 动作 ── */
+.prompt-shelf__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: calc(12px * var(--font-scale));
+  padding-top: calc(10px * var(--font-scale));
+  border-top: 1px solid color-mix(in oklch, var(--ink-4) 55%, transparent);
+}
+.prompt-shelf__status {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.prompt-shelf__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.prompt-shelf__skip {
+  padding: calc(7px * var(--font-scale)) 4px;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color var(--snap);
+}
+.prompt-shelf__skip:hover {
+  color: var(--seal-deep);
 }
 
 /* 主动作：规格书 §10「每屏唯一主动作」= 墨印实色 + 硬偏移投影，hover 翻朱砂。
@@ -315,26 +371,6 @@
   box-shadow: none;
   cursor: default;
   transform: none;
-}
-
-/* 自定义回答提交钮（非空输入才出现）：次级动作，描边 */
-.prompt-shelf__submit {
-  flex-shrink: 0;
-  padding: calc(6px * var(--font-scale)) 14px;
-  font-size: var(--fs-body);
-  font-weight: 600;
-  font-family: var(--f-song);
-  background: transparent;
-  border: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
-  color: var(--seal-deep);
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    border-color var(--snap);
-}
-.prompt-shelf__submit:hover {
-  background: var(--seal-soft);
-  border-color: var(--seal);
 }
 
 /* ── 键位提示：常驻一行（旧实现只写在关闭钮的 data-tip 里）── */
@@ -458,7 +494,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   批量多问分页卡（AskBatchCard）
+   批量分页行（单问/批量已合成同一张卡：一题一页，total > 1 才出现）
    ═══════════════════════════════════════════════════════════════ */
 
 /* 翻页行：动作行在其上（提交钮不再挤进这一行当次按钮） */

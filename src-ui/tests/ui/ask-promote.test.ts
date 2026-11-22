@@ -14,7 +14,7 @@
 import { act, createElement, type ReactRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AskPrompt, PromptShelfHandle } from '../../src/app/chat/ask-card-contract';
+import type { AskBatchPrompt, AskPrompt, AskUserAnswer, PromptShelfHandle } from '../../src/app/chat/ask-card-contract';
 import { PromptShelf } from '../../src/plugins/builtin/ask-cards/PromptShelf';
 
 let container: HTMLDivElement | null = null;
@@ -22,12 +22,38 @@ let root: Root | null = null;
 let ref: ReactRef<PromptShelfHandle | null> = { current: null };
 
 /** showAsk 内同步 setActive —— 必须包 act 才能同步 flush 渲染。 */
-function showAsk(prompt: AskPrompt): Promise<string[] | null> {
-  let p!: Promise<string[] | null>;
+function showAsk(prompt: AskPrompt): Promise<AskUserAnswer[] | null> {
+  let p!: Promise<AskUserAnswer[] | null>;
   act(() => {
     p = ref.current!.showAsk(prompt);
   });
   return p;
+}
+
+function showAskBatch(prompt: AskBatchPrompt): Promise<AskUserAnswer[] | null> {
+  let p!: Promise<AskUserAnswer[] | null>;
+  act(() => {
+    p = ref.current!.showAskBatch(prompt);
+  });
+  return p;
+}
+
+/** 受控 textarea 赋值（绕过 React 拦截） */
+function setText(el: HTMLTextAreaElement, value: string): void {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function textarea(): HTMLTextAreaElement {
+  return container!.querySelector<HTMLTextAreaElement>('.prompt-shelf__custom-input')!;
+}
+
+function buttonContaining(text: string): HTMLButtonElement {
+  const hit = Array.from(container!.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
+    b.textContent?.includes(text),
+  );
+  if (!hit) throw new Error(`找不到按钮：${text}`);
+  return hit;
 }
 
 function ask(id: string, ownerSid: number | null): AskPrompt {
@@ -112,6 +138,58 @@ describe('卡架顶队头（promoteByOwner）', () => {
     expect(ref.current!.active?.id).toBe('a');
   });
 
+  // 2026-11-22 二轮：顶队头换卡时**已填未交的草稿不能丢**（旧实现随卸载消失）
+  it('被顶下的卡：已填文本随卡回到队头，提交时原样带走', async () => {
+    const first = showAsk(ask('a', 1));
+    void showAsk(ask('b', 2));
+    act(() => setText(textarea(), '在 a 上打的话'));
+    act(() => {
+      ref.current!.promoteByOwner(2);
+    });
+    expect(ref.current!.active?.id).toBe('b');
+    act(() => {
+      expect(ref.current!.answerActiveText('先答 b')).toBe('submitted');
+    });
+    expect(ref.current!.active?.id).toBe('a');
+    expect(textarea().value).toBe('在 a 上打的话');
+    await act(async () => {
+      buttonContaining('提交回答').click();
+    });
+    await expect(first).resolves.toEqual([{ selected: [], custom: '在 a 上打的话' }]);
+  });
+
+  it('被顶下的批量卡：页码 + 逐题草稿一起恢复', async () => {
+    const p = showAskBatch({
+      type: 'ask-batch',
+      id: 'batch-a',
+      ownerSid: 1,
+      questions: [{ question: '第一问' }, { question: '第二问' }],
+    });
+    act(() => setText(textarea(), '答一'));
+    await act(async () => {
+      buttonContaining('下一题').click();
+    });
+    expect(container!.textContent).toContain('问 2/2');
+    act(() => setText(textarea(), '答二'));
+    void showAsk(ask('b', 2));
+    act(() => {
+      ref.current!.promoteByOwner(2);
+    });
+    act(() => {
+      expect(ref.current!.answerActiveText('先答 b')).toBe('submitted');
+    });
+    expect(ref.current!.active?.id).toBe('batch-a');
+    expect(container!.textContent).toContain('问 2/2');
+    expect(textarea().value).toBe('答二');
+    await act(async () => {
+      buttonContaining('提交').click();
+    });
+    await expect(p).resolves.toEqual([
+      { selected: [], custom: '答一' },
+      { selected: [], custom: '答二' },
+    ]);
+  });
+
   it('被顶下的卡没丢：它还在队列里，答完新队头后自动回到队头', () => {
     const first = showAsk(ask('a', 1));
     void showAsk(ask('b', 2));
@@ -122,7 +200,7 @@ describe('卡架顶队头（promoteByOwner）', () => {
 
     // 答掉队头（b）：开放式卡走主输入作答
     act(() => {
-      expect(ref.current!.answerActiveText('先答 b')).toBe(true);
+      expect(ref.current!.answerActiveText('先答 b')).toBe('submitted');
     });
     expect(ref.current!.active?.id).toBe('a');
     void first;

@@ -9,7 +9,27 @@
 // 本族只取类型，不构成宿主→插件反向依赖。
 
 import { z } from 'zod';
-import { type CodingToolsUI, defineTool, pauseWhileAwaitingUser, type Tool } from './host';
+import { type AskUserAnswer, type CodingToolsUI, defineTool, pauseWhileAwaitingUser, type Tool } from './host';
+
+/** 该题是否多选（无选项的开放式问题恒按单选语义编码）。 */
+function isMulti(q: { options?: { label: string; description: string }[]; multiSelect?: boolean }): boolean {
+  return (q.options?.length ?? 0) > 0 && !!q.multiSelect;
+}
+
+/** 一道题的作答 → 模型可见值（沿用旧 JSON 形状：单选/开放 = 字符串，多选 = 字符串数组）。
+ *  单选有自写文本时**文本取代选择**（与卡面同规：打字即清掉选中项）；多选时文本并入
+ *  数组尾部。跳过/未答 → null（模型据此看出哪几题是空的）。 */
+function encodeAnswer(a: AskUserAnswer | undefined, multi: boolean): string[] | string | null {
+  if (!a) return null;
+  const custom = (a.custom ?? '').trim();
+  if (multi) {
+    const values = [...a.selected];
+    if (custom) values.push(custom);
+    return values.length > 0 ? values : null;
+  }
+  if (custom) return custom;
+  return a.selected[0] ?? null;
+}
 
 export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
   return [
@@ -98,27 +118,23 @@ export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
               : undefined;
           // 批量：一次推全部 questions，UI 渲成分页表单一次性收集；取消 → 整批 null
           if (batch) {
-            const answers = await new Promise<(string[] | null)[] | null>((resolve) => {
+            const answers = await new Promise<AskUserAnswer[] | null>((resolve) => {
               ui.askUser?.({
                 id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 agentId,
                 questions: batch,
-                callback: (res) => resolve(Array.isArray(res) ? (res as (string[] | null)[]) : null),
+                callback: resolve,
               });
             });
             if (answers === null) return JSON.stringify({ answer: null });
-            // 返回与 questions 对齐：多选 → label 数组；单选/开放式 → 字符串；未答 → null
+            // 返回与 questions 对齐：多选 → 值数组；单选/开放式 → 字符串；未答 → null
             return JSON.stringify({
-              answers: answers.map((a, i) => {
-                if (a === null) return null;
-                const multi = (batch[i].options?.length ?? 0) > 0 && !!batch[i].multiSelect;
-                return multi ? a : (a[0] ?? null);
-              }),
+              answers: answers.map((a, i) => encodeAnswer(a, isMulti(batch[i]))),
             });
           }
           // 单问（含开放式：options 省略）
-          const multi = (args.options?.length ?? 0) > 0 && !!args.multiSelect;
-          const ans = await new Promise<string[] | null>((resolve) => {
+          const multi = isMulti(args);
+          const answers = await new Promise<AskUserAnswer[] | null>((resolve) => {
             ui.askUser?.({
               id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               agentId,
@@ -126,11 +142,12 @@ export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
               header: args.header,
               options: args.options ?? [],
               multiSelect: multi,
-              callback: (res) => resolve(Array.isArray(res) ? (res as string[]) : null),
+              callback: resolve,
             });
           });
-          if (ans === null) return JSON.stringify({ answer: null });
-          return JSON.stringify(multi ? { answers: ans } : { answer: ans[0] ?? null });
+          if (answers === null) return JSON.stringify({ answer: null });
+          const value = encodeAnswer(answers[0], multi);
+          return JSON.stringify(multi ? { answers: value } : { answer: value });
         } finally {
           resumeWatchdog();
         }

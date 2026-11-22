@@ -14,13 +14,12 @@
 // 为什么句柄不住产物域：内核 `chat-core` 是按卷生命周期调用它的那一侧（挂起 Promise 的
 // resolve 归属权限队列），产物只是渲染面——契约住内核 = 内核不 import 产物源码（仓库铁律）。
 
-/** 批量多问的单条题目 */
-export interface AskQuestionItem {
-  question: string;
-  header?: string;
-  options?: { label: string; description: string }[];
-  multiSelect?: boolean;
-}
+import type { AskUserAnswer, AskUserQuestionItem } from '../../agent/tool';
+
+/** 答案形状的单一权威源在内核 `agent/tool.ts`（工具契约与卡面共用一条），
+ *  此处只做转出——旧文件各自声明一份 `AskQuestionItem`，与工具侧字段漂移过。 */
+export type { AskUserAnswer };
+export type AskQuestionItem = AskUserQuestionItem;
 
 export interface AskPrompt {
   type: 'ask';
@@ -62,13 +61,16 @@ export interface PromptOwner {
 
 export type PromptData = (AskPrompt | AskBatchPrompt | PermissionPrompt) & PromptOwner;
 
+/** 主输入作答的去向（调用方据它决定回音文案——旧布尔把「填进当前题」也说成「已提交」）。 */
+export type AskAnswerDisposition = 'submitted' | 'filled';
+
 /** 卡架命令式句柄（core 注册接口——实现随包、形状留内核）。 */
 export interface PromptShelfHandle {
   readonly active: PromptData | null;
-  /** 显示询问提示。返回 Promise，解析为选中的标签或 null（取消时）。 */
-  showAsk(prompt: AskPrompt & PromptOwner): Promise<string[] | null>;
+  /** 显示询问提示。返回 Promise，解析为**长度 1 的答案数组**或 null（取消时）。 */
+  showAsk(prompt: AskPrompt & PromptOwner): Promise<AskUserAnswer[] | null>;
   /** 显示批量多问（分页收集）。返回 Promise，解析为对齐 questions 的答案数组或 null（取消时）。 */
-  showAskBatch(prompt: AskBatchPrompt & PromptOwner): Promise<(string[] | null)[] | null>;
+  showAskBatch(prompt: AskBatchPrompt & PromptOwner): Promise<AskUserAnswer[] | null>;
   /** 显示权限提示。返回 Promise，解析为 allow/remember。 */
   showPermission(prompt: PermissionPrompt & PromptOwner): Promise<{ allow: boolean; remember: boolean }>;
   /** 关闭当前提示（取消挂起的 Promise）。 */
@@ -83,7 +85,8 @@ export interface PromptShelfHandle {
    *  不该强制用户先答完前面别的卷的问题。语义只动**顺序**，不动任何卡的归属与内容。 */
   promoteByOwner(ownerSid: number | null): boolean;
   /** 主输入作答（2026-09-10 完备化）：架头是提问卡时以 text 作答——
-   *  单问卡整卡提交（自定义回答）；批量卡填当前页并翻页。
-   *  返回 false = 架头不是提问卡（权限卡/空架），调用方走常规发送路径。 */
-  answerActiveText(text: string): boolean;
+   *  单问卡整卡提交（文本按自定义回答）；批量卡填当前页并翻页（末页整批提交）。
+   *  返回 'submitted' = 整卡已交；'filled' = 只填进当前题（还没交）；
+   *  false = 架头不是提问卡（权限卡/空架），调用方走常规发送路径。 */
+  answerActiveText(text: string): AskAnswerDisposition | false;
 }

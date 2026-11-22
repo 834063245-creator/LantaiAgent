@@ -48,6 +48,7 @@ import {
   getChatStore,
   paperTarget,
   patchRunConfig,
+  useAskPendingStore,
   useCoreStore,
   useDialogEscape,
   useDraftPaperId,
@@ -207,6 +208,23 @@ const ComposerSurface = memo(function ComposerSurface({
     },
   });
 
+  /* ── 他卷待答提示（2026-11-22 二轮）──
+   * 卡架是**全局单架**：别的卷在等作答/批准时，本框敲的字仍发给**当前卷**（不会抢答）。
+   * 旧形态只有卡片上的卷名徽标，用户在本框里答完才发现没送到——把这句事实摆在输入行
+   * 上方，并给「切过去」入口。数据面 = ask-pending-store（与卡架、卷首角标同一本账，
+   * 零新状态）；点它 = 顶该卷的卡到队头 + 切卷（与待答缩略行同一手势）。 */
+  const pendingAsks = useAskPendingStore((s) => s.entries);
+  const askElsewhere =
+    !isSheet && session.activeSidNum != null
+      ? (pendingAsks.find((e) => e.ownerSid != null && e.ownerSid !== session.activeSidNum) ?? null)
+      : null;
+  const gotoWaitingVolume = useCallback(() => {
+    if (!core || askElsewhere?.ownerSid == null) return;
+    const sid = askElsewhere.ownerSid;
+    core.promoteAskBySession(sid);
+    core.switchToSession(sid);
+  }, [core, askElsewhere]);
+
   /* ── 发送 / 运行态 / 后台卷指示 ── */
   const send = useComposerSend({
     core,
@@ -360,6 +378,20 @@ const ComposerSurface = memo(function ComposerSurface({
           onToggleInk={() => layers.toggleLayer('ink')}
           bgRunning={bgRunning}
         />
+      )}
+
+      {/* 他卷待答（2026-11-22）：输入前可见的事实——「这框发给本卷，别的卷在等」。
+          零他卷待答 = 不渲染（不占行高）。 */}
+      {askElsewhere && (
+        <div className="pp-ask-elsewhere" role="status">
+          <span className="pp-ask-elsewhere-what">
+            「{askElsewhere.badge ?? '他卷'}」正在等{askElsewhere.kind === 'perm' ? '批准' : '作答'}
+          </span>
+          <span className="pp-ask-elsewhere-note">本框输入仍发给当前卷</span>
+          <button type="button" className="pp-ask-elsewhere-go" onClick={gotoWaitingVolume}>
+            切过去
+          </button>
+        </div>
       )}
 
       {/* 附图预览（B2）：大图浮层——点击缩略图开、点遮罩/Esc 关。

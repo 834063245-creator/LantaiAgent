@@ -118,16 +118,17 @@ describe('ask-store（prompt:ask 退役）', () => {
       active: null,
       showAsk: (p) => {
         shown.push(p.id);
-        return Promise.resolve(['继续']);
+        return Promise.resolve([{ selected: ['继续'] }]);
       },
       showAskBatch: () => Promise.resolve(null),
       showPermission: () => Promise.resolve({ allow: false, remember: false }),
       dismiss: () => {},
       dismissByOwner: () => {},
+      promoteByOwner: () => false,
       answerActiveText: () => false,
     });
     await vi.waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
-    expect(cb).toHaveBeenCalledWith(['继续']);
+    expect(cb).toHaveBeenCalledWith([{ selected: ['继续'] }]);
     expect(shown).toEqual(['ask-orphan']);
   });
 
@@ -140,12 +141,13 @@ describe('ask-store（prompt:ask 退役）', () => {
       active: null,
       showAsk: (p) => {
         shown.push(p.id);
-        return Promise.resolve(['继续']);
+        return Promise.resolve([{ selected: ['继续'] }]);
       },
       showAskBatch: () => Promise.resolve(null),
       showPermission: () => Promise.resolve({ allow: false, remember: false }),
       dismiss: () => {},
       dismissByOwner: () => {},
+      promoteByOwner: () => false,
       answerActiveText: () => false,
     });
     expect(cb).not.toHaveBeenCalled();
@@ -154,6 +156,6 @@ describe('ask-store（prompt:ask 退役）', () => {
     // zustand subscribe 同步通知 —— 与 bus.emit 的同步时序等价（showAsk 已同步入队）
     expect(shown).toEqual(['ask-live']);
     await vi.waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
-    expect(cb).toHaveBeenCalledWith(['继续']);
+    expect(cb).toHaveBeenCalledWith([{ selected: ['继续'] }]);
   });
 });

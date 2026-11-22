@@ -71,6 +71,7 @@ export const inkBarColorOf = impl.inkBarColorOf;
 export const inkForBlock = impl.inkForBlock;
 export const INK_FAIL = impl.INK_FAIL;
 export const createInkCache = impl.createInkCache;
+export const useAskPendingStore = impl.useAskPendingStore;
 export const useCanvasViewStore = impl.useCanvasViewStore;
 export const useDraftSheetStore = impl.useDraftSheetStore;
 // 2026-11-12：坞内提示挂坞上方浮层——toast store 经桥取宿主真实例（见 host.ts 注）

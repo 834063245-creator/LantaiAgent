@@ -76,6 +76,11 @@ export {
   modelInput,
   onSettingsSaved,
 } from '../../../settings';
+/* 他卷待答提示（2026-11-22）：卡架是全局单架，别的卷在等作答时本框的字仍发给
+ * 当前卷——坞上方那行提示读这本账（与卡架缩略行/卷首角标同一本）。
+ * 键 `useAskPendingStore` 早在 faceDeps 在册（ask-cards / paper-shell 用），
+ * 取用不新增宿主面键、指纹零漂移。 */
+export { useAskPendingStore } from '../../../state/ask-pending-store';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export type { ComposeSessionPrefs } from '../../../state/compose-store';
 export { getComposeStore, resolveNewSessionDefault } from '../../../state/compose-store';
