@@ -29,7 +29,7 @@
 | 线 | 文档 | 状态 | 一句话 |
 |---|---|---|---|
 | **插件文档通道（受治文档面）** | [`plugin-document-channel-plan.md`](plugin-document-channel-plan.md) | **三批全部落地（2026-11-23 · 契约 v70→v71：读令牌化 + 改稿单；入口走 Agent 工具 `md_open`）；余真机验收** | 让「窗」能打开并回写宿主文档：令牌化 + `app.documents` 能力声明 + 保存出改稿单——不放开 fs |
-| **插件面减形与贡献者体验** | [`plugin-surface-slimming-plan.md`](plugin-surface-slimming-plan.md) | **Proposed（2026-11-23 立；未开工）** | 不转移生命周期/UI 所有权；删 `eager`/`with-window`/`tools.async` 零消费者形状，补一页契约 + JSON Schema + validate CLI + 模板 + 插件医生 + `engines`——宿主少管功能、多管不变量 |
+| **插件面减形与贡献者体验** | [`plugin-surface-slimming-plan.md`](plugin-surface-slimming-plan.md) | **在办（2026-11-23 开工；批 1A 已落）** | 不转移生命周期/UI 所有权；删 `eager`/`with-window`/`tools.async` 零消费者形状，补一页契约 + JSON Schema + validate CLI + 模板 + 插件医生 + `engines`——宿主少管功能、多管不变量 |
 | **goal 目标域（DSH 移植）** | [`goal-domain-dsh-port.md`](goal-domain-dsh-port.md) | **已交付（2026-10-27 `6c1da811`；验收默认通过）** | 每卷一个持久目标（会话日志 `goal/change`/`goal/round` 事件 + 严格折叠）+ `goal(get/create/update)` 域工具 + 空闲自动续行轮 + 创作坞状态条；旧 `goal-manager`/`goal-loop`/`goal_report` 整拆 |
 | **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P4 全部落地（2026-09-16 起；余归档本文档）** | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`（267 份 0 违规），真源 `scripts/doc-facts.cjs` |
 | **paper-shell** | [`paper-shell/README.md`](paper-shell/README.md) | **R5 已结清（2026-08-29 全账清零）；当前 = 创作坞精修线** | R5 逐项清单 [`r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（已清零，作历史判据）；视觉决定账本 [`taste-ledger.md`](paper-shell/taste-ledger.md)；管线史 [`HISTORY.md`](paper-shell/HISTORY.md)；走查 [`walkthrough.md`](paper-shell/walkthrough.md)；表面覆盖地图 [`v2-surface-inventory.md`](paper-shell/v2-surface-inventory.md)；访谈 [`interviews/R1-2026-08-20.md`](paper-shell/interviews/R1-2026-08-20.md) |
