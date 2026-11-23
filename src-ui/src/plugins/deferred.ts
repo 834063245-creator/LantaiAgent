@@ -12,16 +12,15 @@
 //   （workspace.ts setupAgent）注册「按 ownerId 找 bus + 解析 sessionId」的
 //   路由器；本模块保持 runtime 无关（plugins 层不持 bus）。
 //
-// 两张门统一（决策 8）：
-//   - 工具口（manifest.tools async:true）：mountToolDeclarations 包装 execute
-//     ——宿主生成 taskId 注入 args._task_id + 登记发起者（executor 注入的
-//     args._owner_id，bus id）；插件后台代码完成后经宿主桥
-//     `host.deferred.complete(taskId, status)` 唤醒；
-//   - MCP 路（mcpServers）：调用期带 deferred progressToken（登记
-//     token→发起者），server 完成后发自定义通知 `lantai/deferred`
-//     （params: {progressToken, taskId, status, message?}）——McpClient
-//     onNotification → mcp-bridge 翻译成同一唤醒。progressToken 是 MCP
-//     协议面「请求↔通知关联」的标准锚点，server 原样回带即可。
+// 唯一一张门（2026-11-23 减形，契约 v73）：**MCP 路**（mcpServers）——调用期带
+// deferred progressToken（登记 token→发起者），server 完成后发自定义通知
+// `lantai/deferred`（params: {progressToken, taskId, status, message?}）——
+// McpClient onNotification → mcp-bridge 翻译成同一唤醒。progressToken 是 MCP
+// 协议面「请求↔通知关联」的标准锚点，server 原样回带即可。
+//
+// 工具口（manifest.tools async:true + 宿主桥 deferred.complete）已退役：仓内
+// 0 消费者，而「插件后台任务」的正解本就是它的后端进程——纯 JS 插件没有后台，
+// 有后台的插件已经有 MCP server。
 //
 // minimal 定位键纪律（计划 §5-S4 测试 d）：唤醒体只带
 // {status, taskId, sessionId} 三键 JSON + 一行归因前缀（插件·工具名）；
@@ -60,9 +59,7 @@ export type DeferredWakeHandler = (ownerId: string, key: PluginDeferredKey) => b
 const MAX_PENDING = 500;
 
 const wakeHandlers = new Set<DeferredWakeHandler>();
-/** 工具口：taskId → 发起者（async:true 声明工具的调用期登记）。 */
-const tasks = new Map<string, DeferredOwner>();
-/** MCP 路：progressToken → 发起者（tools/call 调用期登记）。 */
+/** progressToken → 发起者（tools/call 调用期登记）。 */
 const callTokens = new Map<string, DeferredOwner>();
 
 function pushBounded(map: Map<string, DeferredOwner>, key: string, value: DeferredOwner): void {
@@ -80,30 +77,7 @@ export function registerDeferredWakeHandler(handler: DeferredWakeHandler): () =>
   return () => wakeHandlers.delete(handler);
 }
 
-// ── 工具口（manifest.tools async:true）──
-
-let taskSeq = 0;
-
-/** 生成插件任务 id（宿主侧唯一——回执卡片与完成通知同键）。 */
-export function nextPluginTaskId(): string {
-  return `ptask-${Date.now().toString(36)}-${++taskSeq}`;
-}
-
-/** 调用期登记（async 工具 execute 包装调）：taskId → 发起者。 */
-export function bindPluginTask(taskId: string, owner: DeferredOwner): void {
-  pushBounded(tasks, taskId, owner);
-}
-
-/** 插件后台完成（宿主桥 deferred.complete 真源）：唤醒发起 Agent。
- *  返回是否唤醒受理成功（未登记 taskId / 无 runtime 认领 = false）。 */
-export function completePluginTask(taskId: string, status: PluginDeferredStatus, message?: string): boolean {
-  const owner = tasks.get(taskId);
-  if (!owner) return false;
-  tasks.delete(taskId);
-  return wake(owner, { taskId, status, plugin: owner.plugin, tool: owner.tool, message });
-}
-
-// ── MCP 路（mcpServers 完成通知）──
+// ── 唤醒登记（mcpServers 完成通知）──
 
 let tokenSeq = 0;
 
@@ -174,11 +148,10 @@ export function formatDeferredWakeNote(key: PluginDeferredKey, sessionId: string
 /** 测试复位（vitest 同 worker 模块态跨用例共享——防串味）。 */
 export function resetPluginDeferredForTests(): void {
   wakeHandlers.clear();
-  tasks.clear();
   callTokens.clear();
 }
 
-/** 测试探针：待处理任务/令牌计数（护栏断言用）。 */
-export function pendingDeferredCountForTests(): { tasks: number; tokens: number } {
-  return { tasks: tasks.size, tokens: callTokens.size };
+/** 测试探针：在册 deferred 令牌数（护栏断言用）。 */
+export function pendingDeferredCountForTests(): { tokens: number } {
+  return { tokens: callTokens.size };
 }

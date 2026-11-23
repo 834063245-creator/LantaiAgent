@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 72;
+export const OPEN_SURFACE_CONTRACT_VERSION = 73;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v73（2026-11-23）**工具口异步退役：`tools[].async` 删除 + 宿主桥 `deferred` 键删除（破坏性）**：
+ *  两张门（决策 8）收成一张——仓内 0 消费者，而「插件后台任务」的正解本就是它的后端
+ *  进程（纯 JS 插件没有后台，有后台的插件已经有 MCP server）。`manifest.tools[].async` 删；
+ *  `window.__lantai_plugin_host__.deferred.complete` 删（宿主桥类型面同步）；`plugins/deferred.ts`
+ *  的工具口账（task 表 / `nextPluginTaskId` / `bindPluginTask` / `completePluginTask`）删，
+ *  只留 MCP 路的 `callTokens` / `bindMcpDeferredToken` / `completeMcpDeferred`。
+ *  **对外可感知**：长任务只剩 `mcpServers` + `lantai/deferred` 一条路；旧 manifest 写
+ *  `tools[].async` = 装载期具名拒绝（错误点名改法），不静默剥掉。
  *  v72（2026-11-23）**受治进程减形：`mcpServers[].lifecycle` 三档 → `governed: true` 一档（破坏性）**：
  *  `lifecycle: 'lazy' | 'eager' | 'with-window'` 删除——仓内真实消费者只有「懒起」一种语义，
  *  `eager` / `with-window` 除测试外零消费者；`eager` 的「装载即拉起」是启动路径上唯一的

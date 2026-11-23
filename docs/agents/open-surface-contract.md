@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：72
+当前版本：73
 
-<!-- contract-fingerprint: c88cedbeadc22a41a069c0f07f3b592007799c55e2db7a4737884ccef4589503 -->
+<!-- contract-fingerprint: 02b9015800590c09f831b06513a27aced98f6174e2e5d81e87d2697432cd58f6 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -27,7 +27,7 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers（含 `readOnly`；**v72 起受治面用 `governed: true`，`lifecycle` 退役**）/displace/dataDir/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**/**activation（v38：`{ lazy?, resources?, exclusive? }`——登记 ≠ 激活的策略面，整块缺席 = kill switch）**） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools（**v73 起无 `async`——工具口异步退役**）/mcpServers（含 `readOnly`；**v72 起受治面用 `governed: true`，`lifecycle` 退役**）/displace/dataDir/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**/**activation（v38：`{ lazy?, resources?, exclusive? }`——登记 ≠ 激活的策略面，整块缺席 = kill switch）**） |
 | `src/composition/roster.ts` | **用户 preset 写法契约**（v38 补登记，用户裁定 F）：`CompositionPatchSchema`——四行域（tools/prompt/capabilities/shell）+ 七 seam 裁剪域（`seam/<域>`）键，用户手写在 `~/.lantai/composition/presets/<id>/roster.patch.yml`；`ResolvedComposition` / `CompositionDiagnostics` 为解析产物形状（**v67 起增 `directOnly` 直调 allowlist**；v65 的 `programOnly` 仍在，二者都只裁直调面） |
 | `src/composition/activation.ts` | **激活账**（v38 新增）：`ActivationSpec`（插件在 apply 期登记的形状——`{ resources?, exclusive?, start, stop? }`）+ 引用计数账（retain/release/plan，键 = 插件名）；叶模块（零项目内运行时依赖） |
 | `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体（组合级 `exclusive` 由组合认领一次，多 Agent 共享） |
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 73 | 2026-11-23 | **工具口异步退役：`tools[].async` 删除 + 宿主桥 `deferred` 键删除（破坏性）**：两张门（决策 8）收成一张——工具口异步仓内 0 消费者，而「插件后台任务」的正解本就是它的后端进程（纯 JS 插件没有后台；有后台的插件已经有 MCP server）。删除面：`manifest.tools[].async`、`window.__lantai_plugin_host__.deferred.complete`（宿主桥类型面同步）、`plugins/deferred.ts` 的工具口账（task 表 / `nextPluginTaskId` / `bindPluginTask` / `completePluginTask`）。保留面：MCP 路 `callTokens` / `bindMcpDeferredToken` / `completeMcpDeferred` + 唤醒体 `formatDeferredWakeNote`（minimal 定位键形状零变更）。**对外可感知**：长任务只剩 `mcpServers` + `lantai/deferred` 一条路；旧 manifest 写 `tools[].async` = 装载期具名拒绝（错误点名改法），不静默剥掉。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 1B；测试 `tests/plugin-deferred.test.ts`（MCP 路保留）· `tests/plugin-loader.test.ts`（具名拒绝） |
 | 72 | 2026-11-23 | **受治进程减形：`mcpServers[].lifecycle` 三档 → `governed: true` 一档（破坏性）**：三档（`lazy` / `eager` / `with-window`）删除——仓内真实消费者只有「懒起」一种语义，另两档除测试外 0 消费者，`eager` 的「装载即拉起」还是启动路径上唯一的阻塞源。新增可选 `governed: boolean`（true = 该条目进受治面）；`restart` 保留但**必须与 `governed: true` 同时出现**（受治面改变失败语义——未就绪调用 fail-fast——不能被一个策略字段隐式打开；单独写 `restart` 报具名错误）。「受治 ⇒ 关窗即杀」随 `with-window` 一并退役：窗只剩两个用途（首开窗拉起 / 窗开期间不空闲回收）。**旧 manifest 写 `lifecycle` = 装载期具名拒绝**（「已退役，改用 governed: true」），不静默剥掉。同版连带：`activation.lazy` × `lifecycle:"eager"` 互斥 refine 删除；`GovernedActivationFace.startLazy/stopLazy` → `start/stop`；`GovernorStopReason` 删 `window-closed`；用户级 `~/.lantai/mcp.json` 复用同一 schema ⇒ 同样失去 `lifecycle`。**对外可感知**：声明 `lifecycle` 的 manifest 从「装载成功」变为「具名拒载」（按下方迁移表改写）；不写受治字段的条目行为逐字节不变。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 1A；测试 `tests/plugin-loader.test.ts` · `tests/mcp-bridge-governance.test.ts` · `tests/mcp-activation-refcount.test.ts` · `tests/plugin-window-store.test.ts` |
 | 71 | 2026-11-23 | **`window-bridge.ts` 入册 + 桥方法增 `doc.save`（文档通道批 2 写回）**：`postMessage` 白名单（方法集 / 事件集 / deps 形状）此前只是实现、未入契约面——第三方实际依赖它，故登记入册，此后变更必须升版。本版白名单增 `doc.save`、事件增 `doc-saved` / `doc-rejected`、`WindowBridgeDeps` 增 `writeDocument`。**写回不内联落盘**：交单即回 `pending-review`（含宿主算的差分与全量 `+a −b` 计数），用户批准才写；退回或写盘失败回 `doc-rejected`。未声明 `app.documents` 的插件行为不变。 | 施工单 `docs/plans/plugin-document-channel-plan.md` 批 2；测试 `tests/plugin-document-save.test.ts` || 70 | 2026-11-23 | **`AppDecl` 增可选 `documents`（插件文档通道 · 批 1 只读）**：`manifest.app.documents: true` 才受理开窗文档载荷（`openPluginWindow(name, { document: { path } })`）与桥方法 `doc.read`；令牌由宿主签发（`state/plugin-document-store.ts`），**窗只交 docToken，路径解释权只在宿主**，令牌绑 windowId + pluginName、关窗/换文档整窗回收；就绪后宿主推 `doc-open` 事件（`{ docToken, path }`）。不声明 ⇒ 桥里没有 `doc.*`、载荷被忽略（源码零迁移）。写回（`doc.save` + 改稿单）留批 2。 | 施工单 `docs/plans/plugin-document-channel-plan.md`；前置 `examples/plugins/md-editor/`（`51e3a48a`）；测试 `tests/plugin-window-document.test.ts` |
 | 69 | 2026-11-22 | **`ToolArgPreview` 的发出面扩档（形状零变更）**：此前该 chunk 只描述 write/edit 的 content 流式预览；现 `code_execution` 也在参数增量期间按 `ARG_PREVIEW_BEAT_MS`（120ms）节流发出**已生成的程序体**——折叠着的程文卡（kind=code）用它在折叠行显示「生成中 + 程序体最新一行」，解决「大程序生成几十秒、卡片只剩一个静止的待执行」的观感缺口。形状仍是 `{ tool_id, tool_name, content }`；第三方 adapter 不发 = 行为逐字节不变；消费方按工具名分流（`part.preview` 只给 code_execution，args 到齐即清空——程序体只在 args 里存一份）。 | 2026-11-22 用户报「code_execution 大程序时观感是卡在 pending」；守护 `tests/provider-code-arg-preview.test.ts` + `tests/code-stream-preview.test.ts` |

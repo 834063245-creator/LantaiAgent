@@ -115,12 +115,6 @@ const ToolManifestDeclSchema = z.strictObject({
   }),
   /** 是否只读（可安全并行）；缺省 false。 */
   readOnly: z.boolean().optional(),
-  /** 异步工具（app shell 件 D · S4，决策 8 两张门之一——工具口）：声明
-   *  true = 执行即返回卡片（宿主注入 `args._task_id`——插件回执里可引
-   *  用），插件后台完成后经宿主桥 `deferred.complete(taskId, status)` 唤醒
-   *  发起 Agent（minimal 定位键 {status, taskId, sessionId}——内容凭
-   *  taskId 调插件自己的查询工具按需取）。缺省 false = 同步语义不变。 */
-  async: z.boolean().optional(),
 });
 
 /** 权限类枚举（C11-2）——Rust 权限咽喉的五个域（PascalCase 规则名的
@@ -323,6 +317,13 @@ const RETIRED_MANIFEST_SHAPES: ReadonlyArray<{
     at: 'mcpServers[].lifecycle',
     pick: (manifest) => listHasKey(manifest.mcpServers, 'lifecycle'),
     reason: '已退役——改写成 `governed: true`（受治进程只剩「装配/调用/开窗拉起 + 空闲回收」一种语义）',
+  },
+  {
+    at: 'tools[].async',
+    pick: (manifest) => listHasKey(manifest.tools, 'async'),
+    reason:
+      '已退役——工具口异步整条路删了（宿主桥 `deferred` 键同时消失）。长任务改成插件自带 MCP server：' +
+      '调用期宿主绑 deferred progressToken，server 完成时发 `lantai/deferred` 通知唤醒发起 Agent',
   },
 ];
 

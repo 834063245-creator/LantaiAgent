@@ -145,7 +145,7 @@ describe('manifest 校验（zod 单一来源）', () => {
     expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO }] }).ok).toBe(true);
   });
 
-  it('S2 退役形状具名拒绝：lifecycle（含 eager / with-window 两值）报错说清改什么', () => {
+  it('退役形状具名拒绝 ①：mcpServers[].lifecycle（含 eager / with-window）报错说清改什么', () => {
     const STDIO = { name: 's', transport: 'stdio', command: 'node' } as const;
     for (const tier of ['lazy', 'eager', 'with-window', 'always']) {
       const res = validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: tier }] });
@@ -155,6 +155,22 @@ describe('manifest 校验（zod 单一来源）', () => {
       expect(error, tier).toContain('mcpServers[].lifecycle');
       expect(error, tier).toContain('已退役');
       expect(error, tier).toContain('governed: true');
+    }
+  });
+
+  it('退役形状具名拒绝 ②：tools[].async（工具口异步整条路退役）指向 MCP 路', () => {
+    for (const async of [true, false]) {
+      const res = validateManifest({
+        ...HELLO_MANIFEST,
+        tools: [{ name: 't', description: 'd', parameters: { type: 'object' }, async }],
+      });
+      expect(res.ok, String(async)).toBe(false);
+      const error = res.ok ? '' : res.error;
+      expect(error).toContain('tools[].async');
+      expect(error).toContain('已退役');
+      expect(error).toContain('lantai/deferred');
+      // 迁移指引必须指向唯一剩下的那条路（插件自带 MCP server），不能只说「删掉」
+      expect(error).toContain('MCP server');
     }
   });
   it('S6 P3a：activation 声明形状 + lazy 与 eager 互斥（资源型插件的副作用只能在激活时启动）', () => {
