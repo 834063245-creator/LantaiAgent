@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>我的插件</title>
+    <style>
+      /* 窗内样式全归插件（iframe 真隔离，宿主样式进不来、也出不去）。 */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #faf7f0;
+        color: #2b2620;
+        font: 14px/1.7 "Noto Serif SC", "Songti SC", serif;
+      }
+      main {
+        padding: 24px 28px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 500;
+      }
+      p {
+        margin: 0;
+        opacity: 0.72;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>我的插件</h1>
+      <p>这扇窗属于插件自己。改 app/index.html 就能改这里的内容。</p>
+      <p>要与宿主要能力（数据目录 / 通知 / 窗口），走 postMessage 白名单桥（见 docs/plugins/README.md 的宿主桥一节）。</p>
+    </main>
+  </body>
+</html>

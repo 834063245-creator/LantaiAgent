@@ -16,6 +16,7 @@
 //   - engine-plugin-contract.md（引擎开放面契约，gen-engine-plugin-contract；
 //     engine-plugin-extraction Phase 5 挂入门禁）
 //   - facts.generated.md（文档事实单一真源，doc-facts；文档面大重构 P0 挂入）
+//   - manifest.schema.json（插件 manifest 形状，gen-plugin-manifest-schema；契约工具包批 2 挂入）
 // 注：frontend-rpc-contract.md 生成器嵌时间戳，字节对拍不可行——其守护
 // 由「生成后同 commit」纪律 + 契约测试承担，不入本门禁。
 
@@ -32,6 +33,7 @@ const generators = [
   { name: 'contract-fingerprint', script: path.join(ROOT, 'scripts', 'gen-contract-fingerprint.cjs') },
   { name: 'engine-plugin-contract', script: path.join(ROOT, 'scripts', 'gen-engine-plugin-contract.cjs') },
   { name: 'doc-facts', script: path.join(ROOT, 'scripts', 'doc-facts.cjs') },
+  { name: 'plugin-manifest-schema', script: path.join(ROOT, 'scripts', 'gen-plugin-manifest-schema.cjs') },
 ];
 
 let failed = false;

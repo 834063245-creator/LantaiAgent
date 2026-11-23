@@ -1,0 +1,209 @@
+{
+  "$comment": "兰台插件 manifest 形状（生成物，勿手改）。真源 = src-ui/src/plugins/types.ts 的 PluginManifestSchema；重新生成 = npm run gen:plugin-schema。只表达形状：跨字段约束（governed 与 restart 的配对、app 入口二态、环回 URL 白名单、退役字段具名拒绝）不在本文件里，以 validateManifest / npm run plugin:validate 为准。",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(\\/[a-z0-9-]+)?$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "entry": {
+      "type": "string",
+      "pattern": "^[a-z0-9._/-]+$"
+    },
+    "inject": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "read",
+          "edit",
+          "bash",
+          "git",
+          "web"
+        ]
+      }
+    },
+    "displace": {
+      "type": "boolean"
+    },
+    "dataDir": {
+      "type": "boolean"
+    },
+    "app": {
+      "type": "object",
+      "properties": {
+        "entry": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "floating",
+            "dock",
+            "fullscreen"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "documents": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parameters": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "readOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "parameters"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "mcpServers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "stdio",
+              "http"
+            ]
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "headers": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "failurePolicy": {
+            "type": "string",
+            "enum": [
+              "startup-error",
+              "lazy"
+            ]
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "governed": {
+            "type": "boolean"
+          },
+          "restart": {
+            "type": "string",
+            "enum": [
+              "off",
+              "on-crash"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "transport"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "activation": {
+      "type": "object",
+      "properties": {
+        "lazy": {
+          "type": "boolean"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "pty",
+              "stdio",
+              "port",
+              "listener",
+              "window"
+            ]
+          }
+        },
+        "exclusive": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "entry"
+  ],
+  "additionalProperties": false
+}
