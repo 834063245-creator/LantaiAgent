@@ -57,7 +57,7 @@ const BUDGET = {
     'url',
   ],
   'tools 条目': ['description', 'name', 'parameters', 'readOnly'],
-  'app 声明': ['documents', 'entry', 'mode', 'title', 'url'],
+  'app 声明': ['documents', 'entry', 'mode', 'size', 'title', 'url'],
   'activation 声明': ['exclusive', 'lazy', 'resources'],
   'engines 声明': ['lantai'],
 } as const;
@@ -96,7 +96,7 @@ describe('插件面形状预算：manifest 字段白名单（增字段必须改�
     expect(propsOf(ROOT.properties?.tools?.items)).toEqual([...BUDGET['tools 条目']].sort());
   });
 
-  it('app / activation 声明：形状未增（文档通道的 documents 已在册）', () => {
+  it('app / activation 声明：白名单精确（v75 给 app 加 size——首选窗尺寸）', () => {
     expect(propsOf(ROOT.properties?.app)).toEqual([...BUDGET['app 声明']].sort());
     expect(propsOf(ROOT.properties?.activation)).toEqual([...BUDGET['activation 声明']].sort());
   });

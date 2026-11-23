@@ -7,6 +7,7 @@
     "entry": "./app/index.html",
     "mode": "floating",
     "title": "文卷",
+    "size": { "w": 900, "h": 640 },
     "documents": true
   },
   "dataDir": true,

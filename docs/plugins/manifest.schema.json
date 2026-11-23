@@ -65,6 +65,26 @@
           "type": "string",
           "minLength": 1
         },
+        "size": {
+          "type": "object",
+          "properties": {
+            "w": {
+              "type": "integer",
+              "minimum": 320,
+              "maximum": 2400
+            },
+            "h": {
+              "type": "integer",
+              "minimum": 240,
+              "maximum": 1600
+            }
+          },
+          "required": [
+            "w",
+            "h"
+          ],
+          "additionalProperties": false
+        },
         "documents": {
           "type": "boolean"
         }

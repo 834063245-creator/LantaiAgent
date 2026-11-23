@@ -41,12 +41,9 @@ import {
   openPluginWindow,
   setPluginWindowMode,
 } from '../src/plugins/window-facility';
+import { PLUGIN_WINDOW_DEFAULT_H, PLUGIN_WINDOW_DEFAULT_W } from '../src/plugins/window-metrics';
 import { usePluginStore } from '../src/state/plugin-store';
-import {
-  PLUGIN_WINDOW_DEFAULT_H,
-  PLUGIN_WINDOW_DEFAULT_W,
-  usePluginWindowStore,
-} from '../src/state/plugin-window-store';
+import { usePluginWindowStore } from '../src/state/plugin-window-store';
 
 const HELLO = { name: 'hello', version: '1.0.0', entry: 'entry.js' };
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
@@ -86,6 +83,34 @@ describe('S3 窗口原语：manifest.app schema', () => {
     expect(validateManifest({ ...HELLO, app: { entry: './a.html', title: '' } }).ok).toBe(false);
     expect(validateManifest({ ...HELLO, app: { entry: './a.html', bogus: 1 } }).ok).toBe(false);
     expect(validateManifest({ ...HELLO, app: {} }).ok).toBe(false);
+  });
+
+  it('size（v75 首选尺寸）：上下界内收；越界 / 非整数 / 未知键 / 非 floating 全拒', () => {
+    const ok = validateManifest({ ...HELLO, app: { entry: './a.html', size: { w: 900, h: 700 } } });
+    expect(ok.ok).toBe(true);
+    expect(ok.ok ? ok.manifest.app?.size : undefined).toEqual({ w: 900, h: 700 });
+    // 边界值本身合法
+    expect(validateManifest({ ...HELLO, app: { entry: './a.html', size: { w: 320, h: 240 } } }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO, app: { entry: './a.html', size: { w: 2400, h: 1600 } } }).ok).toBe(true);
+    for (const size of [
+      { w: 319, h: 700 },
+      { w: 900, h: 239 },
+      { w: 2401, h: 700 },
+      { w: 900, h: 1601 },
+      { w: 900.5, h: 700 },
+      { w: 900, h: 700, z: 1 }, // strictObject：size 内不许有第三键
+    ]) {
+      expect(validateManifest({ ...HELLO, app: { entry: './a.html', size } }).ok, JSON.stringify(size)).toBe(false);
+    }
+    // 只对 floating 生效：dock / fullscreen 声明 = 具名拒绝（不静默忽略）
+    expect(validateManifest({ ...HELLO, app: { entry: './a.html', mode: 'dock', size: { w: 900, h: 700 } } }).ok).toBe(
+      false,
+    );
+    expect(
+      validateManifest({ ...HELLO, app: { entry: './a.html', mode: 'fullscreen', size: { w: 900, h: 700 } } }).ok,
+    ).toBe(false);
+    // 环回远端页 + floating 可以声明（窗照样是 floating）
+    expect(validateManifest({ ...HELLO, app: { url: 'http://127.0.0.1:1/', size: { w: 900, h: 700 } } }).ok).toBe(true);
   });
 
   it('缺省不声明 = 行为不变（无 app 字段照常装载）', () => {
@@ -177,6 +202,17 @@ describe('S3 窗口原语：窗口注册表（plugin-window-store）', () => {
       w: PLUGIN_WINDOW_DEFAULT_W,
       h: PLUGIN_WINDOW_DEFAULT_H,
     });
+  });
+
+  it('manifest 声明的 size 决定开窗起手尺寸（seed 优先——落盘几何覆盖声明值）', () => {
+    const st = usePluginWindowStore.getState();
+    st.registerAppDef({ ...DEF, size: { w: 900, h: 700 } });
+    st.openWindow('hello');
+    expect(usePluginWindowStore.getState().windows[0]).toMatchObject({ w: 900, h: 700 });
+    // seed（用户落盘几何）盖过声明：起手位置与尺寸都按 seed
+    st.closeWindow('hello#1');
+    st.openWindow('hello', { x: 120, y: 80, w: 640, h: 480 });
+    expect(usePluginWindowStore.getState().windows[0]).toMatchObject({ x: 120, y: 80, w: 640, h: 480 });
   });
 
   it('closeWindow 返回所属插件；focus/setMode/moveWindow 就地改实例', () => {

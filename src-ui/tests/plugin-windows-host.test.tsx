@@ -21,7 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginWindowsHost } from '../src/app/plugin-windows/PluginWindowsHost';
 import { resetMcpGovernorForTests } from '../src/plugins/mcp-bridge';
 import { closePluginWindow, openPluginWindow } from '../src/plugins/window-facility';
-import { PLUGIN_WINDOW_MIN_H, PLUGIN_WINDOW_MIN_W, usePluginWindowStore } from '../src/state/plugin-window-store';
+import { PLUGIN_WINDOW_MIN_H, PLUGIN_WINDOW_MIN_W } from '../src/plugins/window-metrics';
+import { usePluginWindowStore } from '../src/state/plugin-window-store';
 
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
 

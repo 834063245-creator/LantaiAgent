@@ -173,6 +173,13 @@ export function isLoopbackAppUrl(value: string): boolean {
  *      fullscreen（可覆盖宿主视觉面的形态不放大到全屏）。 */
 const APP_WINDOW_MODE = z.enum(['floating', 'dock', 'fullscreen']);
 
+/** 窗首选尺寸的上下界（px）——`manifest.app.size` 的围栏，也是宿主窗口夹持的
+ *  同一把尺子（`plugins/window-metrics.ts` 从这里取值，宿主算式不另抄数字）。
+ *  下限 = 书眉 + 可读内容的底（320×240）；上限按桌面屏给（2400×1600），实际
+ *  开窗还会夹进当前视口（视口减 24）。 */
+export const APP_WINDOW_SIZE_MIN = { w: 320, h: 240 } as const;
+export const APP_WINDOW_SIZE_MAX = { w: 2400, h: 1600 } as const;
+
 const AppDeclSchema = z
   .strictObject({
     /** 窗内容入口 A：`./` 前缀相对插件目录的 HTML（资产通道寻址）。 */
@@ -194,6 +201,24 @@ const AppDeclSchema = z
     mode: APP_WINDOW_MODE.optional(),
     /** 窗标题（书眉显示；缺省用插件名）。 */
     title: z.string().min(1).optional(),
+    /** 窗的首选初始尺寸（px，v75）：只在**这个窗第一次开**（用户没拖过）时生效；
+     *  用户拖过右下角握把后，宿主记住的是用户的几何（localStorage），声明值让位。
+     *  只对 floating 有意义——dock 的宽度属停靠栏、fullscreen 即视口，给它们声明
+     *  size 是 manifest 错误（具名拒绝，不静默忽略）。 */
+    size: z
+      .strictObject({
+        w: z
+          .number()
+          .int({ message: 'app.size.w 必须是整数 px' })
+          .min(APP_WINDOW_SIZE_MIN.w, { message: `app.size.w 不能小于 ${APP_WINDOW_SIZE_MIN.w}px` })
+          .max(APP_WINDOW_SIZE_MAX.w, { message: `app.size.w 不能超过 ${APP_WINDOW_SIZE_MAX.w}px` }),
+        h: z
+          .number()
+          .int({ message: 'app.size.h 必须是整数 px' })
+          .min(APP_WINDOW_SIZE_MIN.h, { message: `app.size.h 不能小于 ${APP_WINDOW_SIZE_MIN.h}px` })
+          .max(APP_WINDOW_SIZE_MAX.h, { message: `app.size.h 不能超过 ${APP_WINDOW_SIZE_MAX.h}px` }),
+      })
+      .optional(),
     /** 文档通道（批 1 只读）：声明 true 才允许窗经桥 `doc.read` 读宿主文档——
      *  令牌由宿主在开窗时签发（`openPluginWindow(name, { document })`），窗只说
      *  「读 token X」，路径解释权只在宿主。不声明 ⇒ 桥里没有 `doc.*`、开窗也不
@@ -205,6 +230,9 @@ const AppDeclSchema = z
   })
   .refine((v) => !(v.url !== undefined && v.mode === 'fullscreen'), {
     message: 'app.url（环回远端视图）不允许 fullscreen——远端文档可覆盖宿主视觉面，全屏形态把界面辨识度也拿走',
+  })
+  .refine((v) => !(v.size !== undefined && v.mode !== undefined && v.mode !== 'floating'), {
+    message: 'app.size 只对 floating 窗生效——dock 的宽度属停靠栏、fullscreen 即视口（别声明一个不会生效的尺寸）',
   });
 
 /** manifest.activation 声明（S6 P3a，2026-09-15）——「登记 ≠ 激活」的**策略面**。

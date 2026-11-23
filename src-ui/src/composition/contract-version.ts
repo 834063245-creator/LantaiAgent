@@ -22,9 +22,19 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 74;
+export const OPEN_SURFACE_CONTRACT_VERSION = 75;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v75（2026-11-23）**`manifest.app` 增可选 `size: { w, h }`（首选窗尺寸）**：
+ *  软件级插件可声明自己的起手窗尺寸（320–2400 × 240–1600 px），**只对 floating
+ *  生效**（dock 的宽度属停靠栏、fullscreen 即视口——给它们声明 size 是具名拒绝，
+ *  不静默忽略）。**用户优先于声明**：用户拖过右下角握把后宿主记住的是用户的
+ *  几何（本地 localStorage，宿主行为、不进 manifest），声明值只在「这个窗第一次
+ *  开」时生效。**对外可感知**：不声明 = 行为逐字不变（起手仍 460×360）；声明值
+ *  是纯增量。注意旧宿主（v74 及以前）读 `app.size` 会**整份拒载**（`app` 是
+ *  strictObject，未知嵌套键报错）——用新字段的样例要同时声明 `engines` 最低版本。
+ *  守护 `tests/plugin-window-store.test.ts`（schema 上下界/模式围栏）+
+ *  `tests/plugin-surface-budget.test.ts`（形状白名单）。
  *  v74（2026-11-23）**manifest 增 `engines` 兼容声明 + 未知顶层字段转 `warnings`**：
  *  `engines?: { lantai?: string }`（semver range）——声明了就必须满足，装载期不满足 ⇒ 具名拒载
  *  （原因带「需要兰台 X，当前宿主 Y」）；range 非法同样拒载。**宿主版本未知**（开发/测试/

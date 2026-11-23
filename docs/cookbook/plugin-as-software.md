@@ -19,7 +19,12 @@
   "name": "notes-app",
   "version": "1.0.0",
   "entry": "entry.js",
-  "app": { "entry": "./app/index.html", "mode": "floating", "title": "便签" },
+  "app": {
+    "entry": "./app/index.html",
+    "mode": "floating",
+    "title": "便签",
+    "size": { "w": 760, "h": 560 }
+  },
   "dataDir": true,
   "mcpServers": [
     { "name": "notes", "transport": "stdio", "command": "node", "args": ["./server.cjs"], "governed": true }
@@ -32,6 +37,11 @@
 
 四件套各取所需：纯 GUI 软件可以只声明 `app`（后端 = 零工具 MCP server
 是可选项——没工具也能装、能开窗给人用，只是 Agent 驱动不了）。
+
+`app.size`（v75）：窗的**首选起手尺寸**（320–2400 × 240–1600 px，仅 floating
+有意义）。它只是起手值——用户拖过右下角握把后，宿主记住的是用户的几何，比声
+明值优先；缺省不写 = 460×360。旧宿主（v74 及以前）读 `app.size` 会整份拒载，
+所以用它的插件要同时声明 `engines` 最低兰台版本。
 
 ## 第 1 步：窗内容（`app/index.html`，件 A）
 

@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：74
+当前版本：75
 
-<!-- contract-fingerprint: 09e98c42df35d2466cdd8bf9366814cfbdc16fafa7512e33e777b6671cb15dbc -->
+<!-- contract-fingerprint: e462db0102b50a9826b96493cd4b734136256b2b4f589152d64b6298405d6631 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -27,7 +27,7 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools（**v73 起无 `async`——工具口异步退役**）/mcpServers（含 `readOnly`；**v72 起受治面用 `governed: true`，`lifecycle` 退役**）/displace/dataDir/**engines（v74：宿主版本 semver range，声明即校验）**/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**/**activation（v38：`{ lazy?, resources?, exclusive? }`——登记 ≠ 激活的策略面，整块缺席 = kill switch）**） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools（**v73 起无 `async`——工具口异步退役**）/mcpServers（含 `readOnly`；**v72 起受治面用 `governed: true`，`lifecycle` 退役**）/displace/dataDir/**engines（v74：宿主版本 semver range，声明即校验）**/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页；**v75 增 `size: { w, h }` 首选窗尺寸——320–2400 × 240–1600，仅 floating**）**/**activation（v38：`{ lazy?, resources?, exclusive? }`——登记 ≠ 激活的策略面，整块缺席 = kill switch）**） |
 | `src/composition/roster.ts` | **用户 preset 写法契约**（v38 补登记，用户裁定 F）：`CompositionPatchSchema`——四行域（tools/prompt/capabilities/shell）+ 七 seam 裁剪域（`seam/<域>`）键，用户手写在 `~/.lantai/composition/presets/<id>/roster.patch.yml`；`ResolvedComposition` / `CompositionDiagnostics` 为解析产物形状（**v67 起增 `directOnly` 直调 allowlist**；v65 的 `programOnly` 仍在，二者都只裁直调面） |
 | `src/composition/activation.ts` | **激活账**（v38 新增）：`ActivationSpec`（插件在 apply 期登记的形状——`{ resources?, exclusive?, start, stop? }`）+ 引用计数账（retain/release/plan，键 = 插件名）；叶模块（零项目内运行时依赖） |
 | `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体（组合级 `exclusive` 由组合认领一次，多 Agent 共享） |
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 75 | 2026-11-23 | **`manifest.app` 增可选 `size: { w, h }`（首选窗尺寸，纯增量）**：软件级插件可声明自己的起手窗尺寸——float 窗缺省 460×360 的缝合线终于能按软件形态分开（编辑器要宽、便签要小）。围栏 320–2400 × 240–1600 px、整数；**只对 `floating` 生效**（`dock` 的宽度属停靠栏、`fullscreen` 即视口——给它们声明 = 具名拒绝）。**用户优先于声明**：用户拖过右下角握把后，宿主记住用户的几何（localStorage，v75 同批落地；窗口位置/尺寸跨重启，壳面板宽度同样记住），声明值只在「第一次开」时生效。**对外可感知**：不声明 = 行为逐字不变；旧宿主（v74 及以前）读 `app.size` 会整份拒载（`app` 是 strictObject）——用新字段的样例需同时声明 `engines` 最低版本。 | 守护 `tests/plugin-window-store.test.ts`（上下界 / 非整数 / 未知键 / 非 floating）+ `tests/plugin-surface-budget.test.ts`（形状白名单）+ `tests/plugin-window-geometry.test.ts`（落盘优先） |
 | 74 | 2026-11-23 | **manifest 增 `engines` 兼容声明 + 未知顶层字段转 `warnings`（纯增量）**：`engines?: { lantai?: string }`（semver range）——声明了就必须满足，装载期不满足 ⇒ 具名拒载（原因带「需要兰台 X，当前宿主 Y」），range 非法同样拒载；**宿主版本未知**（开发/测试/产物域，构建锚 `__LANTAI_BUILD__.v` 缺席或非 semver）⇒ 跳过检查 + 记 warning，不阻断（未知 ≠ 不兼容）。同版 `validateManifest` 返回 `warnings: string[]`：schema 不认识的**顶层**字段不再被静默剥掉（`z.object` 会 strip），改为可见警告且装载照常；`PluginRecord` 增可选 `warnings`，设置页「诊断」原样陈列。新运行时依赖 `semver`。**对外可感知**：不声明 `engines` 的插件行为逐字节不变；声明了区间过窄的插件从此被拒载而不是「装上了但行为不对」。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 4；测试 `tests/plugin-loader.test.ts`（满足/不满足/未知版本/非法区间 + 未知字段警告） |
 | 73 | 2026-11-23 | **工具口异步退役：`tools[].async` 删除 + 宿主桥 `deferred` 键删除（破坏性）**：两张门（决策 8）收成一张——工具口异步仓内 0 消费者，而「插件后台任务」的正解本就是它的后端进程（纯 JS 插件没有后台；有后台的插件已经有 MCP server）。删除面：`manifest.tools[].async`、`window.__lantai_plugin_host__.deferred.complete`（宿主桥类型面同步）、`plugins/deferred.ts` 的工具口账（task 表 / `nextPluginTaskId` / `bindPluginTask` / `completePluginTask`）。保留面：MCP 路 `callTokens` / `bindMcpDeferredToken` / `completeMcpDeferred` + 唤醒体 `formatDeferredWakeNote`（minimal 定位键形状零变更）。**对外可感知**：长任务只剩 `mcpServers` + `lantai/deferred` 一条路；旧 manifest 写 `tools[].async` = 装载期具名拒绝（错误点名改法），不静默剥掉。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 1B；测试 `tests/plugin-deferred.test.ts`（MCP 路保留）· `tests/plugin-loader.test.ts`（具名拒绝） |
 | 72 | 2026-11-23 | **受治进程减形：`mcpServers[].lifecycle` 三档 → `governed: true` 一档（破坏性）**：三档（`lazy` / `eager` / `with-window`）删除——仓内真实消费者只有「懒起」一种语义，另两档除测试外 0 消费者，`eager` 的「装载即拉起」还是启动路径上唯一的阻塞源。新增可选 `governed: boolean`（true = 该条目进受治面）；`restart` 保留但**必须与 `governed: true` 同时出现**（受治面改变失败语义——未就绪调用 fail-fast——不能被一个策略字段隐式打开；单独写 `restart` 报具名错误）。「受治 ⇒ 关窗即杀」随 `with-window` 一并退役：窗只剩两个用途（首开窗拉起 / 窗开期间不空闲回收）。**旧 manifest 写 `lifecycle` = 装载期具名拒绝**（「已退役，改用 governed: true」），不静默剥掉。同版连带：`activation.lazy` × `lifecycle:"eager"` 互斥 refine 删除；`GovernedActivationFace.startLazy/stopLazy` → `start/stop`；`GovernorStopReason` 删 `window-closed`；用户级 `~/.lantai/mcp.json` 复用同一 schema ⇒ 同样失去 `lifecycle`。**对外可感知**：声明 `lifecycle` 的 manifest 从「装载成功」变为「具名拒载」（按下方迁移表改写）；不写受治字段的条目行为逐字节不变。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 1A；测试 `tests/plugin-loader.test.ts` · `tests/mcp-bridge-governance.test.ts` · `tests/mcp-activation-refcount.test.ts` · `tests/plugin-window-store.test.ts` |
