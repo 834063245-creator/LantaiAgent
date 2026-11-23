@@ -1123,7 +1123,7 @@ factory（出厂表，代码真源）
 
 | 件 | manifest 字段 | 宿主给什么 |
 |---|---|---|
-| **A 窗口原语** | `app: { entry: "./app/index.html" }`（资产 HTML）**或** `app: { url: "http://127.0.0.1:<port>/…" }`（**环回**远端页，二态互斥必给其一）；`mode?: "floating"\|"dock"\|"fullscreen"`（url 形态禁 fullscreen；**`dock`/`fullscreen` 冻结**：0 消费者，窗口管理重做时再定）；`size?: { w, h }`（**v75 首选窗尺寸**：320–2400 × 240–1600 px，仅 floating——用户拖过右下角握把后以用户的几何为准，声明值只在第一次开窗时生效）；`title?` | 装载只登记窗口定义；开窗才实例化 iframe 视口。**入口二态（契约 v28，2026-09-13）**：①`entry` = 插件自包含 HTML——**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥，窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）；宿主→窗广播限 `bridge-ready` / `window-closing` 两种。②`url` = **环回**远端页（本机服务，如 `officecli watch` 活预览）——iframe 给 `allow-same-origin`（跨源文档保住自己 origin，其同源 `EventSource`/`fetch` 才通；父页仍拿不到它的 DOM），**且不绑宿主桥**（远端文档不是插件代码）。白名单：host ∈ {127.0.0.1, localhost, ::1}、禁凭据、禁非 http(s)——远端文档能覆盖宿主视觉面，所以只许环回 + 禁全屏。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
+| **A 窗口原语** | `app: { entry: "./app/index.html" }`（资产 HTML）**或** `app: { url: "http://127.0.0.1:<port>/…" }`（**环回**远端页，二态互斥必给其一）；`mode?: "floating"\|"dock"\|"fullscreen"`（url 形态禁 fullscreen；**`dock`/`fullscreen` 冻结**：0 消费者，窗口管理重做时再定）；`size?: { w, h }`（**v75 首选窗尺寸**：320–2400 × 240–1600 px，仅 floating——用户拖过右下角握把后以用户的几何为准，声明值只在第一次开窗时生效）；`documents?: true`（**文档通道**：受理宿主文档载荷、桥面才认 `doc.read`/`doc.save`——见 §10.5）；`title?` | 装载只登记窗口定义；开窗才实例化 iframe 视口。**入口二态（契约 v28，2026-09-13）**：①`entry` = 插件自包含 HTML——**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥，窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）；宿主→窗广播限 `bridge-ready` / `window-closing` 两种。②`url` = **环回**远端页（本机服务，如 `officecli watch` 活预览）——iframe 给 `allow-same-origin`（跨源文档保住自己 origin，其同源 `EventSource`/`fetch` 才通；父页仍拿不到它的 DOM），**且不绑宿主桥**（远端文档不是插件代码）。白名单：host ∈ {127.0.0.1, localhost, ::1}、禁凭据、禁非 http(s)——远端文档能覆盖宿主视觉面，所以只许环回 + 禁全屏。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
 | **B 数据目录** | `dataDir: true` | 装载即分配 `<数据根>/<插件名>/`（幂等 ensure）；受治进程经 spawn env `LANTAI_PLUGIN_DATA_DIR` 拿到路径；窗经桥 fs 读写（Rust 侧名字 + rel 双围栏 + canonicalize 前缀锁死插件根）；卸载随 `plugin_uninstall` 整体挪 `.trash` 回收（备份一个目录全家走） |
 | **C 受治进程** | `mcpServers` 条目 `governed?: true`（声明 = 受治面；缺席 = 旧形态不变；http 条目声明受治字段拒绝）+ `restart?: "off"\|"on-crash"`（**只对受治进程有意义**：写它必须同时写 `governed: true`） | 就绪 = initialize 握手 + tools/list 限窗完成（缺省 60s，到点判启动失败 + 杀挂壁进程）；on-crash 指数退避重启（1s×2 封顶 30s）；生命周期只有一档（装配/调用/开窗拉起 + 空闲回收 5min，窗开期间不回收；**关窗不即杀**——那档已随 `with-window` 退役，v72）；未就绪调用立即报 `service_not_ready` + 触发拉起（宿主永不阻塞等待）；进程树终止（Windows taskkill /T；kill 挂插件 fiber） |
 | **D 后台唤醒** | `mcpServers` + server 完成通知（**工具口 `tools[].async` 已于 v73 退役**：两张门收成一张） | 调用期宿主绑 deferred progressToken（登记发起者）；server 完成后发 `lantai/deferred`（params.progressToken 回带 + 自订 taskId）→ 唤醒发起 Agent + **minimal 定位键 `{status, taskId, sessionId}`**（内容不进唤醒体——凭 taskId 调插件工具按需取） |
@@ -1161,6 +1161,26 @@ factory（出厂表，代码真源）
   不阻断卸载——数据留原位是安全方向）。
 - **契约版本**：软件级字段全在开放面契约（v14-v17 起，app 入口二态见 v28；
   `docs/agents/open-surface-contract.md` 变更记录逐版在案）。
+
+### 10.5 文档通道（读宿主文档 / 交改稿单，v70–v71）
+
+插件想在窗里**打开用户正在看的宿主文档**、改完再写回去——这条路不放开 fs，走令牌化：
+
+- **声明**：`app.documents: true`。不声明 ⇒ 桥里没有 `doc.*`（kill switch），文档载荷被忽略并 warn（不静默）。
+- **开窗带文档**：`windows.open(插件名, { document: { path } })`（或宿主侧 `openWith(path)`——见下）。
+  宿主签发**令牌**（绑 windowId + 插件名），窗内收事件 `doc-open` 的 `{ docToken, path }`。
+  **窗永远只说令牌、不报路径**：路径解释权只在宿主（否则等于任意读）。
+- **读**：`doc.read({ docToken })` → `{ path, text }`。
+- **写**：`doc.save({ docToken, content })` —— **不直接落盘**。宿主算差分、出一张**改稿单**给用户点头，
+  回执是 `pending-review`（带 `reviewId` / `added` / `removed` / `diff`）；正文无变化回 `unchanged`。
+  用户批准 → 宿主写盘并发 `doc-saved`；退回或写盘失败 → `doc-rejected`（带 reason）。
+  **同一扇窗同时只许一张待审单**（否则两张单会在用户面前互相打架）。
+- **谁来「打开文件」**：宿主在会话里点文件引用时，选注册面里**按名字排序第一个**声明 `app.documents` 的插件
+  （`windows.openWith(path)`，v1 单选）；没有这样的插件 ⇒ 状态栏具名提示，不静默什么都不发生。
+  窗已开着也照样能换页（设施层把新令牌推到同一窗，不重载 iframe）。
+- 令牌与待审单**随窗回收**：关窗/卸载即作废（不留给下一任同 id 窗口）。
+- 范本：`examples/plugins/md-editor/`（`md_open` 工具 + 窗内 doc.read / doc.save + 改稿单）；
+  协议真源 `src-ui/src/plugins/window-bridge.ts`（`WindowBridgeMethod` / `WindowBridgeEvent`）。
 
 ---
 

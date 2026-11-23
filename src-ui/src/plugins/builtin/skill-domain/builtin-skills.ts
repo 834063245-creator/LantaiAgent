@@ -31,21 +31,38 @@ export interface BuiltinSkillDef {
 
 const PLUGIN_DEV_PROMPT = `# 为兰台写插件——Agent 操作手册
 
-兰台（Lantai）是插件化架构：**九条贡献通道**（面板 / 命令 / 模型工具 / LLM 协议
-适配器 / 块渲染器 / system-prompt 段 / 管道钩子 / 会话能力 / 画布覆盖层）+ **五条
+兰台（Lantai）是插件化架构：**贡献通道**（面板 / 命令 / 模型工具 / LLM 协议适配器 /
+块渲染器 / system-prompt 段 / 管道钩子 / **步骤钩子** / 会话能力 / 画布覆盖层 / 外壳
+视图槽 / 工作区接线 / 壳行 / 激活声明 ——**权威清单与计数以生成物
+\`docs/agents/service-catalog.md\` 为准**，本手册只讲其中最常用几条）+ **五条
 可换后端 seam**（fs / shell / sessionPersistence / subagents / agentLoop）——全部经
 同一套注册机制（同一个 \`ContributionChannel\` 内核：id 寻址 + 重名装载期拒绝 +
 幂等 disposer + 声明式生效时机），第一方与第三方一致。
 用户让你「加个功能 / 写个插件 / 接个工具」时，按本手册动手。
 
-## 0. 先选形态（四条路，按需求定）
+### 动手前的四样东西（2026-11-23 契约工具包，先看再写）
+
+1. **一页纸契约**：\`docs/plugins/contract-card.md\`——能写什么（manifest 顶层 13 字段）/
+   宿主保证什么 / 永不下放什么 / 怎么调。**读完这一页就够动手**。
+2. **最小模板**：\`examples/plugins/_template/\`（manifest + entry + 窗页 + README，五步路径）。
+   新插件从拷贝它开始，别从零写。
+3. **形状校验**：\`cd src-ui && npm run plugin:validate -- <插件目录>\`（\`--json\` 可选）——
+   与装载器**同一份判据**，退出码 0 = 可装载，错误带字段路径与迁移写法。
+4. **编辑器补全**：\`docs/plugins/manifest.schema.json\`（生成物，勿手改）。
+
+**三条硬规矩**（\`docs/plugins/README.md\`「契约版本与弃用」）：
+删除即具名拒绝（写退役字段 = 装载失败，不是被静默剥掉）· 未知顶层字段只记警告且**不生效** ·
+新增字段有门槛。**写 manifest 时不要凭记忆补字段——先查 \`types.ts\` 或一页纸。**
+
+## 0. 先选形态（五条路，按需求定）
 
 | 用户要什么 | 用哪条路 |
 |---|---|
 | 本会话内 Agent 自己用的工具/能力（快速、临时） | **动态插件**（§1）——cordis 工具当场 define→run，无文件落盘 |
 | 面板、命令、重启后仍在的持久功能 | **静态插件**（§2）——写 manifest.json + entry.js 落盘安装 |
 | 接一个现成的 MCP server（Node/Python 进程或远程 HTTP） | **MCP 挂接**（§2.6）——零插件代码，声明即接 |
-| 一个**能开窗的软件形态**（自己的窗口界面 + 自己的工具，像独立小软件住进兰台） | **软件级插件**（§2.7）——manifest 声明 \`app\`（相对 HTML 或环回 URL），宿主给窗口注册表 + 设施 API + 受治进程随窗开合 |
+| 一个**能开窗的软件形态**（自己的窗口界面 + 自己的工具，像独立小软件住进兰台） | **软件级插件**（§2.7）——manifest 声明 \`app\`（相对 HTML 或环回 URL），宿主给窗口注册表 + 设施 API + 受治进程联动 |
+| 让会话里**引用到的文件点一下就能打开**（用户报「点了没反应」时） | 软件级插件 + \`app.documents: true\`（§2.7 文档通道）——注册面里第一个声明文档能力的插件就是「开文件」的落点（\`windows.openWith(path)\`） |
 
 判断不了时问用户一句：这个功能是「以后一直要有」还是「现在先用一下」。
 形态可以叠加：一个插件能同时有面板 + 命令 + 工具 + MCP + 窗口。
@@ -63,9 +80,9 @@ const PLUGIN_DEV_PROMPT = `# 为兰台写插件——Agent 操作手册
 - \`apply(ctx)\` 收**守卫代理**，只有两个面：
   - \`ctx.effect(fn, label)\`——fn 返回 disposer；
   - \`ctx.<服务>.register(def)\`——**守卫白名单**里的注册面（\`agent/dynamic-runner/sandbox.ts\`
-    的 \`GUARDED_SERVICES\`，2026-09-14 校准后 = 九条贡献通道 + 五条 seam 全量 14 面）：
-    tools / panels / commands / llm / prompts / hooks / capabilities / renderers /
-    overlays / fs / shell / sessionPersistence / subagents / agentLoop。
+    的 \`GUARDED_SERVICES\`，2026-10-13 补 \`steps\` 后 = 十条贡献通道 + 五条 seam 全量 15 面）：
+    tools / panels / commands / llm / prompts / hooks / steps / capabilities /
+    renderers / overlays / fs / shell / sessionPersistence / subagents / agentLoop。
     白名单与真装配同集由测试对拍（列了平台没有的服务即红），照它写不会踩空。
   - 白名单外的属性访问、任何赋值 → 响亮报错。直调 register 不包 effect
     是合法的（disposer 由宿主回收袋管理）。
@@ -117,8 +134,12 @@ manifest.json 字段（\`name\`/\`version\`/\`entry\` 必填）：
 | \`tools\` | 声明式工具（§2.4） |
 | \`mcpServers\` | 声明式 MCP 挂接（§2.6） |
 | \`dataDir\` | \`true\` = 装载即分配专属数据目录（\`<数据根>/<插件名>/ \`，经宿主桥 fs 面读写，卸载随插件回收进 .trash） |
-| \`app\` | **软件级插件**（§2.7）：窗内容入口 + 窗模式——\`{ entry: './app/index.html' }\`（插件自包含 HTML）**或** \`{ url: 'http://127.0.0.1:PORT' }\`（环回页；仅本机、禁凭据）；\`mode\`: \`floating\`（缺省）/ \`dock\` / \`fullscreen\`（环回 URL 形态禁 fullscreen） |
+| \`app\` | **软件级插件**（§2.7）：窗内容入口 + 窗模式——\`entry\`（插件自包含 HTML，\`./\` 相对路径）**或** \`url\`（环回 http(s) 远端页；仅本机、禁凭据）二选一；\`mode\`（\`floating\` 缺省 / \`dock\` / \`fullscreen\`——后两者**冻结**：0 消费者，窗口管理重做时再定）；\`title\`（窗书眉标题，缺省 = 插件名）；\`documents\`（\`true\` 才开文档通道，见 §2.7）；\`size\`（\`{ w, h }\` 起手窗尺寸，v75：只对 floating，320–2400 × 240–1600，用户拖过则以用户几何为准） |
+| \`engines\` | 宿主兼容声明（v74）：\`{ lantai: '>=1.0.0' }\`（semver range）——**声明了就必须满足**，不满足或区间非法 = 具名拒载；宿主版本未知（开发/测试）只记 warning。**用了新字段就声明它**（旧宿主读新嵌套键会整份拒载） |
+| \`activation\` | \`{ lazy?, resources?, exclusive? }\`（§3 尾注「登记 ≠ 激活」）：副作用挪到**组合装配期**按引用计数启停；整块缺席 = 旧语义（登记即激活） |
 | \`displace\` | \`true\` = 位移式装载：与同名内置插件共享行 id（贡献面单活互换）；第三方同名产物声明 true 可覆盖同名内置插件 |
+
+⚠ 两条与 manifest 形状有关的铁律：**退役字段写进来 = 装载失败**（\`mcpServers[].lifecycle\` 已随 v72 退役、\`tools[].async\` 随 v73 退役——错误会告诉你改成什么）；**不认识的顶层字段 = 只警告且不生效**（别指望它真有作用）。写完跑 \`plugin:validate\`。
 
 ### 2.2 entry.js 规则与宿主桥
 
@@ -142,7 +163,7 @@ manifest.json 字段（\`name\`/\`version\`/\`entry\` 必填）：
 | \`notify\` | \`(text)\` 状态栏通知 |
 | \`loadCss\` | \`(url)\` 幂等注入插件 CSS |
 | \`fs\` | 插件数据目录面（ensure/list/read/write/delete——manifest.dataDir 声明后用） |
-| \`windows\` | 开/关/聚焦插件窗口（manifest.app 声明的软件形态） |
+| \`windows\` | 开/关/聚焦插件窗口（manifest.app 声明的软件形态）+ \`openWith(path)\`（用「文档能力」插件打开一份文件——注册面里第一个声明 \`app.documents\` 的插件被选中；没有则状态栏具名提示并返回 false） |
 | \`mods\` | 宿主模块真实例注册表（进阶） |
 
 （\`deferred\` 键已于契约 v73 退役：工具口 async 整条路删了，后台唤醒只剩 MCP 完成
@@ -242,6 +263,10 @@ ctx.capabilities.register({
 
 **seam provider**（后端替换，进阶）：\`ctx.fs\`/\`ctx.shell\`/\`ctx.sessionPersistence\`/\`ctx.subagents\`/\`ctx.agentLoop\` 各注册一个替换默认后端的实现——写这个等于换掉兰台的默认引擎，非必要不碰。（\`ctx.graph\` 图分析 seam 随图谱功能全量退役，2026-09-09。）
 
+其余通道（\`steps\` 步骤钩子 / \`rootViews\` 外壳视图槽 / \`workspaces\` 工作区接线 /
+\`shellRows\` 壳行 / \`activation\` 激活声明）的 def 形状见 \`docs/plugins/README.md\` §3——
+用到再读，别在这里猜字段名。
+
 ### 2.4 声明式工具（manifest.tools——更小的信任面）
 
 工具声明放 manifest（数据），执行函数放 entry 的 \`toolHandlers\` 命名导出，
@@ -255,8 +280,10 @@ ctx.capabilities.register({
 export const toolHandlers = { hello_status: async () => '装载正常' };
 \`\`\`
 
-加 \`"async": true\` 声明 = 执行即返卡片、宿主登记发起者，插件后台完成后经
-宿主桥 \`deferred.complete(taskId, status, message?)\` 唤醒发起 Agent。
+**长任务不在这里做**：工具口异步（\`tools[].async\` + 宿主桥 \`deferred.complete\`）已于
+契约 v73 整条退役——照旧写法会被**具名拒载**。要「提交即回、完成再唤醒」，走 MCP 路
+（§2.6）：插件自带 server，调用期宿主回带 \`progressToken\`，完成时 server 发
+\`lantai/deferred\` 通知（§2.7 末尾给了形状）。
 
 ### 2.5 权限门禁
 
@@ -291,6 +318,13 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
   误声明 true 会重现「写动作绕过 plan 门禁」的洞。
 - ⚠️ 挂接的子进程是**全权用户进程**（不经 fs 能力口、不受沙箱约束，可写
   任意路径）——需要沙箱/权限类/审计的动作走 shell 域，不挂 MCP。
+- **长任务（提交即回 + 完成唤醒）只有这一条路**（v73 起工具口那张门已退役）：
+  server 的 \`tools/call\` 立即回卡片，宿主在调用期绑一个 \`progressToken\`
+  （随请求 \`_meta.progressToken\` 下发）；server 做完发通知
+  \`{"jsonrpc":"2.0","method":"lantai/deferred","params":{"progressToken":"<原样回带>","taskId":"…","status":"completed"|"failed","message":"…"}}\`
+  ——宿主翻译成对发起 Agent 的后台唤醒（minimal 定位键 \`{status, taskId, sessionId}\`，
+  **内容不进唤醒体**：让模型凭 taskId 调你的查询工具按需取）。范本：
+  \`examples/plugins/notes-app/server.cjs\` 的 \`notes_export\`。
 
 ### 2.7 软件级插件（app shell——带窗口的软件形态）
 
@@ -311,6 +345,19 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
 - \`mode\`：\`floating\`（缺省，画布浮动窗）/ \`dock\`（右停靠栏，**冻结**：0 消费者）/
   \`fullscreen\`（盖满视口，**冻结**）——窗口管理重做时再定，现在只许 floating 有把握。
 - 窗内要宿主能力走 **postMessage 白名单桥**：默认最小集 = 数据目录 fs 面 + \`notify\`（\`manifest.dataDir: true\` + \`app\` 搭配最顺）。
+- **文档通道（v70/v71——打开了「宿主文档」这扇门）**：声明 \`app.documents: true\` 才受理文档载荷。
+  宿主开窗时签发一份**令牌**（\`windows.open(名字, { document: { path } })\` 或
+  \`windows.openWith(path)\`），窗只拿令牌、**不拿路径**（路径解释权只在宿主）：
+  · 窗内收事件 \`doc-open\`（\`{ docToken, path }\`）→ 调 \`doc.read({ docToken })\`
+    读正文（回 \`{ path, text }\`）；
+  · 保存调 \`doc.save({ docToken, content })\`——**不直接落盘**：宿主算差分、出**改稿单**
+    给用户点头，回执 \`pending-review\`（带 reviewId / added / removed / diff）；批准后窗收
+    \`doc-saved\`，退回或写盘失败收 \`doc-rejected\`（带 reason）。同一扇窗同时只许一张待审单。
+  · 未声明 \`documents\` ⇒ 桥里没有 \`doc.*\`（kill switch），载荷被忽略并 warn（不静默）。
+- **谁被「打开文件」选中**：注册面里按名字排序**第一个**声明 \`app.documents\` 的插件；
+  没有 ⇒ 状态栏具名提示「没有能打开文档的软件插件（插件需声明 app.documents）」。
+- **起手尺寸（v75）**：\`app.size: { w, h }\` 只对 floating 生效（320–2400 × 240–1600）；
+  用户拖过右下角握把后宿主记住的是**用户几何**，声明值只在「这个窗第一次开」时用。
 - 宿主桥 \`windows\` 设施面（插件的工具执行体里调，工具语义归插件）：
   \`open(pluginName) → windowId|null\`（已开则聚焦返回原窗；v1 每插件单窗）、
   \`close(windowId)\`、\`focus(windowId)\`、\`setMode(windowId, mode)\`、
@@ -329,19 +376,23 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
 
 ## 3. 装载与验证（你的动作序列）
 
-1. **写文件**：把插件目录写到用户指定位置（问用户或选项目内子目录——
-   注意你的 fs 工具有工作区沙箱，写不进 ~/.lantai 时就写在项目里，让用户
-   从那里装）。
-2. **装载**：指引用户「设置 → 插件 → 安装框填目录绝对路径 → 安装」；
-   或让用户把目录放进 ~/.lantai/plugins/（Windows 是
-   %USERPROFILE%\\.lantai\\plugins）后重启。安装是**热装载**：面板/命令
-   立刻出现，工具/段在**下次 Agent 装配**（新会话）生效。
-3. **验证**：设置 → 插件 → 「已安装」组看状态。装载失败显示 error + 错误
-   信息（失败隔离——单个插件失败不炸应用）；\`blocked\` = 权限未授予；
-   挂起 = inject 依赖未就绪。改 entry.js 后：卸载再装（同版本重装被
-   版本守卫拒绝）。
-4. **工具面验证**：开新会话让用户确认工具可用。在途会话看不到新工具是
-   纪律不是 bug。
+0. **先校验形状**（省一轮往返）：\`cd src-ui && npm run plugin:validate -- <插件目录>\`。
+   退出码 0 = 可装载；失败逐条给字段路径 + 迁移写法（\`--json\` 给脚本用）。
+1. **写文件**：从 \`examples/plugins/_template/\` 拷一份改，别从零写。目录名 =
+   manifest.name = entry.js 的 \`name\`——**三处逐字一致**（装载器按目录名寻址，
+   不一致 = 具名拒载）。写不进 ~/.lantai（fs 沙箱）时就写在项目里，让用户从那里装。
+2. **装载**：指引用户「设置 → 插件 → 安装框填目录绝对路径 → 安装」；或放进
+   ~/.lantai/plugins/（Windows 是 %USERPROFILE%\\.lantai\\plugins）后重启。安装是
+   **热装载**：面板/命令立刻出现，工具/段在**下次 Agent 装配**（新会话）生效。
+3. **验证**：设置 → 插件 → 「已安装」组看状态徽章 + error 原文（失败隔离：单个插件失败不炸应用）；
+   \`blocked\` = 权限未授予；挂起 = inject 依赖未就绪。
+4. **诊断**：卡片上的「诊断」按钮 = 一份只读快照——装载状态/错误/警告、manifest 摘要、
+   **当前契约版本**、插件目录与数据目录、声明工具、每个受治进程的状态（含**最近一次停止原因**）、
+   窗口定义与开几扇、激活状态。排障先看它，别猜。
+5. **改完再验**：点卡片「重新加载」（外部插件）——走 loader 的「先验后拆」：新版过完全部
+   拒载闸才换，**被拒时旧版原样继续跑**且错误显示在卡片上。命令行等价动作 = 卸载再装
+   （同版本重装会被版本守卫拒）。
+6. **工具面验证**：开新会话让用户确认工具可用。在途会话看不到新工具是纪律不是 bug。
 
 ## 4. 发布（可选）
 
@@ -359,6 +410,11 @@ registry.npmjs.org）。同名重装升级 = 原子换装；同版本/降级拒�
   插件前必须提醒供应链风险（npm 上的包 ≠ 审核过的包）。
 - 动态插件是审批 + 沙箱模型：首次激活必须经用户批准；沙箱无进程级硬
   隔离，安全面 = 实现质量——写动态插件时不要试图绕守卫面。
+- **manifest 别写退役字段**（\`mcpServers[].lifecycle\` / \`tools[].async\`）——装载期
+  具名拒载；长任务只有 MCP 一条路（§2.6 末条）。
+- **用了新字段就声明 \`engines\` 最低版本**：旧宿主读到不认识的**嵌套**键会整份拒载
+  （\`app\` / \`mcpServers\` 都是 strictObject），\`engines\` 是这个问题的唯一声明式答案。
+- **manifest 只写认识的键**：顶层未知键只记 warning 且不生效——「写了但没发生」比报错更难查。
 - 图谱引擎（Rust 侧）扩展是源码仓库的事，不走本手册的插件系统。`;
 
 /** office 域工具操作手册（出厂技能，2026-10-13 自 examples/office-cli/SKILL.md 收编）。
@@ -654,7 +710,7 @@ export const BUILTIN_SKILLS: readonly BuiltinSkillDef[] = [
   {
     name: 'lantai-plugin-dev',
     description:
-      '为兰台写插件的完整操作手册——动态插件（cordis 工具）/ 静态插件（manifest+entry+宿主桥+全部贡献通道 def 形状）/ MCP server 挂接 / 装载验证 / 发布',
+      '为兰台写插件的完整操作手册——动态插件（cordis 工具）/ 静态插件（manifest 13 字段 + entry + 宿主桥 + 全部贡献通道 def 形状）/ 软件级插件与文档通道（窗口 / 数据地盘 / 受治进程 / 改稿单）/ MCP 挂接与长任务唤醒 / 形状校验 CLI / 装载验证与诊断 / 发布',
     whenToUse:
       '用户想给兰台写/装/改插件、加面板/命令/工具/块渲染器/MCP，或想让 Agent 当场扩展兰台能力时——动手前先读本技能',
     prompt: PLUGIN_DEV_PROMPT,
