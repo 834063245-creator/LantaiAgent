@@ -71,12 +71,12 @@ describe('改稿单确认面：决议只在这里产生', () => {
     expect(useDocumentReviewStore.getState().review).toBeNull();
   });
 
-  it('点「退回」→ false 且 store 清空（写盘不发生由桥侧测试保证）', async () => {
+  it('点「取消」→ false 且 store 清空（写盘不发生由桥侧测试保证）', async () => {
     const { approved } = requestOne();
     act(() => {
       root.render(createElement(DocumentReviewHost));
     });
-    clickByText('退回');
+    clickByText('取消');
     await expect(approved).resolves.toBe(false);
     expect(useDocumentReviewStore.getState().review).toBeNull();
   });

@@ -141,7 +141,7 @@ window.addEventListener("message", (ev) => {
       if (hostDoc && d.reviewId === hostDoc.reviewId) { setDirty(false); foot("已写入宿主文档 · " + d.path, false); }
     }
     if (d.event === "doc-rejected") {
-      if (hostDoc) foot("改稿单未通过（" + (d.reason === "rejected" ? "你退回了" : d.reason) + "）——正文仍在你这里，未写盘", true);
+      if (hostDoc) foot((d.reason === "rejected" ? "已取消" : "写入失败") + "——正文仍在你这里，未写盘", true);
     }
   }
 });
