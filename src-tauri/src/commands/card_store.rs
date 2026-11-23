@@ -213,6 +213,9 @@ fn summarize_card(dir: &Path, card_id: &str) -> Result<Value, String> {
         "cardId": card.get("cardId").and_then(Value::as_str).unwrap_or(card_id),
         "kind": card.get("kind").cloned().unwrap_or(Value::Null),
         "title": card.get("title").cloned().unwrap_or(Value::Null),
+        // 文件卡（2026-11-23 记文件式）：卡片可以记住一份文件的绝对路径——
+        // 架阁据此出「打开」入口（用声明了 app.documents 的软件插件开窗）。
+        "file": card.get("file").cloned().unwrap_or(Value::Null),
         "shelvedAt": card.pointer("/source/shelvedAt").cloned().unwrap_or(Value::Null),
         "stateBytes": state_bytes,
         "dirBytes": dir_size(dir),

@@ -21,6 +21,8 @@ export interface CardSummary {
   cardId: string;
   kind: unknown;
   title: unknown;
+  /** 文件卡记的绝对路径（2026-11-23 记文件式）：非空即「这份卡是能再打开的文件」。 */
+  file?: unknown;
   shelvedAt: unknown;
   /** state.json 字节数（0 = 还没碰过状态）。 */
   stateBytes: number;

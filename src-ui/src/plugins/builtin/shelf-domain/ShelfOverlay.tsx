@@ -46,10 +46,20 @@ const PAGE_LABEL = { app: '软件型', card: '卡片型' } as const;
 type Page = keyof typeof PAGE_LABEL;
 
 /** 卡片摘要的最小形状（列表只用这三样；Rust 侧完整形状见 card_store.rs）。 */
+/** 宿主桥的窗口设施（仅取用 openWith）——文件卡的「开」走它，不直接 import 宿主模块。 */
+type OpenWithHost = { windows?: { openWith?: (path: string) => boolean } };
+
+function openFileFromShelf(path: string): void {
+  const host = (globalThis as { __lantai_plugin_host__?: OpenWithHost }).__lantai_plugin_host__;
+  host?.windows?.openWith?.(path);
+}
+
 interface CardRow {
   cardId: string;
   kind: unknown;
   title: unknown;
+  /** 文件卡记的绝对路径（2026-11-23 记文件式）：非空 ⇒ 这张卡能再被打开。 */
+  file?: unknown;
   shelvedAt: unknown;
 }
 
@@ -542,6 +552,17 @@ export function ShelfOverlay() {
                             </span>
                           </button>
                           <span className="pp-shelf-actions">
+                            {/* 文件卡：直接开门（2026-11-23 记文件式）——宿主桥的 openWith 去找
+                                声明了 app.documents 的软件插件开窗；没有就状态栏具名提示。 */}
+                            {typeof c.file === 'string' && c.file ? (
+                              <button
+                                type="button"
+                                data-tip={`打开 ${c.file}`}
+                                onClick={() => openFileFromShelf(c.file as string)}
+                              >
+                                开
+                              </button>
+                            ) : null}
                             {/* 「引」「摊」只在**画布里**才有意义（2026-11-21 实机报
                                 「首页点架阁，摊是无效的」）：两者都要落在一卷/一张纸上——
                                 没有纸就没有画布、也没有夹签槽，点下去只能弹一句

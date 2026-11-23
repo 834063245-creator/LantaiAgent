@@ -212,12 +212,32 @@ export function usePaperPanelAssembly() {
   const shelveBlockAsset = useCallback(
     (block: SourcedBlock, sessionNum: number) => {
       const asset = block.asset;
-      if (!asset) return;
       const toast = useToastStore.getState().showToast;
+      // 文件卡（2026-11-23 记文件式）：来文附件没有 asset，但它是一份「可再打开的文件」——
+      // 收进架阁时记下绝对路径，架阁里点「开」就能再开（宿主 openWith 去找文档能力插件）。
+      const fileRef = (block.payload as { files?: Array<{ path: string; name: string }> }).files?.[0];
+      if (!asset && !fileRef) return;
       if (!projectPath) {
         toast('入阁失败：还没有打开工作区', 'warn', 3600, 'composer');
         return;
       }
+      if (!asset && fileRef) {
+        const fileCardId = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        void shelveCard({
+          card: {
+            cardId: fileCardId,
+            kind: 'file',
+            title: fileRef.name,
+            file: fileRef.path,
+            source: { projectPath, shelvedAt: new Date().toISOString() },
+            v: 1,
+          },
+        })
+          .then(() => toast(`已入阁：${fileRef.name}`, 'info', 2600, 'composer'))
+          .catch((err: unknown) => toast(`入阁失败：${String(err)}`, 'error', 5200, 'composer'));
+        return;
+      }
+      if (!asset) return;
       const sessionId = String(sessionNum);
       const state = getAssetState({ projectPath, sessionId }, asset.assetId) ?? {};
       const title = asset.title ?? '';

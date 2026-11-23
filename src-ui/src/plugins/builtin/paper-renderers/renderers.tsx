@@ -68,6 +68,8 @@ function firstAbsolutePath(text: string): string | null {
   return m ? m[1] : null;
 }
 
+/** 把一份文件收进架阁（记文件式，2026-11-23）：卡里只记 kind/title/file——
+ *  以后从架阁点「开」就能再打开它。失败要可见（状态栏），不许静默。 */
 function openReferencedFile(path: string): void {
   const host = (globalThis as { __lantai_plugin_host__?: FileOpenBridge }).__lantai_plugin_host__;
   const openWith = host?.windows?.openWith;
@@ -848,15 +850,16 @@ function UserBody({ block }: BlockRendererProps) {
       {files && files.length > 0 && (
         <div className="pp-user-files">
           {files.map((f) => (
-            <button
-              key={f.path}
-              type="button"
-              className="pp-user-file"
-              data-tip={f.path}
-              onClick={() => openReferencedFile(f.path)}
-            >
-              附 · {f.name}
-            </button>
+            <Fragment key={f.path}>
+              <button
+                type="button"
+                className="pp-user-file"
+                data-tip={f.path}
+                onClick={() => openReferencedFile(f.path)}
+              >
+                附 · {f.name}
+              </button>
+            </Fragment>
           ))}
         </div>
       )}
