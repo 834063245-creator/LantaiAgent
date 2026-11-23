@@ -194,7 +194,7 @@ function foot(text, isErr) {
 function setDirty(v) {
   dirty = v;
   dirtyEl.classList.toggle("on", v);
-  saveEl.disabled = !current || !v;
+  saveEl.disabled = !(current || hostDoc) || !v;
 }
 
 const editor = mountEditor(editorEl, {
