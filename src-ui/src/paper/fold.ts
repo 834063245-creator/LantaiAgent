@@ -31,7 +31,7 @@
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
 
 import { displayToolName } from '../ui/tool-semantics';
-import type { BlockKind, SourcedBlock } from './block-model';
+import type { BlockKind, CodeCallPart, SourcedBlock } from './block-model';
 import { codeCallsReadout } from './code-calls';
 import { type CodeView, codeViewReadout } from './code-view';
 import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
@@ -299,8 +299,8 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     // 95% 时间看到的那一行，行列/增删比字数有用（与脚注 summary 同一纪律）。
     // 程序内调用（2026-11-21 显形批）：折叠行先报「内调 N」——用户 95% 时间只
     // 看到这一行，「这条程序实际调了几次工具」比字数更能说明它干了什么。
-    const calls = (p as { calls?: readonly { ok: boolean }[] }).calls;
-    const callsRead = codeCallsReadout(calls as never);
+    const calls = (p as { calls?: readonly CodeCallPart[] }).calls;
+    const callsRead = codeCallsReadout(calls);
     if (p.view) return `▸ ${who} · ${codeViewReadout(p.view)}${callsRead ? ` · ${callsRead}` : ''}`;
     const contentLen = codeSections(p.output).reduce((n, s) => n + s.raw.length, 0);
     const head = `▸ ${who}${outSuffix(contentLen)}`;

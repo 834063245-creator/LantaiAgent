@@ -18,9 +18,9 @@
 // 永不因「服务未挂」走静默死路。
 
 import { type Context, Service } from '../../cordis';
+import type { CodeDispatchRecord } from './dispatch-record';
 import {
   type CodeBindingSpec,
-  type CodeDispatchRecord,
   type CodeRunHostOptions,
   type CodeWorkerLike,
   type LateNestedResult,
@@ -45,8 +45,8 @@ export interface CodeRunRequest {
   maxPendingCalls?: number;
   /** Worker 工厂注入面（测试）。 */
   createWorker?: (source: string) => CodeWorkerLike;
-  /** 程序内调用落定旁路（2026-11-21 纸面显形批）——展示面用，不改变程序
-   *  看到的返回值。透传给宿主，见 host.ts 的 CodeDispatchRecord。 */
+  /** 程序内调用旁路（2026-11-21 建立；2026-11-23 起每笔两拍：起跑 + 落定）——
+   *  展示面用，不改变程序看到的返回值。透传给宿主，记录形状见 dispatch-record.ts。 */
   onDispatch?: (d: CodeDispatchRecord) => void;
   /** 程序结束后才落定的调用（P1-2 待领信箱）——透传给宿主，消费者负责
    *  存到下一轮注入。 */

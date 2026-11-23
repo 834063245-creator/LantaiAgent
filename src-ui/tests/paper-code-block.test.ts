@@ -20,11 +20,15 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
-import type { CodeDispatchRecord } from '../src/agent/code-run/host';
+import type { CodeDispatchRecord } from '../src/agent/code-run/dispatch-record';
 import { createBlock } from '../src/paper/block-model';
 import { translateMessages } from '../src/paper/translate';
 import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
-import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
+import {
+  createBlockMeasureCache,
+  measureBlockHeight,
+  measureBlockHeightCached,
+} from '../src/plugins/builtin/paper-shell/measure';
 import type { AssistantMessage } from '../src/ui/message-model';
 
 function toolMsg(
@@ -95,8 +99,9 @@ describe('translate：程序内调用（2026-11-21 显形批）', () => {
   it('part.calls 原样进 code 块 payload（渲染/测高读同一份）', () => {
     const args = JSON.stringify({ code: 'await tools.fs({});', description: 'd' });
     const calls: CodeDispatchRecord[] = [
-      { seq: 1, name: 'fs', action: 'read', ok: true, summary: 'a.ts' },
-      { seq: 2, name: 'shell', ok: false, summary: 'boom' },
+      { seq: 1, name: 'fs', action: 'read', status: 'done', summary: 'a.ts' },
+      { seq: 2, name: 'shell', status: 'error', summary: 'boom' },
+      { seq: 3, name: 'shell', action: 'run', status: 'running', startedAt: 1 },
     ];
     const blocks = translateMessages([toolMsg('code_execution', args, 'done', '── result ──\nok', undefined, calls)]);
     expect(blocks[0].payload).toMatchObject({ calls });
@@ -142,7 +147,12 @@ describe('measure：code 块封顶测量', () => {
           description: 'd',
           code: 'a',
           status: 'done' as const,
-          calls: Array.from({ length: n }, (_, i) => ({ seq: i + 1, name: 'fs', ok: true, summary: 's' })),
+          calls: Array.from({ length: n }, (_, i) => ({
+            seq: i + 1,
+            name: 'fs',
+            status: 'done' as const,
+            summary: 's',
+          })),
         },
         { messageId: 'm', part: null },
       ),
@@ -153,6 +163,24 @@ describe('measure：code 块封顶测量', () => {
     const five = measureBlockHeight(mk(5));
     expect(two).toBeGreaterThan(none);
     expect(five).toBeGreaterThan(two);
+  });
+
+  it('运行态新增一行 → 缓存测高随签名失效（不吃旧高度）', () => {
+    // 2026-11-23 运行态批同批修的既有缺口：calls 原先不在 measureSignature 里，
+    // 程序跑动期间新落一行时缓存返回旧高——渲染有行、布局没长高。
+    const block = {
+      ...createBlock(
+        'code',
+        { toolId: 't', description: 'd', code: 'a', status: 'running' as const },
+        { messageId: 'm', part: null },
+      ),
+      w: 640,
+    };
+    const cache = createBlockMeasureCache();
+    const h0 = measureBlockHeightCached(block, cache);
+    block.payload.calls = [{ seq: 1, name: 'shell', action: 'run', status: 'running', startedAt: 1 }];
+    const h1 = measureBlockHeightCached(block, cache);
+    expect(h1).toBeGreaterThan(h0);
   });
 });
 

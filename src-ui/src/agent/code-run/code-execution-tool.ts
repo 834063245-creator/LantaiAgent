@@ -211,8 +211,8 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
         createWorker: deps.createWorker,
         signal,
         onLateResult: deps.onLateResult,
-        // 程序内调用 → 展示面旁路（2026-11-21）：一行一笔，走 onProgress 的
-        // 文本通道（线格式见文件头的 CODE_CALL_MARK 注）。
+        // 程序内调用 → 展示面旁路（2026-11-21 建立，2026-11-23 起两拍）：同一 seq
+        // 先发起跑、后发落定，走 onProgress 的文本通道（线格式见文件头的 CODE_CALL_MARK 注）。
         onDispatch: onProgress ? (d) => onProgress(CODE_CALL_MARK + JSON.stringify(d)) : undefined,
       });
 

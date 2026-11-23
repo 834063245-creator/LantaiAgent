@@ -228,6 +228,13 @@
   animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 
+/* 程序内调用「在跑」行（2026-11-23 运行态批）：与状态签同一条铁律——青是机器
+ * 在干活。版式本体在 paper-inline.css 的 .pp-calls；这里只补运行态色（与
+ * .pp-status.pp-running 同族，不另起一套）。不加动效：卡片折叠行已在呼吸。 */
+.pp-block.pp-code .pp-calls-line--running {
+  color: var(--indigo);
+}
+
 /* 湿墨尾点（2026-09-06 纸面运行态）：正在书写的块（.pp-writing，壳层按
  * RegionView.writingBlockId 挂类）——续墨行位落一枚石青方点呼吸，块写完
  * 「墨干」随类摘除退场。落点在块底下方一行的正文左缘（.pp-body 无内距，

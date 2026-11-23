@@ -25,6 +25,7 @@
 // 域工具的只读判定走 `readOnlyFor(args)`（按动作），否则回落 `readOnly`。
 
 import { WORKER_BOOTSTRAP_SOURCE } from './bootstrap';
+import type { CodeDispatchRecord } from './dispatch-record';
 import {
   type CodeReplyCode,
   type CodeRunResult,
@@ -33,18 +34,6 @@ import {
   parseWorkerMessage,
   type WorkerToHost,
 } from './protocol';
-
-/** 程序内调用的一笔事实（展示面旁路；2026-11-21）。 */
-export interface CodeDispatchRecord {
-  /** 程序内调用序（1 起，按落定序——与 session-log 的 dispatchCounter 不同源）。 */
-  seq: number;
-  name: string;
-  /** 该动作（域工具的 args.action；非域工具为 undefined）。 */
-  action?: string;
-  ok: boolean;
-  /** 结果首行（已截断）——只够「一眼看出它干了什么」，不做正文。 */
-  summary: string;
-}
 
 /** 绑定调用结果（P3）：`code`/`hint` 会原样进 reply，成为程序内 Error 的属性。 */
 export interface CodeBindingOutcome {
@@ -357,8 +346,11 @@ const MIN_TINY_WINDOW_MS = 1_000;
 /** 程序墙钟硬上限（P2-1）：模型可传 timeoutMs，但不得超过它（对齐 shell 的 10 分钟）。 */
 const MAX_TIMEOUT_MS = 600_000;
 
-/** 在途调用台账的一条（INV-3）：run 结束时要能说清「谁还在跑、跑了多久」。 */
+/** 在途调用台账的一条（INV-3）：run 结束时要能说清「谁还在跑、跑了多久」。
+ *  seq 是展示面旁路的配对键（2026-11-23 运行态批）：收尾时据此把还没落定的那条
+ *  running 记录收成 error，而不是让卡片永远显示「在跑」。 */
 interface InflightCall {
+  seq: number;
   name: string;
   startedAt: number;
 }
@@ -448,7 +440,9 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
   let usedBytes = 2; // "[]" 形态（与 worker 侧同口径）
   let outputLimited = false;
   let settled = false;
-  let dispatchSeq = 0; // 展示面旁路的调用序（与 session-log 的 dispatchCounter 各自独立）
+  // 展示面旁路的调用序（与 session-log 的 dispatchCounter 各自独立）：2026-11-23
+  // 起在**起跑时**发号，落定事件沿用同一 seq——展示面才能原地把「在跑」改成成败。
+  let dispatchSeq = 0;
 
   // 预算穿透的唯一时钟（INV-2）：每次嵌套调用按「此刻还剩多少」算，不另设第二套计时。
   const deadlineAt = Date.now() + timeoutMs;
@@ -467,6 +461,16 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
 
   const worker = createWorker(WORKER_BOOTSTRAP_SOURCE);
 
+  /** 展示面旁路（2026-11-21）：一次调用两条——起跑与落定。故障不阻断程序
+   *  （与 hooks 的降级同款；旁路只是纸面，不是执行事实）。 */
+  const emitDispatch = (d: CodeDispatchRecord): void => {
+    try {
+      opts.onDispatch?.(d);
+    } catch {
+      /* 展示面故障不阻断程序 */
+    }
+  };
+
   const finish = (result: CodeRunResult): void => {
     if (settled) return;
     settled = true;
@@ -475,6 +479,19 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
     // 反过来就会在台账里读到已被 abort 的调用，报出「跑了 0.0s」这种假账。
     const pending = [...inflight.values()];
     inflight.clear();
+    // 运行态收口（2026-11-23）：程序结束（完成/超时/中止/崩溃）时还挂在台账里的
+    // 调用不会再有人给它们发落定事件——纸面会永远停在「⋯ 在跑」。这里统一收成
+    // error（如实说「未落定」，不假装成功）；若它随后真的返回，迟到路径会按同一
+    // seq 更新成真实的 done/error。
+    for (const c of pending) {
+      emitDispatch({
+        seq: c.seq,
+        name: c.name,
+        status: 'error',
+        summary: '未落定',
+        startedAt: c.startedAt,
+      });
+    }
     try {
       runController.abort(result.error?.kind ?? 'settled');
     } catch {
@@ -662,8 +679,16 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
     // INV-2 预算穿透（只对 softTimeout 里声明的动作生效；见 applyBudget）
     const decision = applyBudget(binding, args, remainingMs());
     const callArgs = decision.args;
+    const action =
+      typeof (args as { action?: unknown }).action === 'string'
+        ? String((args as { action: unknown }).action)
+        : undefined;
+    const seq = ++dispatchSeq;
     const startedAt = Date.now();
-    inflight.set(id, { name, startedAt });
+    inflight.set(id, { seq, name, startedAt });
+    // 运行态第一拍（2026-11-23）：通过校验即算「在办」——写类还在排他闸上排队时
+    // 也是程序在等它，不是没发生。落定前用户就能看到「现在在跑什么」。
+    emitDispatch({ seq, name, status: 'running', ...(action ? { action } : {}), startedAt });
 
     const run = async (): Promise<void> => {
       try {
@@ -671,6 +696,15 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
         // 这时不能再启动——起一个进程再立刻 abort 它，等于白起一次，还会把 drain 拖住。
         if (runSignal.aborted) {
           inflight.delete(id);
+          // 已发过起跑，就必须给落定（否则纸面永远「在跑」）。
+          emitDispatch({
+            seq,
+            name,
+            status: 'error',
+            summary: '未执行（程序已结束）',
+            ...(action ? { action } : {}),
+            startedAt,
+          });
           return;
         }
         let outcome: CodeBindingOutcome;
@@ -698,6 +732,16 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
             isError: outcome.isError,
           };
           lateSettled.push(late);
+          // 展示面第二拍（迟到版）：finish 已把这条收成「未落定」——它其实回来了，
+          // 按同一 seq 更新成真实结果（不把一次成功的调用永远写成失败）。
+          emitDispatch({
+            seq,
+            name,
+            status: outcome.isError ? 'error' : 'done',
+            summary: firstLine(outcome.output),
+            ...(action ? { action } : {}),
+            startedAt,
+          });
           try {
             opts.onLateResult?.(late);
           } catch {
@@ -705,21 +749,16 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
           }
           return;
         }
-        // 展示面旁路（2026-11-21）：落定时刻才知道胜负与输出，这里正好齐了。
-        try {
-          opts.onDispatch?.({
-            seq: ++dispatchSeq,
-            name,
-            action:
-              typeof (args as { action?: unknown }).action === 'string'
-                ? String((args as { action: unknown }).action)
-                : undefined,
-            ok: !outcome.isError,
-            summary: firstLine(outcome.output),
-          });
-        } catch {
-          /* 展示面故障不阻断程序（与 hooks 的降级同款） */
-        }
+        // 展示面第二拍（2026-11-21 建立）：落定时刻才知道胜负与输出，按起跑 seq
+        // 原地更新那一行——同一笔调用在纸面只有一条记录。
+        emitDispatch({
+          seq,
+          name,
+          status: outcome.isError ? 'error' : 'done',
+          summary: firstLine(outcome.output),
+          ...(action ? { action } : {}),
+          startedAt,
+        });
         worker.postMessage(
           outcome.isError
             ? ({

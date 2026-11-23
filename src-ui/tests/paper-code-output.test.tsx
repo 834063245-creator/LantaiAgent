@@ -136,6 +136,37 @@ describe('渲染面 — 段头 / 折叠态 / 结构', () => {
     expect([...container!.querySelectorAll('.pp-sec-label')].map((el) => el.textContent)).toEqual(['输出']);
   });
 
+  it('程序内调用：在跑行带石青类、落定行不带（2026-11-23 运行态批）', () => {
+    renderCode({
+      status: 'running',
+      calls: [
+        { seq: 1, name: 'shell', action: 'run', status: 'running', startedAt: 1 },
+        { seq: 2, name: 'fs', action: 'read', status: 'done', summary: 'a.ts' },
+      ],
+    });
+    const lines = [...container!.querySelectorAll('.pp-calls-line')];
+    expect(lines.map((el) => el.textContent)).toEqual(['1. shell(run) ⋯ 在跑', '2. fs(read) ✓ a.ts']);
+    expect(lines[0]?.classList.contains('pp-calls-line--running')).toBe(true);
+    expect(lines[1]?.classList.contains('pp-calls-line--running')).toBe(false);
+  });
+
+  it('内调两拍：同一 calls 数组原地更新后重渲，行文本跟着变（不吃缓存旧投影）', () => {
+    // part-mutator 按 seq 原地改 part.calls（数组引用不变）——渲染层若按引用
+    // useMemo，落定那一拍永远停在「⋯ 在跑」。
+    const calls: Array<{
+      seq: number;
+      name: string;
+      action?: string;
+      status: 'running' | 'done';
+      summary?: string;
+    }> = [{ seq: 1, name: 'shell', action: 'run', status: 'running' }];
+    renderCode({ status: 'running', calls });
+    expect(container!.querySelector('.pp-calls-line')?.textContent).toBe('1. shell(run) ⋯ 在跑');
+    calls[0] = { seq: 1, name: 'shell', action: 'run', status: 'done', summary: 'exit 0' };
+    renderCode({ status: 'running', calls });
+    expect(container!.querySelector('.pp-calls-line')?.textContent).toBe('1. shell(run) ✓ exit 0');
+  });
+
   /* 程序体高亮（2026-11-06）——用户报「模型输入的代码内容需要一个代码高亮渲染」：
    * 程文程序体此前裸文本直出，而同纸其余机器文本（围栏码 / 抄录块 / 查看器）都有
    * hljs token 层。两条判据：① 真出 token（不是假着色）；② 字符逐字不变（测高与

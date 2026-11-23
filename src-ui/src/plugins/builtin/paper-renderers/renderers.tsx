@@ -1263,7 +1263,10 @@ function CodeBody({ block, folded }: BlockRendererProps) {
   // preview 由 codeSrcText 读（结构类型可缺省，不必进这里的 cast）
   const p = block.payload as { code: string; output?: string; err?: string; view?: CodeView; calls?: CodeCallPart[] };
   // 程序内调用段（2026-11-21 显形批）：与测高/墨迹读同一份投影（paper/code-calls）。
-  const callSec = useMemo(() => codeCallLines(p.calls), [p.calls]);
+  // **每次渲染重算**（2026-11-23 运行态批）：calls 是 part 上的可变数组——两拍
+  // 原地更新/落定收口都会改它；useMemo 以数组引用为依赖会一直吃起跑那一帧的
+  // 旧投影（新行、✓/✗ 改字都看不见）。12 行以内的映射，不值得为它冒缓存失效的险。
+  const callSec = codeCallLines(p.calls);
   // 程序体文本的唯一选择（三面同源，见 paper/tool-text 的 codeSrcText）：流式中途
   // 读 preview——展开态也能看见「正在写什么」（2026-11-22 卷 165 后续）。
   const src = codeSrcText(p);
@@ -1288,8 +1291,12 @@ function CodeBody({ block, folded }: BlockRendererProps) {
           body={
             <div className="pp-calls">
               {callSec.lines.map((line) => (
-                <div key={line} className="pp-calls-line">
-                  {line}
+                // 在跑行 = 石青（与状态签/呼吸同义：青是机器在干活）；落定行回流墨阶。
+                <div
+                  key={line.text}
+                  className={`pp-calls-line${line.status === 'running' ? ' pp-calls-line--running' : ''}`}
+                >
+                  {line.text}
                 </div>
               ))}
               {callSec.note && <div className="pp-calls-note">{callSec.note}</div>}

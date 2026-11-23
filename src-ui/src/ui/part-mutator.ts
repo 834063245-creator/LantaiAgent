@@ -8,7 +8,7 @@
 import type { AgentEvent, AssetDeltaEventData, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
 import { CODE_CALL_MARK } from '../agent/code-run/code-execution-tool';
-import type { CodeDispatchRecord } from '../agent/code-run/host';
+import { type CodeDispatchRecord, codeCallStatus } from '../agent/code-run/dispatch-record';
 import type { AssistantPart, BlockPart, NoticePart } from './message-model';
 import { findToolPart, lastTextPart } from './message-model';
 import { resolveSemanticToolName } from './tool-semantics';
@@ -113,8 +113,13 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
           if (ev.tool.output?.startsWith(CODE_CALL_MARK)) {
             const rec = parseCodeCall(ev.tool.output.slice(CODE_CALL_MARK.length));
             if (rec) {
+              // 同一笔调用两拍（起跑 + 落定）：按 seq 原地更新，不追加第二行。
+              // 数组引用保持不变（code 块 payload 持的是同一个数组——测高/墨迹
+              // 缓存按签名失效，见 measureSignature 的 calls 段）。
               if (!tp.calls) tp.calls = [];
-              tp.calls.push(rec);
+              const at = tp.calls.findIndex((c) => c.seq === rec.seq);
+              if (at >= 0) tp.calls[at] = rec;
+              else tp.calls.push(rec);
               return true;
             }
             return false;
@@ -155,6 +160,9 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
             tr.output = undefined;
           }
           tr.truncated = ev.tool.truncated;
+          // 程序内调用收口：卡片已落定，还标 running 的行不会再有人更新
+          //（超时/中止/快照恢复）——收成 error，不让纸面永远停在「在跑」。
+          finaliseRunningCodeCalls(tr.calls);
           return true;
         }
         // 错误不静默：dispatch 卡片被跳过的调用（子 Agent spawn 由
@@ -203,17 +211,22 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
   }
 }
 
-/** 旁路线一行 → 结构化记录（坏行 = null：展示面异常不制造假事实）。 */
+/** 旁路线一行 → 结构化记录（坏行 = null：展示面异常不制造假事实）。
+ *  两拍记录形状同构，只差 status/summary：起跑没有 summary，落定必有一条
+ *  （失败也可能为空串——照收，不编造）。 */
 function parseCodeCall(json: string): CodeDispatchRecord | null {
   try {
     const o = JSON.parse(json) as Partial<CodeDispatchRecord>;
     if (typeof o.name !== 'string' || typeof o.seq !== 'number') return null;
+    const status = o.status === 'running' || o.status === 'done' || o.status === 'error' ? o.status : undefined;
     return {
       seq: o.seq,
       name: o.name,
       ...(typeof o.action === 'string' ? { action: o.action } : {}),
-      ok: o.ok !== false,
-      summary: typeof o.summary === 'string' ? o.summary : '',
+      ...(status ? { status } : {}),
+      ...(typeof o.ok === 'boolean' ? { ok: o.ok } : {}),
+      ...(typeof o.summary === 'string' ? { summary: o.summary } : {}),
+      ...(typeof o.startedAt === 'number' ? { startedAt: o.startedAt } : {}),
     };
   } catch {
     return null;
@@ -239,11 +252,27 @@ export function finalisePendingToolParts(parts: AssistantPart[]): boolean {
         part.status = 'error';
         changed = true;
       }
+      // 程序内调用同理：收尾时还在「在跑」的行没有第二拍可等。
+      if (finaliseRunningCodeCalls(part.calls)) changed = true;
       continue;
     }
     if (part.type === 'subagent') {
       if (finalisePendingToolParts(part.parts)) changed = true;
     }
+  }
+  return changed;
+}
+
+/** 仍未落定的程序内调用收成 error（卡片终态 / 回合收尾）。返回是否有改动。
+ *  只动 running：旧卷快照没有 status 的记录经 `codeCallStatus` 判为已落定，不动。 */
+function finaliseRunningCodeCalls(calls: CodeDispatchRecord[] | undefined): boolean {
+  if (!calls) return false;
+  let changed = false;
+  for (const c of calls) {
+    if (codeCallStatus(c) !== 'running') continue;
+    c.status = 'error';
+    if (!c.summary) c.summary = '未落定';
+    changed = true;
   }
   return changed;
 }

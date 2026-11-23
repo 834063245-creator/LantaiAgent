@@ -23,8 +23,8 @@ import type { CodeView } from './code-view';
 export type BlockState = 'flow' | 'pinned';
 
 /** 程文卡里的一笔程序内调用（展示面纯数据；形状随 `CodeDispatchRecord`——
- *  真源在 agent/code-run/host.ts，这里只做结构化别名，不另立第二套字段）。 */
-export type CodeCallPart = import('../agent/code-run/host').CodeDispatchRecord;
+ *  真源在 agent/code-run/dispatch-record.ts，这里只做结构化别名，不另立第二套字段）。 */
+export type CodeCallPart = import('../agent/code-run/dispatch-record').CodeDispatchRecord;
 
 /** 内置块类型（走查弹 v1 集合：markdown / diff / tool result + 用户与通知） */
 export type BuiltinBlockKind =
@@ -96,10 +96,12 @@ export interface BlockPayloads {
      *  真表格 / 差分取代那段 JSON 文本；**模型面字节不变**（视图只是展示投影）。
      *  纯 JSON（行/列/文本），随钉住块的内容快照原样落盘。 */
     view?: CodeView;
-    /** 程序内调用（2026-11-21 显形批）：程序里 `await tools.x()` 的逐笔事实，
-     *  由转译层从 `part.calls`（执行期 onProgress 旁路）原样带过来。**纯展示**：
-     *  模型面一个字节都不经此（它自己刚写过的调用不需要再读一遍）。
-     *  缺席 = 旧卷 / 无嵌套调用 —— 渲染与测高都当「没有这一段」。 */
+    /** 程序内调用（2026-11-21 显形批；2026-11-23 起含运行态）：程序里
+     *  `await tools.x()` 的逐笔事实，由转译层从 `part.calls`（执行期 onProgress
+     *  旁路）原样带过来。同一笔调用两拍：`status='running'` 先出现（`⋯ 在跑`），
+     *  落定后按 seq 原地改成 done/error。**纯展示**：模型面一个字节都不经此
+     *  （它自己刚写过的调用不需要再读一遍）。缺席 = 旧卷 / 无嵌套调用 ——
+     *  渲染与测高都当「没有这一段」。 */
     calls?: CodeCallPart[];
   };
   plan: {

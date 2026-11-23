@@ -68,6 +68,7 @@
     "required": true,
     "shared": [
       "agent/asset-kinds.ts",
+      "agent/code-run/dispatch-record.ts",
       "agent/schema-validate.ts",
       "agent/session-context.ts",
       "agent/tool-images.ts",
@@ -365,6 +366,7 @@
     "hostModule": "host",
     "inject": ["renderers"],
     "shared": [
+      "agent/code-run/dispatch-record.ts",
       "agent/session-context.ts",
       "agent/tool-images.ts",
       "agent/tools/domains.ts",

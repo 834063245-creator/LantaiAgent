@@ -24,7 +24,7 @@ import {
 } from '@chenglou/pretext/rich-inline';
 import { assetKinds } from '../../../agent/asset-kinds';
 import type { BlockKind, CodeCallPart, SourcedBlock } from '../../../paper/block-model';
-import { codeCallLines } from '../../../paper/code-calls';
+import { codeCallLines, codeCallsSignature } from '../../../paper/code-calls';
 import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
 import {
   type MdBlock,
@@ -1503,7 +1503,8 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
       if (callSec.lines.length > 0) {
         const gap = src ? SEC_HEAD_GAP : 0;
         let cy = y + SEC_HEAD_H + gap;
-        for (const line of [...callSec.lines, ...(callSec.note ? [callSec.note] : [])]) {
+        const rows = [...callSec.lines.map((line) => line.text), ...(callSec.note ? [callSec.note] : [])];
+        for (const line of rows) {
           out.push({
             text: line,
             font: PAPER_OUT_FONT,
@@ -2104,7 +2105,13 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
     case 'code':
       // preview 入签（2026-11-22 卷 165 后续）：流式期间程序体每 120ms 长一截，
       // 展开态的高随它变——不入签就会吃到上一帧的缓存高（压字，同帖那起事故的形状）。
-      return `code|${f}|${p.code ?? ''}|${p.preview ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
+      // calls 入签（2026-11-23 运行态批，同批修既有缺口）：「程序内调用」段每落一笔
+      // 就多一行，行文本还会从「⋯ 在跑」改成 ✓/✗——不入签则测高不增行、墨迹也不
+      // 重画（旧实现只在 output 变化时才失效，程序跑动期间这一段是「隐形」的）。
+      // 签名只取可见段（cap 之外不改变行数，见 codeCallsSignature）。
+      return `code|${f}|${p.code ?? ''}|${p.preview ?? ''}|${p.output ?? ''}|${p.err ?? ''}|${codeCallsSignature(
+        p.calls as CodeCallPart[] | undefined,
+      )}`;
     case 'plan': {
       // 标题入签（2026-08-30 起标题实测计高——换行变高度）；终态位入签
       // （2026-10-29 拟策终态批）：决议后操作行换终态行 = 两个高，不入签就吃旧缓存。
