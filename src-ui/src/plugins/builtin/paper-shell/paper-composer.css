@@ -17,6 +17,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 可点（2026-11-23）：点一下 = 用文档能力插件打开这份文件；悬停提亮给出可点感。
+     button 元素要清掉浏览器默认外观（本行族与 .pp-user-file 同形）。 */
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+}
+
+.pp-user-file:hover {
+  text-decoration: underline;
 }
 
 /* ── 来文附图缩略行（B4 multimodal-image-plan D-9）：64px 方界 tile + wrap

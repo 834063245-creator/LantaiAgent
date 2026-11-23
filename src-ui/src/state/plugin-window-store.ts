@@ -19,6 +19,13 @@
 
 import { create } from 'zustand';
 import type { PluginWindowMode } from '../plugins/types';
+import {
+  clampWindowSize,
+  PLUGIN_WINDOW_DEFAULT_H,
+  PLUGIN_WINDOW_DEFAULT_W,
+  type WindowGeometry,
+  type WindowSize,
+} from '../plugins/window-metrics';
 
 /** 窗口定义（manifest.app 折算——装载期登记；kind/mode/title 已归一）。 */
 export interface PluginWindowDef {
@@ -38,6 +45,9 @@ export interface PluginWindowDef {
   /** 文档通道（manifest.app.documents 折算，批 1 只读）：true 才允许开窗带文档
    *  载荷、桥面才解析 `doc.read`。判定单一真源在本字段（渲染处不重推）。 */
   documents: boolean;
+  /** manifest.app.size 折算的首选初始尺寸（v75）——**只在用户没拖过时**生效；
+   *  用户拖过的几何由 window-facility 从 localStorage 恢复并优先传进来。 */
+  size?: WindowSize;
 }
 
 /** 开着窗口实例（iframe 视口渲染源）。 */
@@ -80,8 +90,12 @@ interface PluginWindowState {
    *  （调用方 window-facility 据此逐窗通知治理器关窗事件）。 */
   unregisterAppDef: (pluginName: string) => PluginWindowInstance[];
   /** 开窗：无定义 → null；已有该插件开窗 → 聚焦已有窗（opened=false）；
-   *  真开新窗 → opened=true（v1 每插件单窗）。 */
-  openWindow: (pluginName: string) => OpenWindowResult | null;
+   *  真开新窗 → opened=true（v1 每插件单窗）。
+   *
+   *  `seed` = 起手几何（用户落盘过的几何 / manifest 声明尺寸由 window-facility
+   *  夹好传进来）；缺 x/y 走瀑布级联，缺 w/h 取 manifest 声明，再缺省 460×360。
+   *  本 store 保持纯状态层：不读 window、不读 localStorage。 */
+  openWindow: (pluginName: string, seed?: Partial<WindowGeometry>) => OpenWindowResult | null;
   /** 关窗：返回所属插件名（调用方据此通知治理器），未开 → null。 */
   closeWindow: (windowId: string) => string | null;
   /** 聚焦：海拔置顶（未开 = no-op）。 */
@@ -96,14 +110,6 @@ interface PluginWindowState {
   /** 测试复位（vitest 同 worker 模块态跨用例共享——防串味）。 */
   resetPluginWindowsForTests: () => void;
 }
-
-/** 浮动窗缺省尺寸（px）：第一次开窗的一张「便签」量——**只是起手值**，
- *  用户拖右下角握把即可改（改动记在实例上，关窗即忘；与位置同一生命周期）。 */
-export const PLUGIN_WINDOW_DEFAULT_W = 460;
-export const PLUGIN_WINDOW_DEFAULT_H = 360;
-/** 浮动窗最小尺寸（px）：再小书眉与窗内容都挤成一团，拖也拖不出意义。 */
-export const PLUGIN_WINDOW_MIN_W = 320;
-export const PLUGIN_WINDOW_MIN_H = 240;
 
 /** 浮动窗缺省位置：瀑布级联（每窗右下错位一格，环回防出屏）。 */
 function cascadePosition(index: number): { x: number; y: number } {
@@ -128,7 +134,7 @@ export const usePluginWindowStore = create<PluginWindowState>((set, get) => ({
     return closed;
   },
 
-  openWindow: (pluginName) => {
+  openWindow: (pluginName, seed) => {
     const st = get();
     const existing = st.windows.find((w) => w.pluginName === pluginName);
     if (existing) {
@@ -138,15 +144,19 @@ export const usePluginWindowStore = create<PluginWindowState>((set, get) => ({
     const def = st.defs[pluginName];
     if (!def) return null;
     const windowId = `${pluginName}#${++st.seq}`;
-    const { x, y } = cascadePosition(st.windows.length);
+    const cascade = cascadePosition(st.windows.length);
+    const size = clampWindowSize(
+      seed?.w ?? def.size?.w ?? PLUGIN_WINDOW_DEFAULT_W,
+      seed?.h ?? def.size?.h ?? PLUGIN_WINDOW_DEFAULT_H,
+    );
     const instance: PluginWindowInstance = {
       windowId,
       pluginName,
       mode: def.mode,
-      x,
-      y,
-      w: PLUGIN_WINDOW_DEFAULT_W,
-      h: PLUGIN_WINDOW_DEFAULT_H,
+      x: Math.round(seed?.x ?? cascade.x),
+      y: Math.round(seed?.y ?? cascade.y),
+      w: size.w,
+      h: size.h,
       z: ++st.zTop,
     };
     set({ windows: [...st.windows, instance] });

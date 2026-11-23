@@ -88,6 +88,13 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 > 与 notes-app 的 `notes_open` 同款分工：工具语义归插件、窗口设施归宿主）；窗内接 `doc-open` / `doc.save`，
 > 保存结果按 `pending-review` / `doc-saved` / `doc-rejected` 三态走；窗已开着时设施直接推新令牌。
 > 入口形态 = **Agent 驱动**（`md_open`），不是纸面按钮——纸面「用文卷打开」需要块级动作，**留待后续单独立项**。
+>
+> **入口重定位（2026-11-23，用户定调）**：Agent 命令本来就不该是入口——用户要的是**会话里引用到的
+> 文件点一下就开**（通用 Agent 软件用侧栏做这件事，兰台装不下侧栏，所以由一个软件型插件出窗来承担）。
+> 已落第一批：宿主设施 `openFileWithPlugin(path)`（`window-facility`，经宿主桥 `windows.openWith` 暴露，
+> 找注册面里第一个声明 `app.documents` 的插件；没有就状态栏具名提示）+ 来文「附 · 文件名」卡改为可点。
+> `md_open` 降级为调试/脚本手段，不再是产品入口。**待接的其余引用面**：工具卡参数里的路径、
+> 正文里的行内路径、引用卡片。
 
 - 纸面/引用处加「用文卷打开」入口（从卷里/工作区取当前文档）；
 - `examples/plugins/md-editor/` 接入 `doc-open` 与 `doc.save`，README 撤掉「刻意不做」里的对应行。

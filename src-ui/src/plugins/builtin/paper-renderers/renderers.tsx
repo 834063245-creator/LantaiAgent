@@ -53,6 +53,17 @@ import {
 // 本地图 data URI 的 MIME/扩展名取用（imageSrcRef 分类已保证图片扩展名）——
 // 表与判据住内核 `paper/viewer-exts.ts`（纯常量，随包内联；名册 shared 已登记）。
 import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
+
+// 文件引用点击（2026-11-23）：**经宿主桥**取窗口设施（openWith），不直接 import window-facility——
+// 直接 import 会把 mcp-bridge / 生命周期一族牵进渲染面，形成循环依赖（构建门禁直接红）。
+type FileOpenBridge = { windows?: { openWith?: (path: string) => boolean } };
+
+function openReferencedFile(path: string): void {
+  const host = (globalThis as { __lantai_plugin_host__?: FileOpenBridge }).__lantai_plugin_host__;
+  const openWith = host?.windows?.openWith;
+  if (typeof openWith === 'function') openWith(path);
+}
+
 import type { ChatImageRef } from '../../../provider/types';
 import type { PlanPart } from '../../../ui/message-model';
 import { CodeSrc, highlightCode } from './code-src';
@@ -812,9 +823,15 @@ function UserBody({ block }: BlockRendererProps) {
       {files && files.length > 0 && (
         <div className="pp-user-files">
           {files.map((f) => (
-            <div key={f.path} className="pp-user-file" data-tip={f.path}>
+            <button
+              key={f.path}
+              type="button"
+              className="pp-user-file"
+              data-tip={f.path}
+              onClick={() => openReferencedFile(f.path)}
+            >
               附 · {f.name}
-            </div>
+            </button>
           ))}
         </div>
       )}

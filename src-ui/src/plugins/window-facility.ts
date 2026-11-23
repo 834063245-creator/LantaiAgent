@@ -12,6 +12,7 @@
 // lazy 档窗开阻塞空闲回收。窗口管理 UI 面（启动器/任务栏）形态待用户设计
 // 定稿后另批施工（走 canvas-nav 同款第一方产物通道），不阻塞本设施。
 
+import { useShellStore } from '../app/shell-store';
 import type { Context } from '../cordis';
 import { cancelDocumentReviewsForWindow } from '../state/plugin-document-review';
 import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plugin-document-store';
@@ -42,6 +43,9 @@ export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, o
     mode: app.mode ?? 'floating',
     title: app.title ?? pluginName,
     documents: app.documents === true,
+    // v75：manifest 声明首选尺寸——只在用户没拖过时生效（落盘几何优先，见
+    // openPluginWindow 的 seed 组装）。
+    ...(app.size ? { size: app.size } : {}),
   };
   usePluginWindowStore.getState().registerAppDef(def);
   ctx.effect(
@@ -118,6 +122,25 @@ export function isPluginWindowOpen(pluginName: string): boolean {
   return usePluginWindowStore.getState().windows.some((w) => w.pluginName === pluginName);
 }
 
+/** 用「文档能力」插件打开一份文件——**会话里点文件引用的宿主出口**（2026-11-23 用户定调：
+ *  入口不该是 Agent 命令，而是"引用到的文件点一下"）。
+ *
+ *  谁来开：注册面里第一个声明 `app.documents` 的插件（v1 单选；多编辑器并存是后续产品决定）。
+ *  没有这样的插件 ⇒ 状态栏具名提示并返回 false——**不静默什么都不发生**。
+ *  窗已开着也照样能换页（设施层会直接把新令牌推到同一窗）。
+ */
+export function openFileWithPlugin(path: string): boolean {
+  const defs = usePluginWindowStore.getState().defs;
+  const name = Object.keys(defs)
+    .sort()
+    .find((n) => defs[n].documents === true);
+  if (!name) {
+    useShellStore.getState().pushStatus('没有能打开文档的软件插件（插件需声明 app.documents）');
+    return false;
+  }
+  return openPluginWindow(name, { document: { path } }) != null;
+}
+
 /** 窗口设施面（宿主桥 `windows` 键的整体形状）。 */
 export const pluginWindowFacility = {
   open: openPluginWindow,
@@ -126,6 +149,7 @@ export const pluginWindowFacility = {
   setMode: setPluginWindowMode,
   list: listPluginWindows,
   isOpen: isPluginWindowOpen,
+  openWith: openFileWithPlugin,
 } as const;
 
 /** 设施面类型（宿主桥 Window 声明消费）。 */

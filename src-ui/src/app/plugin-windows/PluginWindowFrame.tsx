@@ -40,14 +40,9 @@ import {
 } from 'react';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
+import { clampWindowPosition, clampWindowSize, type ViewportSize, type WindowSize } from '../../plugins/window-metrics';
 import { pendingDocumentGrant } from '../../state/plugin-document-store';
-import {
-  PLUGIN_WINDOW_MIN_H,
-  PLUGIN_WINDOW_MIN_W,
-  type PluginWindowDef,
-  type PluginWindowInstance,
-  usePluginWindowStore,
-} from '../../state/plugin-window-store';
+import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
 import { useDragGesture } from '../interaction/use-drag-gesture';
 import { PluginBoundary } from '../PluginBoundary';
 import { isTopbarInteractiveTarget } from '../window-drag';
@@ -60,15 +55,14 @@ interface FrameProps {
 /** 键盘微调步长（px）——与书脊/侧栏调宽同档，可聚焦件的键盘义务。 */
 const RESIZE_STEP = 16;
 
-/** 尺寸夹持：最小 320×240；最大 = 视口减 24（与 `plugin-windows.css` 的
- *  max-width/max-height 同一把尺子——那边是兜底护栏，这边是写回前的真值）。 */
-function clampSize(w: number, h: number): { w: number; h: number } {
-  const maxW = Math.max(PLUGIN_WINDOW_MIN_W, window.innerWidth - 24);
-  const maxH = Math.max(PLUGIN_WINDOW_MIN_H, window.innerHeight - 24);
-  return {
-    w: Math.round(Math.min(maxW, Math.max(PLUGIN_WINDOW_MIN_W, w))),
-    h: Math.round(Math.min(maxH, Math.max(PLUGIN_WINDOW_MIN_H, h))),
-  };
+/** 当前视口（夹持用）；渲染环境没有 window 时交给纯常量边界。 */
+function viewportSize(): ViewportSize | undefined {
+  return typeof window === 'undefined' ? undefined : { w: window.innerWidth, h: window.innerHeight };
+}
+
+/** 尺寸夹持（单一算式在 plugins/window-metrics）。 */
+function clampSize(w: number, h: number): WindowSize {
+  return clampWindowSize(w, h, viewportSize());
 }
 
 export function PluginWindowFrame({ instance, def }: FrameProps) {
@@ -116,10 +110,7 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     onMove: (_e, d) => {
       const off = dragRef.current;
       if (!off) return;
-      const maxX = Math.max(0, window.innerWidth - 120);
-      const maxY = Math.max(0, window.innerHeight - 48);
-      const x = Math.min(Math.max(0, d.x - off.offX), maxX);
-      const y = Math.min(Math.max(0, d.y - off.offY), maxY);
+      const { x, y } = clampWindowPosition(d.x - off.offX, d.y - off.offY, viewportSize());
       usePluginWindowStore.getState().moveWindow(instance.windowId, x, y);
     },
     onEnd: () => {
