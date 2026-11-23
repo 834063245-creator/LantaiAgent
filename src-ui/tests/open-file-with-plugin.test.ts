@@ -9,6 +9,7 @@
 //   · 已经开着窗也照样能换页（设施走「重签令牌 + 直接推 doc-open」那条路）。
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useShellStore } from '../src/app/shell-store';
 import { openFileWithPlugin } from '../src/plugins/window-facility';
 import { pendingDocumentGrant, resetDocumentGrantsForTests } from '../src/state/plugin-document-store';
 import { usePluginWindowStore } from '../src/state/plugin-window-store';
@@ -25,6 +26,7 @@ const DEF = {
 beforeEach(() => {
   resetDocumentGrantsForTests();
   usePluginWindowStore.getState().resetPluginWindowsForTests();
+  useShellStore.getState().setProjectPath('');
 });
 
 describe('openFileWithPlugin：会话文件引用的宿主出口', () => {
@@ -41,6 +43,14 @@ describe('openFileWithPlugin：会话文件引用的宿主出口', () => {
     const grant = pendingDocumentGrant(win.windowId);
     expect(grant).not.toBeNull();
     expect(grant?.path).toBe('/work/docs/a.md');
+  });
+
+  it('相对路径按工作区根解析后再进令牌表（Rust 只收绝对路径）', () => {
+    useShellStore.getState().setProjectPath('D:/ws');
+    usePluginWindowStore.getState().registerAppDef(DEF);
+    expect(openFileWithPlugin('docs/README.md')).toBe(true);
+    const win = usePluginWindowStore.getState().windows[0];
+    expect(pendingDocumentGrant(win.windowId)?.path).toBe('D:/ws/docs/README.md');
   });
 
   it('窗已开着再点另一份 → 仍 true，令牌换成新路径（换页不重开窗）', () => {

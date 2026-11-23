@@ -371,6 +371,7 @@
       "paper/code-calls.ts",
       "paper/code-view.ts",
       "paper/fence.ts",
+      "paper/file-ref.ts",
       "paper/fold.ts",
       "paper/grammar.ts",
       "paper/markdown-body-seam.ts",

@@ -338,7 +338,7 @@ function isLocalImagePath(p: string): boolean {
 
 /** `file://` URI → 本地路径（%XX 解码；Windows 盘符形态 `/D:/x` 去前导斜杠；
  *  带主机名 = UNC）。非 file: 或畸形 → undefined。 */
-function fileUrlToLocalPath(url: string): string | undefined {
+export function fileUrlToLocalPath(url: string): string | undefined {
   try {
     const u = new URL(url);
     let p: string;

@@ -95,6 +95,14 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 > 找注册面里第一个声明 `app.documents` 的插件；没有就状态栏具名提示）+ 来文「附 · 文件名」卡改为可点。
 > `md_open` 降级为调试/脚本手段，不再是产品入口。**待接的其余引用面**：工具卡参数里的路径、
 > 正文里的行内路径、引用卡片。
+>
+> **相对路径批（2026-11-23，同一批收口）**：上述三面原先只认**绝对路径**（相对路径没有共识起点），
+> 而模型最自然的写法是仓库相对路径，Markdown 链接 `[x]（docs/a.md）` 更只是裸 `<a target=_blank>`。
+> 本批落：判据真源 `paper/file-ref.ts`（基准 = 工作区根 `useShellStore.projectPath`，绝对/相对/`file://` 归一，
+> `#L24` 与 `:24` 后缀剥掉，URL/锚点/含空白一律不认）→ 正文 Markdown 链接与行内码都点开进文卷；
+> 工具卡「打开」签同步认带扩展名的相对 token；宿主窗口设施 `openPluginWindow` 兜底把相对文档路径解析成绝对
+> （Rust 只收绝对路径）。测试：`tests/file-ref.test.ts`（12）/ `tests/paper-file-link.test.tsx`（5）/
+> `tests/open-file-with-plugin.test.ts`（相对路径令牌一例）。
 
 - 纸面/引用处加「用文卷打开」入口（从卷里/工作区取当前文档）；
 - `examples/plugins/md-editor/` 接入 `doc-open` 与 `doc.save`，README 撤掉「刻意不做」里的对应行。

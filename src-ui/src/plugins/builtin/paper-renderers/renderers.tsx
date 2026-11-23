@@ -31,6 +31,7 @@ import type { BlockRendererContribution, BlockRendererProps } from '../../../com
 import type { CodeCallPart } from '../../../paper/block-model';
 import { CODE_CALLS_LABEL, codeCallLines } from '../../../paper/code-calls';
 import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
+import { firstFileReference, resolveFileReference } from '../../../paper/file-ref';
 import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
   type MdBlock,
@@ -54,31 +55,10 @@ import {
 // 表与判据住内核 `paper/viewer-exts.ts`（纯常量，随包内联；名册 shared 已登记）。
 import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
 
-// 文件引用点击（2026-11-23）：**经宿主桥**取窗口设施（openWith），不直接 import window-facility——
-// 直接 import 会把 mcp-bridge / 生命周期一族牵进渲染面，形成循环依赖（构建门禁直接红）。
-type FileOpenBridge = { windows?: { openWith?: (path: string) => boolean } };
-
-/** 绝对路径判据（点开用）：Windows 盘符 / UNC / POSIX 根；不含空白与引号。
- *  只认绝对路径——相对路径没有"从哪算起"的共识，宿主拿到也没法直接读。 */
-const ABS_PATH_RE = /(?:^|[\s"'([=:])([A-Za-z]:[\\/][^\s"'<>|,)\]]+|\\\\[^\s"'<>|,)\]]+|\/[\w.-]+(?:\/[\w.-]+)*)/;
-
-/** 从一段文本里捞第一条绝对路径（工具参数 / 正文行内共用一处判据）。 */
-function firstAbsolutePath(text: string): string | null {
-  const m = ABS_PATH_RE.exec(text);
-  return m ? m[1] : null;
-}
-
-/** 把一份文件收进架阁（记文件式，2026-11-23）：卡里只记 kind/title/file——
- *  以后从架阁点「开」就能再打开它。失败要可见（状态栏），不许静默。 */
-function openReferencedFile(path: string): void {
-  const host = (globalThis as { __lantai_plugin_host__?: FileOpenBridge }).__lantai_plugin_host__;
-  const openWith = host?.windows?.openWith;
-  if (typeof openWith === 'function') openWith(path);
-}
-
 import type { ChatImageRef } from '../../../provider/types';
 import type { PlanPart } from '../../../ui/message-model';
 import { CodeSrc, highlightCode } from './code-src';
+import { openReferencedFile, workspaceRoot } from './file-open';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
 // A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
@@ -271,14 +251,14 @@ function InlineRuns({ inl }: { inl: MdInline[] }) {
         let node: ReactNode = seg.text;
         if (seg.math !== undefined) node = <MathInline source={seg.math} />;
         else if (seg.c) {
-          // 行内码里的绝对路径 → 可点（会话里"xxx.md"这类引用最常见的形态）。
-          const ref = firstAbsolutePath(seg.text);
+          // 行内码整段是文件引用 → 可点（绝对路径凭原样，相对路径按工作区根解析）。
+          const ref = resolveFileReference(seg.text, workspaceRoot());
           node =
-            ref && ref.length === seg.text.trim().length ? (
+            ref !== null ? (
               <button
                 type="button"
                 className="pp-md-ci pp-md-ci--ref"
-                data-tip="点击打开这份文件"
+                data-tip={ref}
                 onClick={() => openReferencedFile(ref)}
               >
                 {seg.text}
@@ -287,11 +267,27 @@ function InlineRuns({ inl }: { inl: MdInline[] }) {
               <code className="pp-md-ci">{seg.text}</code>
             );
         } else if (seg.href) {
-          node = (
-            <a className="pp-md-a" href={seg.href} target="_blank" rel="noreferrer">
-              {seg.text}
-            </a>
-          );
+          // Markdown 链接：本机文件（含仓库相对路径）点开进文卷；其余照旧走浏览器。
+          // 保留原 href 而非 #（锚点语义/可访问性）；普通点击 preventDefault——不让纸面变成网页导航。
+          const ref = resolveFileReference(seg.href, workspaceRoot());
+          node =
+            ref !== null ? (
+              <a
+                className="pp-md-a"
+                href={seg.href}
+                data-tip={ref}
+                onClick={(e) => {
+                  e.preventDefault();
+                  openReferencedFile(ref);
+                }}
+              >
+                {seg.text}
+              </a>
+            ) : (
+              <a className="pp-md-a" href={seg.href} target="_blank" rel="noreferrer">
+                {seg.text}
+              </a>
+            );
         }
         if (seg.s) node = <del>{node}</del>;
         if (seg.i) node = <em>{node}</em>;
@@ -1175,8 +1171,8 @@ const PayloadSection = memo(function PayloadSection({
 }) {
   const boxClass = variant === 'err' ? 'pp-out pp-out--err' : variant === 'args' ? 'pp-args' : 'pp-out';
   const content = body ?? (display ? <PayloadText display={display} /> : null);
-  // 参数里带绝对路径 → 段头右侧出一枚可点签（工具卡"文件在哪"最直接的落点）。
-  const refPath = variant === 'args' && display ? firstAbsolutePath(display.text) : null;
+  // 参数里带文件路径（绝对或仓库相对）→ 段头右侧出一枚可点签（工具卡"文件在哪"最直接的落点）。
+  const refPath = variant === 'args' && display ? firstFileReference(display.text, workspaceRoot()) : null;
   return (
     <div className={`pp-sec pp-sec--${variant}${gap ? ' pp-sec--gap' : ''}`}>
       <div className="pp-sec-head">

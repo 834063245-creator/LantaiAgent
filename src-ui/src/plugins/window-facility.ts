@@ -14,6 +14,7 @@
 
 import { useShellStore } from '../app/shell-store';
 import type { Context } from '../cordis';
+import { resolveFileReference } from '../paper/file-ref';
 import { cancelDocumentReviewsForWindow } from '../state/plugin-document-review';
 import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../state/plugin-window-store';
@@ -78,7 +79,12 @@ export function openPluginWindow(pluginName: string, opts?: { document?: { path:
   if (requested && def?.documents !== true) {
     console.warn(`[plugin-window] ${pluginName} 未声明 app.documents——文档载荷被忽略`);
   }
-  const doc = def?.documents === true ? requested : undefined;
+  // 相对路径按工作区根解析（2026-11-23 相对路径批）——设施是**所有开窗入口**的共同收口：
+  // 仓库相对路径在会话里是最自然的写法，走到这里若还是相对串，Rust canonicalize 必失败。
+  const doc =
+    def?.documents === true && requested
+      ? { path: resolveFileReference(requested.path, useShellStore.getState().projectPath) ?? requested.path }
+      : undefined;
   /* 起手几何（优先级从高到低）：用户拖过的落盘几何 > manifest.app.size > 缺省
      460×360。两个来源都夹进当前视口——上次关机时的分辨率/显示器未必还是现在这台。
      store 只收夹好的种子（它保持纯状态层：不读 window、不读 localStorage）。 */
