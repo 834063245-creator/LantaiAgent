@@ -58,6 +58,16 @@ import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
 // 直接 import 会把 mcp-bridge / 生命周期一族牵进渲染面，形成循环依赖（构建门禁直接红）。
 type FileOpenBridge = { windows?: { openWith?: (path: string) => boolean } };
 
+/** 绝对路径判据（点开用）：Windows 盘符 / UNC / POSIX 根；不含空白与引号。
+ *  只认绝对路径——相对路径没有"从哪算起"的共识，宿主拿到也没法直接读。 */
+const ABS_PATH_RE = /(?:^|[\s"'([=:])([A-Za-z]:[\\/][^\s"'<>|,)\]]+|\\\\[^\s"'<>|,)\]]+|\/[\w.-]+(?:\/[\w.-]+)*)/;
+
+/** 从一段文本里捞第一条绝对路径（工具参数 / 正文行内共用一处判据）。 */
+function firstAbsolutePath(text: string): string | null {
+  const m = ABS_PATH_RE.exec(text);
+  return m ? m[1] : null;
+}
+
 function openReferencedFile(path: string): void {
   const host = (globalThis as { __lantai_plugin_host__?: FileOpenBridge }).__lantai_plugin_host__;
   const openWith = host?.windows?.openWith;
@@ -258,8 +268,23 @@ function InlineRuns({ inl }: { inl: MdInline[] }) {
       {inl.map((seg, i) => {
         let node: ReactNode = seg.text;
         if (seg.math !== undefined) node = <MathInline source={seg.math} />;
-        else if (seg.c) node = <code className="pp-md-ci">{seg.text}</code>;
-        else if (seg.href) {
+        else if (seg.c) {
+          // 行内码里的绝对路径 → 可点（会话里"xxx.md"这类引用最常见的形态）。
+          const ref = firstAbsolutePath(seg.text);
+          node =
+            ref && ref.length === seg.text.trim().length ? (
+              <button
+                type="button"
+                className="pp-md-ci pp-md-ci--ref"
+                data-tip="点击打开这份文件"
+                onClick={() => openReferencedFile(ref)}
+              >
+                {seg.text}
+              </button>
+            ) : (
+              <code className="pp-md-ci">{seg.text}</code>
+            );
+        } else if (seg.href) {
           node = (
             <a className="pp-md-a" href={seg.href} target="_blank" rel="noreferrer">
               {seg.text}
@@ -1147,10 +1172,17 @@ const PayloadSection = memo(function PayloadSection({
 }) {
   const boxClass = variant === 'err' ? 'pp-out pp-out--err' : variant === 'args' ? 'pp-args' : 'pp-out';
   const content = body ?? (display ? <PayloadText display={display} /> : null);
+  // 参数里带绝对路径 → 段头右侧出一枚可点签（工具卡"文件在哪"最直接的落点）。
+  const refPath = variant === 'args' && display ? firstAbsolutePath(display.text) : null;
   return (
     <div className={`pp-sec pp-sec--${variant}${gap ? ' pp-sec--gap' : ''}`}>
       <div className="pp-sec-head">
         <span className="pp-sec-label">{label}</span>
+        {refPath && (
+          <button type="button" className="pp-sec-ref" data-tip={refPath} onClick={() => openReferencedFile(refPath)}>
+            打开
+          </button>
+        )}
       </div>
       {variant === 'args' ? <pre className={boxClass}>{content}</pre> : <div className={boxClass}>{content}</div>}
     </div>

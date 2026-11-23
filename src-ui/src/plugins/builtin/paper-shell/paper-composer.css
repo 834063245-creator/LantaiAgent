@@ -31,6 +31,39 @@
   text-decoration: underline;
 }
 
+/* 行内码里的绝对路径（2026-11-23）：可点打开——保持等宽底纹，只加可点感。 */
+.pp-md-ci--ref {
+  font: inherit;
+  background: rgba(0, 0, 0, 0.055);
+  border: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.pp-md-ci--ref:hover {
+  text-decoration: underline;
+}
+
+/* 工具卡段头右侧的「打开」签（2026-11-23）：参数里带绝对路径时出现。 */
+.pp-sec-ref {
+  margin-left: auto;
+  font-family: var(--f-sans, inherit);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--indigo);
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.pp-sec-ref:hover {
+  opacity: 0.75;
+}
+
 /* ── 来文附图缩略行（B4 multimodal-image-plan D-9）：64px 方界 tile + wrap
  *    多行居中（来文居中版式）；点击放大走 .pp-media-preview-overlay 浮层
  *    （media 渲染器同款）。几何 token --pp-ch-userImages-*（thumb/gap/
