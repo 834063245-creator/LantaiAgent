@@ -9,8 +9,10 @@
 // 纪律（CONVENTIONS §1.6 defineTool 同款）：一个 zod schema 同时产出运行时校验
 // 与 TS 类型（z.infer），禁止手写平行接口后再 as 强转。
 
+import { satisfies, validRange, valid as validVersion } from 'semver';
 import { z } from 'zod';
 import { ACTIVATION_RESOURCE_KINDS } from '../composition/activation';
+import { OPEN_SURFACE_CONTRACT_VERSION } from '../composition/contract-version';
 import type { Context } from '../cordis';
 
 /** 插件唯一 id：npm scope 风格，最多两段（如 hologram/settings）。 */
@@ -115,6 +117,17 @@ const ToolManifestDeclSchema = z.strictObject({
   }),
   /** 是否只读（可安全并行）；缺省 false。 */
   readOnly: z.boolean().optional(),
+});
+
+/** 宿主兼容声明（2026-11-23 契约 v74）：`lantai` = 宿主版本 semver range。
+ *
+ *  语义：**声明了就必须满足**——装载期不满足 ⇒ 具名拒载（原因带「需要 X，当前 Y」）。
+ *  宿主版本未知（开发/测试/产物域，`__LANTAI_BUILD__.v` 缺席）⇒ **跳过检查 + warn**，
+ *  不阻断——版本未知不是「不兼容」，拿它拒载会把整个开发面打死。
+ *  `engines` 是**兼容声明**不是能力：它不改变任何装载语义，只提前把「你这插件要
+ *  新宿主」变成可行动的错误。 */
+const EnginesDeclSchema = z.strictObject({
+  lantai: z.string().min(1).optional(),
 });
 
 /** 权限类枚举（C11-2）——Rust 权限咽喉的五个域（PascalCase 规则名的
@@ -270,6 +283,8 @@ export const PluginManifestSchema = z.object({
   mcpServers: z.array(McpServerDeclSchema).optional(),
   /** 激活声明（S6 P3a）——见 ActivationDeclSchema 头注；整块缺席 = kill switch。 */
   activation: ActivationDeclSchema.optional(),
+  /** 宿主兼容声明（v74）——见 EnginesDeclSchema 头注。 */
+  engines: EnginesDeclSchema.optional(),
 });
 
 export type PluginManifest = z.infer<typeof PluginManifestSchema>;
@@ -299,7 +314,14 @@ export interface LantaiPlugin {
   apply(ctx: Context): void | Promise<void>;
 }
 
-export type ManifestValidation = { ok: true; manifest: PluginManifest } | { ok: false; error: string };
+export type ManifestValidation =
+  | {
+      ok: true;
+      manifest: PluginManifest;
+      /** 非阻断警告（未知顶层字段…——装载照常，但「写了但没生效」必须可见）。 */
+      warnings: string[];
+    }
+  | { ok: false; error: string };
 
 /** 退役形状的具名拒绝（2026-11-23 减形）：schema 删掉的字段若仍出现在 manifest 里，
  *  `strictObject` 只会回「Unrecognized key」——读者不知道该改成什么。这里在语义
@@ -343,12 +365,51 @@ function retiredShapeError(raw: unknown): string | null {
   return null;
 }
 
+/** 顶层允许键（schema 真源派生——手抄清单会漂，派生不会）。 */
+const MANIFEST_TOP_KEYS: ReadonlySet<string> = new Set(Object.keys(PluginManifestSchema.shape));
+
+/** 未知顶层字段警告（**不阻断**）：schema 非 strict，未知键会被静默剥掉——
+ *  剥掉 = 作者以为声明生效了。这里把它变成可见警告（设置页/CLI 都看得到）。 */
+function unknownKeyWarnings(raw: Record<string, unknown>): string[] {
+  const unknown = Object.keys(raw).filter((key) => !MANIFEST_TOP_KEYS.has(key));
+  if (unknown.length === 0) return [];
+  return unknown.map(
+    (key) =>
+      `未知顶层字段 "${key}" 已被忽略（当前契约 v${OPEN_SURFACE_CONTRACT_VERSION} 不认这个键）` +
+      '——检查是否拼错，或本插件要求的宿主比当前更新',
+  );
+}
+
+/** 宿主版本是否满足 `engines.lantai`（纯函数：版本由调用方给，便于测试与 CLI 复用）。
+ *
+ *  三态：未声明 / 满足 ⇒ ok；声明且不满足 ⇒ 具名原因；range 本身非法 ⇒ 具名原因
+ *  （手误不许静默通过）。`hostVersion` = null 表示宿主版本未知 ⇒ ok（调用方负责 warn）。 */
+export function checkEngines(
+  manifest: Pick<PluginManifest, 'engines'>,
+  hostVersion: string | null,
+): { ok: true } | { ok: false; reason: string } {
+  const range = manifest.engines?.lantai;
+  if (range === undefined) return { ok: true };
+  const valid = validRange(range);
+  if (valid === null) return { ok: false, reason: `engines.lantai（${range}）不是合法的 semver range` };
+  if (hostVersion === null) return { ok: true }; // 版本未知 = 跳过（开发/测试），由调用方 warn
+  if (validVersion(hostVersion) === null) return { ok: true }; // 非 semver 的宿主版本同样按未知处理
+  if (satisfies(hostVersion, valid)) return { ok: true };
+  return { ok: false, reason: `需要兰台 ${range}，当前宿主是 ${hostVersion}` };
+}
+
 /** manifest 校验单一入口（loader 与测试共用；错误显式返回，不做静默兜底）。 */
 export function validateManifest(raw: unknown): ManifestValidation {
   const retired = retiredShapeError(raw);
   if (retired) return { ok: false, error: retired };
   const result = PluginManifestSchema.safeParse(raw);
-  if (result.success) return { ok: true, manifest: result.data };
+  if (result.success) {
+    const warnings =
+      Array.isArray(raw) || raw === null || typeof raw !== 'object'
+        ? []
+        : unknownKeyWarnings(raw as Record<string, unknown>);
+    return { ok: true, manifest: result.data, warnings };
+  }
   const error = result.error.issues
     .map((issue) => (issue.path.join('.') || '(root)') + ': ' + issue.message)
     .join('; ');

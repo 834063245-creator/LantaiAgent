@@ -23,7 +23,7 @@ import {
   loadExternalPlugins,
   resetPluginRuntimeForTests,
 } from '../src/plugins/loader';
-import { PluginManifestSchema, validateManifest } from '../src/plugins/types';
+import { checkEngines, PluginManifestSchema, validateManifest } from '../src/plugins/types';
 import { usePluginPrefs } from '../src/state/plugin-prefs';
 import { usePluginStore } from '../src/state/plugin-store';
 
@@ -207,6 +207,50 @@ describe('manifest 校验（zod 单一来源）', () => {
   });
 });
 
+describe('v74：engines 宿主兼容声明（契约，不是能力）', () => {
+  it('未声明 = 不检查（所有旧 manifest 行为不变）', () => {
+    expect(checkEngines({}, '1.2.3')).toEqual({ ok: true });
+    expect(checkEngines({}, null)).toEqual({ ok: true });
+  });
+
+  it('声明且满足 ⇒ 放行；不满足 ⇒ 具名原因（含区间与宿主版本）', () => {
+    expect(checkEngines({ engines: { lantai: '>=1.0.0' } }, '1.2.3')).toEqual({ ok: true });
+    const bad = checkEngines({ engines: { lantai: '>=2.0.0' } }, '1.2.3');
+    expect(bad.ok).toBe(false);
+    expect(bad.ok ? '' : bad.reason).toContain('>=2.0.0');
+    expect(bad.ok ? '' : bad.reason).toContain('1.2.3');
+  });
+
+  it('range 本身非法 ⇒ 具名拒绝（手误不许静默通过）', () => {
+    const res = checkEngines({ engines: { lantai: 'not a range' } }, '1.2.3');
+    expect(res.ok).toBe(false);
+    expect(res.ok ? '' : res.reason).toContain('不是合法的 semver range');
+  });
+
+  it('宿主版本未知（开发/测试/产物域）= 跳过，不阻断（未知 ≠ 不兼容）', () => {
+    expect(checkEngines({ engines: { lantai: '>=2.0.0' } }, null)).toEqual({ ok: true });
+    // 非 semver 的宿主版本同样按未知处理（不许拿 "unknown" 去 satisfies 炸掉）
+    expect(checkEngines({ engines: { lantai: '>=2.0.0' } }, 'unknown')).toEqual({ ok: true });
+  });
+});
+
+describe('v74：未知顶层字段 → 警告（不静默剥掉，也不阻断装载）', () => {
+  it('未知键进 warnings，manifest 照常可用', () => {
+    const res = validateManifest({ ...HELLO_MANIFEST, bogus: 1, another: 'x' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.warnings).toHaveLength(2);
+    expect(res.warnings[0]).toContain('未知顶层字段 "bogus"');
+    expect(res.warnings[0]).toContain('已被忽略');
+  });
+
+  it('无未知键 ⇒ 空警告（正常插件零噪声）', () => {
+    const res = validateManifest(HELLO_MANIFEST);
+    expect(res.ok).toBe(true);
+    expect(res.ok ? res.warnings : ['?']).toEqual([]);
+  });
+});
+
 describe('loadExternalPlugins（失败隔离铁律）', () => {
   beforeEach(() => {
     usePluginStore.setState({ plugins: [] });
@@ -236,6 +280,39 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
     expect(bad?.status).toBe('error');
     expect(bad?.error).toContain('disk boom');
     expect(importCalls).toHaveLength(2);
+  });
+
+  it('engines 区间非法 → 装载期具名拒载（错误可行动，不是静默放过）', async () => {
+    const root = new Context();
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/hello/manifest.json']: { ...HELLO_MANIFEST, engines: { lantai: 'not a range' } },
+      }),
+      importModule: async () => ({ default: { name: 'hello', apply() {} } }),
+    });
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hello');
+    expect(rec?.status).toBe('error');
+    expect(rec?.error).toContain('engines.lantai');
+    expect(rec?.error).toContain('不是合法的 semver range');
+  });
+
+  it('未知顶层字段 → 装载照常，警告随记录进设置页（不静默剥掉）', async () => {
+    const root = new Context();
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/hello/manifest.json']: { ...HELLO_MANIFEST, bogus: true, engines: { lantai: '>=0.0.1' } },
+      }),
+      importModule: async () => ({ default: { name: 'hello', apply() {} } }),
+    });
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hello');
+    expect(rec?.status).toBe('active');
+    expect(rec?.warnings?.join('\n')).toContain('未知顶层字段 "bogus"');
   });
 
   it('apply 抛错 → error 记录（cordis fiber await reject）', async () => {

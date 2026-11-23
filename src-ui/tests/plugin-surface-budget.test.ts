@@ -35,6 +35,7 @@ const BUDGET = {
     'dataDir',
     'description',
     'displace',
+    'engines',
     'entry',
     'inject',
     'mcpServers',
@@ -58,6 +59,7 @@ const BUDGET = {
   'tools 条目': ['description', 'name', 'parameters', 'readOnly'],
   'app 声明': ['documents', 'entry', 'mode', 'title', 'url'],
   'activation 声明': ['exclusive', 'lazy', 'resources'],
+  'engines 声明': ['lantai'],
 } as const;
 
 const ROOT = z.toJSONSchema(PluginManifestSchema, { io: 'output' }) as SchemaNode;
@@ -82,7 +84,7 @@ function exampleManifests(): Array<[string, unknown]> {
 }
 
 describe('插件面形状预算：manifest 字段白名单（增字段必须改这里）', () => {
-  it('顶层 12 字段 —— 与 schema 精确一致', () => {
+  it('顶层 13 字段 —— 与 schema 精确一致（v74 加 engines）', () => {
     expect(propsOf(ROOT)).toEqual([...BUDGET['manifest 顶层']].sort());
   });
 
@@ -97,6 +99,10 @@ describe('插件面形状预算：manifest 字段白名单（增字段必须改�
   it('app / activation 声明：形状未增（文档通道的 documents 已在册）', () => {
     expect(propsOf(ROOT.properties?.app)).toEqual([...BUDGET['app 声明']].sort());
     expect(propsOf(ROOT.properties?.activation)).toEqual([...BUDGET['activation 声明']].sort());
+  });
+
+  it('engines 声明：只有一个 lantai 区间（v74 兼容声明，不是能力面）', () => {
+    expect(propsOf(ROOT.properties?.engines)).toEqual([...BUDGET['engines 声明']].sort());
   });
 });
 

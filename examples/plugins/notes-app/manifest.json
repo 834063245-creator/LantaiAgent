@@ -2,6 +2,7 @@
   "name": "notes-app",
   "version": "1.0.0",
   "description": "软件级插件范本（app shell 四件套闭环 · S5）：完整软件以插件形态住进兰台——开窗即视图（iframe 真隔离 + postMessage 白名单桥）、装载即数据地盘（dataDir）、后端 = 零工具可拉起的受治 MCP server（lazy）、Agent 经两张门驱动五工具、异步导出走后台唤醒（minimal 定位键）。",
+  "engines": { "lantai": ">=1.0.0" },
   "entry": "entry.js",
   "app": {
     "entry": "./app/index.html",

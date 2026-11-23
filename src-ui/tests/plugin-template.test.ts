@@ -82,7 +82,7 @@ describe('插件模板：可装载形状（_template）', () => {
 describe('契约工具包：manifest.schema.json 生成物', () => {
   const file = join(ROOT, 'docs', 'plugins', 'manifest.schema.json');
 
-  it('存在、可解析，且自带「勿手改」说明 + 12 个顶层字段', () => {
+  it('存在、可解析，且自带「勿手改」说明 + 13 个顶层字段', () => {
     expect(existsSync(file)).toBe(true);
     const schema = JSON.parse(readFileSync(file, 'utf8')) as {
       $comment?: string;
@@ -95,6 +95,7 @@ describe('契约工具包：manifest.schema.json 生成物', () => {
       'dataDir',
       'description',
       'displace',
+      'engines',
       'entry',
       'inject',
       'mcpServers',

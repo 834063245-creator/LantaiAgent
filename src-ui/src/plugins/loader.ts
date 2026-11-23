@@ -29,6 +29,7 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { activeRootAgent, listRootAgents } from '../agent/active-agent';
+import { BUILD } from '../agent/obs';
 import { Overlay } from '../app/overlay';
 import { loadHeavyViewer } from '../app/paper/viewers';
 import { useShellStore } from '../app/shell-store';
@@ -46,7 +47,7 @@ import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-m
 import { type GovernedActivationFace, type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { SERVICE_PLUGINS } from './service-plugins';
 import { mountToolDeclarations } from './tool-declarations';
-import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
+import { checkEngines, type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 import { mountPluginApp, type PluginWindowFacility, pluginWindowFacility } from './window-facility';
 
 /** loader 消费的最小 fetch 形状（测试可用普通对象实现，不依赖 Response 全局）。 */
@@ -451,6 +452,14 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.name + ': ' + e.message : String(e);
 }
 
+/** 宿主版本（构建锚 `__LANTAI_BUILD__.v`）。null = 未知——开发/测试/产物域
+ *  （esbuild 不走 vite define，锚是 'unknown'）。**未知 ≠ 不兼容**：版本未知时
+ *  跳过 `engines` 检查并 warn，拿它拒载会把整个开发面打死。 */
+function hostVersionOrNull(): string | null {
+  const v = BUILD.v;
+  return typeof v === 'string' && v !== '' && v !== 'unknown' ? v : null;
+}
+
 // ── D6 运行时热重载（平台化 Phase 4，2026-08-27）──
 // 外部插件的「活跃注册表」：插件名 → 装载 fiber。boot 期 loadExternalPlugins
 // 填充；此后设置面板的 装/卸/启用/禁用 走 activateExternalPlugin /
@@ -671,8 +680,20 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       s2.tim.totalMs = performance.now() - bootT0;
       bootTiming.push(s2.tim);
       const record: PluginRecord = s2.isBuiltinNamed
-        ? { name: s2.manifest.name, manifest: s2.manifest, status: 'active', builtin: true, meta: s2.bundleMeta }
-        : { name: s2.manifest.name, manifest: s2.manifest, status: 'active' };
+        ? {
+            name: s2.manifest.name,
+            manifest: s2.manifest,
+            status: 'active',
+            builtin: true,
+            meta: s2.bundleMeta,
+            ...(s2.warnings.length > 0 ? { warnings: s2.warnings } : {}),
+          }
+        : {
+            name: s2.manifest.name,
+            manifest: s2.manifest,
+            status: 'active',
+            ...(s2.warnings.length > 0 ? { warnings: s2.warnings } : {}),
+          };
       records.push(record);
       activeExternalFibers.set(record.name, fiber);
     }
@@ -750,6 +771,8 @@ interface ManifestStageOk {
   manifest: PluginManifest;
   bundleMeta: FirstPartyPluginMeta | undefined;
   isBuiltinNamed: boolean;
+  /** 非阻断警告（未知顶层字段 / engines 版本未知）——随 PluginRecord 进设置页。 */
+  warnings: string[];
   tim: LoadTimingEntry;
 }
 type ManifestStageResult = ManifestStageOk | { ok: false; record: PluginRecord; tim: LoadTimingEntry };
@@ -760,6 +783,7 @@ interface ModuleStageOk {
   manifest: PluginManifest;
   bundleMeta: FirstPartyPluginMeta | undefined;
   isBuiltinNamed: boolean;
+  warnings: string[];
   target: LantaiPlugin;
   tim: LoadTimingEntry;
 }
@@ -794,6 +818,20 @@ async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<Manifest
     return { ok: false, record: errorRecord(dirId, null, 'manifest 校验失败: ' + validated.error), tim };
   }
   const manifest = validated.manifest;
+  // 1b) 宿主兼容声明（v74）：engines 是契约不是能力——声明了就必须满足。
+  //     版本未知（开发/测试/产物域）= 跳过并 warn，不阻断（见 hostVersionOrNull）。
+  const compat = checkEngines(manifest, hostVersionOrNull());
+  if (!compat.ok) {
+    return {
+      ok: false,
+      record: errorRecord(
+        dirId,
+        manifest,
+        '宿主兼容声明不满足（engines.lantai）：' + compat.reason + '——升级兰台到该区间，或让插件作者放宽 engines',
+      ),
+      tim,
+    };
+  }
   // 2) 名字与目录一致（URL 按名字寻址磁盘目录，不一致 = 装不上）
   if (manifest.name !== dirId) {
     return {
@@ -801,6 +839,16 @@ async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<Manifest
       record: errorRecord(dirId, manifest, 'manifest.name (' + manifest.name + ') 与目录名 (' + dirId + ') 不一致'),
       tim,
     };
+  }
+  // 1c) 非阻断警告：未知顶层字段（validateManifest 收集）+ engines 版本未知
+  const warnings = [...validated.warnings];
+  if (manifest.engines?.lantai !== undefined && hostVersionOrNull() === null) {
+    warnings.push(
+      `声明了 engines.lantai=${manifest.engines.lantai}，但宿主版本未知——本机跳过兼容检查（开发/测试/产物域）`,
+    );
+  }
+  if (warnings.length > 0 && import.meta.env.MODE !== 'test') {
+    console.warn(`[plugins] ${manifest.name}：${warnings.join('；')}`);
   }
   const bundleMeta = FIRST_PARTY_MANIFEST[manifest.name];
   const isBuiltinNamed = bundleMeta != null;
@@ -895,14 +943,14 @@ async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<Manifest
       };
     }
   }
-  return { ok: true, dirId, manifest, bundleMeta, isBuiltinNamed, tim };
+  return { ok: true, dirId, manifest, bundleMeta, isBuiltinNamed, warnings, tim };
 }
 
 /** 阶段 2：模块 import + 形状校验 + 声明式包装（并发安全、无副作用）。
  *  仅 manifest（阶段 1 通过）驱动；wrapper 构造归这里，apply 执行归阶段 3。 */
 async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<ModuleStageResult> {
   const { origin, importModule } = deps;
-  const { manifest, bundleMeta, isBuiltinNamed, tim } = entry;
+  const { manifest, bundleMeta, isBuiltinNamed, warnings, tim } = entry;
   try {
     // 5) 导入（S5：displace 位移机制退役——产物是唯一装载面）。
     // URL **必带恒新版本号**（landmine H4）：ES module 的模块图按 URL 缓存，
@@ -1030,7 +1078,7 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
         }
       : candidate;
     tim.importMs = performance.now() - tImport;
-    return { ok: true, manifest, bundleMeta, isBuiltinNamed, target, tim };
+    return { ok: true, manifest, bundleMeta, isBuiltinNamed, warnings, target, tim };
   } catch (e) {
     // 装载失败：error 记录可见（S5：位移恢复已退役——产物是唯一装载面）。
     return { ok: false, record: withBuiltinMeta(manifest.name, manifest, errText(e)), tim };
@@ -1076,8 +1124,20 @@ async function applyPrepared(
     bootTiming.push(s2.tim);
     return {
       record: s2.isBuiltinNamed
-        ? { name: s2.manifest.name, manifest: s2.manifest, status: 'active', builtin: true, meta: s2.bundleMeta }
-        : { name: s2.manifest.name, manifest: s2.manifest, status: 'active' },
+        ? {
+            name: s2.manifest.name,
+            manifest: s2.manifest,
+            status: 'active',
+            builtin: true,
+            meta: s2.bundleMeta,
+            ...(s2.warnings.length > 0 ? { warnings: s2.warnings } : {}),
+          }
+        : {
+            name: s2.manifest.name,
+            manifest: s2.manifest,
+            status: 'active',
+            ...(s2.warnings.length > 0 ? { warnings: s2.warnings } : {}),
+          },
       fiber,
     };
   } catch (e) {

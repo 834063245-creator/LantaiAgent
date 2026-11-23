@@ -166,6 +166,38 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
   dynamic runner / agent loop 变更必须升版 + 记录——守护测试红着就是没改完）。
 - 插件 manifest schema 真源：`src/plugins/types.ts`（zod——单一权威；`displace`
   为历史字段，S5 后已无装载语义——留作解析兼容）。
+- 机器可读形状：`docs/plugins/manifest.schema.json`（生成物，`npm run gen:plugin-schema`；
+  只表达形状，跨字段约束以 `validateManifest` / `npm run plugin:validate` 为准）。
+
+### 契约版本与弃用（2026-11-23 减形后定规）
+
+**三条硬规矩**（写进契约变更流程）：
+
+1. **删除即具名拒绝**：删字段不做静默剥离——manifest 里写退役字段 = 装载期报错，
+   错误里点名「已退役」并给出迁移写法（`plugins/types.ts` 的 `RETIRED_MANIFEST_SHAPES`，
+   `tests/plugin-surface-budget.test.ts` 钉住它不许回到 schema）。**不留兼容层**：
+   没有「先解析再警告」的过渡期，旧写法一律拒。
+2. **未知字段不静默**：schema 不认识的顶层键 → 记录 `warnings`（设置页「诊断」可见），
+   装载照常（不阻断——旧宿主读新插件不该炸）。
+3. **新增字段有门槛**：≥2 个真实消费者，或一个明确产品承诺（白名单测试即门槛）。
+
+**迁移表**（退役 → 改成）：
+
+| 退役形状 | 版本 | 改成 |
+|---|---|---|
+| `mcpServers[].lifecycle`（`lazy`/`eager`/`with-window`） | v72 | `governed: true`（只剩一档：装配/调用/开窗拉起 + 空闲回收；关窗不再即杀） |
+| `tools[].async` + 宿主桥 `deferred.complete` | v73 | 插件自带 MCP server，完成时发 `lantai/deferred` 通知 |
+
+**宿主兼容声明 `engines`（v74）**：
+
+```json
+{ "engines": { "lantai": ">=1.0.0" } }
+```
+
+- 声明了就必须满足：装载期不满足 ⇒ 具名拒载（原因带「需要兰台 X，当前宿主 Y」）；
+- `lantai` 不是合法 semver range ⇒ 同样拒载（手误不许静默通过）；
+- **宿主版本未知**（开发/测试/产物域，构建锚 `__LANTAI_BUILD__.v` 缺席）⇒ 跳过检查 + 记一条
+  warning，**不阻断**——版本未知不是「不兼容」。
 
 ### 信任模型二分（详见 §6）
 

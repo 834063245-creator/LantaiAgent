@@ -2,6 +2,7 @@
   "name": "my-plugin",
   "version": "0.1.0",
   "description": "最小插件模板（一扇窗 + 一个工具）。拷这份目录、把 name 换成你的目录名，再按 README 走五步。",
+  "engines": { "lantai": ">=1.0.0" },
   "entry": "entry.js",
   "app": {
     "entry": "./app/index.html",

@@ -198,6 +198,16 @@
         }
       },
       "additionalProperties": false
+    },
+    "engines": {
+      "type": "object",
+      "properties": {
+        "lantai": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [

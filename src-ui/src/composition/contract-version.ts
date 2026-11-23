@@ -22,9 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 73;
+export const OPEN_SURFACE_CONTRACT_VERSION = 74;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v74（2026-11-23）**manifest 增 `engines` 兼容声明 + 未知顶层字段转 `warnings`**：
+ *  `engines?: { lantai?: string }`（semver range）——声明了就必须满足，装载期不满足 ⇒ 具名拒载
+ *  （原因带「需要兰台 X，当前宿主 Y」）；range 非法同样拒载。**宿主版本未知**（开发/测试/
+ *  产物域，构建锚缺席）⇒ 跳过检查 + 记 warning，不阻断（未知 ≠ 不兼容）。
+ *  同版 `validateManifest` 返回 `warnings: string[]`：schema 不认识的**顶层**字段不再被静默
+ *  剥掉，改为可见警告（装载照常——旧宿主读新插件不该炸）。`PluginRecord` 增可选 `warnings`，
+ *  设置页「诊断」原样陈列。新依赖：`semver`（+ `@types/semver`）。
+ *  **对外可感知**：不声明 `engines` 的插件行为逐字节不变；声明了区间过窄的插件从此被拒载
+ *  而不是「装上了但行为不对」。
  *  v73（2026-11-23）**工具口异步退役：`tools[].async` 删除 + 宿主桥 `deferred` 键删除（破坏性）**：
  *  两张门（决策 8）收成一张——仓内 0 消费者，而「插件后台任务」的正解本就是它的后端
  *  进程（纯 JS 插件没有后台，有后台的插件已经有 MCP server）。`manifest.tools[].async` 删；
