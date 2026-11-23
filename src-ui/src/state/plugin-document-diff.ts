@@ -18,6 +18,8 @@ export interface DocumentDiffSummary {
 }
 
 const DEFAULT_MAX_LINES = 120;
+/** 行级 LCS 单元上限（4M 单元 ≈ 16MB 表）——超过就退化，不把宿主拖死。 */
+const MAX_LCS_CELLS = 4_000_000;
 
 function splitLines(s: string): string[] {
   return s.length === 0 ? [] : s.split(/\r?\n/);
@@ -44,6 +46,15 @@ export function summarizeDocumentDiff(
   if (before === after) return { added: 0, removed: 0, text: '（正文无变化）' };
   const a = splitLines(before);
   const b = splitLines(after);
+  // 内存闸（2026-11-23）：LCS 表是 O(n·m)，上万行 × 上万行就是几百 MB——
+  // 那不是「慢」，是把宿主标签页拖死。超限退化成整篇替换计数（诚实标注，不装成逐行差分）。
+  if ((a.length + 1) * (b.length + 1) > MAX_LCS_CELLS) {
+    return {
+      added: b.length,
+      removed: a.length,
+      text: `（文件过大：${a.length} 行 → ${b.length} 行，未做逐行差分；按整篇替换展示计数）`,
+    };
+  }
   const t = lcsTable(a, b);
   const w = b.length + 1;
   const rows: string[] = [];

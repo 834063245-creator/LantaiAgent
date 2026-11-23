@@ -13,6 +13,7 @@
 // 定稿后另批施工（走 canvas-nav 同款第一方产物通道），不阻塞本设施。
 
 import type { Context } from '../cordis';
+import { cancelDocumentReviewsForWindow } from '../state/plugin-document-review';
 import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../state/plugin-window-store';
 import { notifyPluginWindowClosed, notifyPluginWindowOpened } from './mcp-bridge';
@@ -49,6 +50,7 @@ export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, o
       for (let i = 0; i < closed.length; i++) {
         // 卸载收口：窗没了，令牌跟着死（不留给下一任同 id 窗口）
         revokeDocumentGrantsForWindow(closed[i].windowId);
+        cancelDocumentReviewsForWindow(closed[i].windowId);
         notifyPluginWindowClosed(pluginName);
       }
     },
@@ -90,6 +92,7 @@ export function openPluginWindow(pluginName: string, opts?: { document?: { path:
 export function closePluginWindow(windowId: string): boolean {
   const pluginName = usePluginWindowStore.getState().closeWindow(windowId);
   revokeDocumentGrantsForWindow(windowId);
+  cancelDocumentReviewsForWindow(windowId);
   if (pluginName == null) return false;
   notifyPluginWindowClosed(pluginName);
   return true;

@@ -92,6 +92,15 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 - 纸面/引用处加「用文卷打开」入口（从卷里/工作区取当前文档）；
 - `examples/plugins/md-editor/` 接入 `doc-open` 与 `doc.save`，README 撤掉「刻意不做」里的对应行。
 
+## 3.5 补强（2026-11-23，真机使用前收口的三个洞）
+
+- **关窗撤单**：窗关掉 / 卸载时，该窗待审改稿单一律作废（`cancelDocumentReviewsForWindow`）——
+  不留「没有窗的单子还能点写入」这种骗人的状态。
+- **大文件闸**：行级 LCS 表设 4M 单元上限，超限退化成整篇替换计数并**如实标注**——
+  宁可少给信息，也不把宿主标签页拖死。
+- **确认面单测**：`tests/document-review-host.test.tsx`——渲染（路径/计数/差分）、
+  点写入→决议 true、点退回→决议 false、关窗撤单→决议 false 且弹窗消失。
+
 ## 4. 门禁与守护
 
 - 契约变更按 `composition/contract-version.ts` 四步升版（当前版本见 `docs/facts.generated.md`），

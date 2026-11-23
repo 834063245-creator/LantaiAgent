@@ -41,6 +41,18 @@ export function requestDocumentReview(review: Omit<PendingDocumentReview, 'revie
   return { reviewId, approved };
 }
 
+/** 关窗 / 卸载：该窗的待审单一律作废（不写盘、不留弹窗）——令牌已随窗回收，
+ *  再让用户对着一张没有窗的单子点头就是骗人。 */
+export function cancelDocumentReviewsForWindow(windowId: string): void {
+  for (const [reviewId, entry] of entries) {
+    if (entry.review.windowId !== windowId) continue;
+    entries.delete(reviewId);
+    entry.resolve(false);
+  }
+  const current = useDocumentReviewStore.getState().review;
+  if (current && current.windowId === windowId) useDocumentReviewStore.getState().hide();
+}
+
 /** 用户裁决（确认面调用）：批准 = 走落盘；退回 = 不写盘。 */
 export function settleDocumentReview(reviewId: string, approved: boolean): void {
   const entry = entries.get(reviewId);
