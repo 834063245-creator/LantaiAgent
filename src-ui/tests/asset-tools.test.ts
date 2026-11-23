@@ -109,6 +109,32 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
     expect(JSON.parse(out).kind).toBe('table');
   });
 
+  /* 2026-11-23 卷 175 真机事故：show_asset(kind:'file', payload:{path:'…'}) 校验放行、
+     空壳入库，用户看到一张只有「文件」二字的空白卡。契约收口后：不认的键点名拒收、
+     没有 filePath 拒收、空串拒收——错误即导航（带正确示例）。 */
+  it('show_asset kind=file：路径键写成 path 被拒，报错点名那个键 + 正确示例', async () => {
+    const err = await run('show_asset', { kind: 'file', payload: { path: 'D:/x/a.png' } }).catch(
+      (e: Error) => e.message,
+    );
+    expect(err).toMatch(/不允许的额外属性/);
+    expect(err).toMatch(/path/);
+    expect(err).toContain('filePath');
+    expect(err).toContain('正确形状示例');
+  });
+
+  it('show_asset kind=file：缺 filePath / 空串都被拒（不再落空壳卡）', async () => {
+    await expect(run('show_asset', { kind: 'file', payload: {} })).rejects.toThrow(/缺少必需属性 "filePath"/);
+    await expect(run('show_asset', { kind: 'file', payload: { filePath: '   ' } })).rejects.toThrow(/空白串/);
+  });
+
+  it('show_asset kind=file：合法 payload（绝对路径）建卡，回执带顶层键读数', async () => {
+    const out = await run('show_asset', { kind: 'file', payload: { filePath: 'D:/x/a.png', ext: 'png' } });
+    const parsed = JSON.parse(out) as { kind: string; payload: unknown; receipt: { summary: string } };
+    expect(parsed.kind).toBe('file');
+    expect(parsed.payload).toEqual({ filePath: 'D:/x/a.png', ext: 'png' });
+    expect(parsed.receipt.summary).toContain('filePath');
+  });
+
   it('update_asset 缺资产：硬报错（带窗：说明当前会话资产与新建途径）', async () => {
     await expect(run('update_asset', { assetId: 'as_missing', payload: {} })).rejects.toThrow(/不存在于当前会话/);
     await expect(run('update_asset', { assetId: 'as_missing', payload: {} })).rejects.toThrow(/show_asset/);

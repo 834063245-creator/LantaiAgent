@@ -111,7 +111,8 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
         ['table', 'grid', {}, 'pp-grid'],
         ['chart', 'chart', {}, 'pp-chart'],
         ['metric', 'metric', {}, 'pp-metric'],
-        ['file', 'media', {}, 'pp-media'],
+        // 2026-11-23 卷 175：空 payload 不再是「一条空白文件行」，而是可读失败行
+        ['file', 'media', {}, 'pp-viewer-error'],
         ['deps_impact', 'graph', {}, 'pp-graph'],
         ['confirm', 'form', {}, 'pp-form'],
         ['html', 'html', {}, 'pp-html'],
@@ -123,6 +124,20 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
         const html = renderToStaticMarkup(createElement(Comp!, { block: assetBlock(kind, pres, payload) }));
         expect(html).toContain(cls);
       }
+    });
+  });
+
+  it('空 payload 的媒体卡说人话：可读失败行，不是空白壳（2026-11-23 卷 175 FILE 075 回归）', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('file', 'media')!;
+      // 历史卡真身：模型把路径写成 path（键名猜错）——payload 里一个可渲染字段都没有
+      const html = renderToStaticMarkup(
+        createElement(Comp, { block: assetBlock('file', 'media', { path: 'D:/research/x/tsfm_demo.png' }) }),
+      );
+      const err = html.slice(html.indexOf('pp-viewer-error'));
+      expect(html).toContain('pp-viewer-error');
+      expect(err).toContain('filePath'); // 缺什么 + 怎么补（错误即导航）
+      expect(html).not.toContain('pp-media-path'); // 不再留一条空路径行
     });
   });
 

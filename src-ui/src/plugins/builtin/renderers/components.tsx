@@ -1130,6 +1130,12 @@ function MediaBody({ block }: BlockRendererProps) {
   const label = p.label || p.fileId || p.filePath || '文件';
   const ext = normalizeExt(p.ext ?? '');
   const filePath = p.filePath;
+  /* 空白卡兜底（2026-11-23 卷 175 真机事故）：payload 里**一个可渲染字段都没有**
+   * （无路径、也无扩展名/题名）时，文件壳只剩一条空行——用户读作「一张只写了
+   * 『文件』二字的空白卡」，而卡片自己一言不发。这一类**可判定**的坏卡必须自报
+   * 缺什么、怎么补（错误不静默）。有 ext/label 而缺路径的（office/代码等未取件态）
+   * 仍走文件壳：那是查看器的合法降级态，不是空卡。 */
+  const blankPayload = !p.filePath && !p.fileId && !p.label && !ext;
   // 认领命中优先；未命中交兜底查看器（B8：hex/文本嗅探）——再没有才落文件壳
   const def = viewerRegistry.resolve(ext) ?? viewerRegistry.catchAll();
   // 只有需要字节的查看器才读文件内容；文件壳/只看元数据的查看器不浪费一次 RPC
@@ -1186,7 +1192,12 @@ function MediaBody({ block }: BlockRendererProps) {
 
   const shell = <FileShell ext={ext} filePath={filePath} />;
   let body: ReactNode;
-  if (!def || (def.needsBytes && !filePath)) {
+  if (blankPayload) {
+    // 什么字段都不带地空着才是病：点名缺的键 + 补法（与降级链其余各档同一条纪律）
+    body = (
+      <ViewerError text="这张卡没有可显示的内容：payload 里没有 filePath（也没有 ext / label）——无法预览；重出一张时把文件的绝对路径写进 filePath" />
+    );
+  } else if (!def || (def.needsBytes && !filePath)) {
     body = shell; // 未命中查看器 / 无路径可读：文件壳（B1 前行为，零变化）
   } else if (overSize) {
     // 尺寸预检（P2）：**没读**就拦下——大文件不进 IPC（白名单外的一切都不读）

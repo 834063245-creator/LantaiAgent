@@ -259,16 +259,33 @@ export function registerBuiltinAssetKinds(): void {
 
   assetKinds.register({
     id: 'file',
-    description: '会话文件/媒体引用（图片/视频/文档——点击打开预览）',
-    schema: objectSchema({
-      fileId: { type: 'string', description: '会话文件 id（可空）' },
-      filePath: { type: 'string', description: '绝对路径——图片/视频预览需给此项（读文件内容渲染）' },
-      label: { type: 'string', description: '显示名（可空——缺省回落到 fileId/filePath）' },
-      ext: { type: 'string', description: '扩展名（如 png/mp4/pdf，小写无点——决定渲染形态；可空）' },
-    }),
+    description: '会话文件/媒体引用（图片/视频/文档——点击打开预览）——payload 必须带绝对路径 filePath',
+    // 契约收口（2026-11-23 卷 175 真机事故：模型把路径写成「path」，四个字段此前全可空
+    // + additionalProperties:true ⇒ 校验放行、空壳入库，用户看到一张只有「文件」二字的
+    // 空白卡）。现在：filePath 必填、不认的键**点名**拒收（报错带窗）、空串也拒——
+    // 「能预览」的唯一前提就是真有一条路径。fileId 一并删除：全树没有它的解析者
+    // （渲染只读 filePath），留着只会再骗模型一次。
+    schema: {
+      ...objectSchema(
+        {
+          filePath: { type: 'string', description: '绝对路径（必填）——图片/视频/文档按此读文件内容渲染' },
+          label: { type: 'string', description: '显示名（可空——缺省回落到 filePath 尾段）' },
+          ext: { type: 'string', description: '扩展名（如 png/mp4/pdf，小写无点——决定渲染形态；可空）' },
+        },
+        ['filePath'],
+      ),
+      additionalProperties: false,
+    },
     presentations: ['media'],
     defaultPresentation: 'media',
     streamable: 'atomic',
+    payloadExample: '{filePath:"D:/work/chart.png", ext:"png", label:"营收对比图"}',
+    payloadCheck: (payload) => {
+      if (!isPlainObject(payload)) return null; // 形状交给 schema 拒
+      const filePath = payload.filePath;
+      if (typeof filePath === 'string' && filePath.trim().length > 0) return null;
+      return 'filePath 是空白串——没有路径就预览不了（给文件的绝对路径，如 D:/work/chart.png）';
+    },
   });
 
   assetKinds.register({

@@ -603,6 +603,9 @@ function viewerBodyH(p: { ext?: unknown; filePath?: unknown }): number {
   const ext = typeof p.ext === 'string' ? p.ext : '';
   const hasPath = typeof p.filePath === 'string' && p.filePath.length > 0;
   const head = VIEWER_PAD_V + PLATE_HEAD_H + VIEWER_LABEL_H;
+  // 无路径：有 ext/label → 文件壳一行；连 ext/label 都没有 → 可读失败行
+  // （.pp-viewer-error 与文件行同字号（mediaRowSize）、行高同继承 ⇒ 静态镜像不分档；
+  //  挂载后资产族恒走 RO 实测收敛）。2026-11-23 卷 175 空白卡事故。
   if (!hasPath) return head + MEDIA_ROW_H;
   const cls = viewerClassOf(ext);
   switch (cls) {
