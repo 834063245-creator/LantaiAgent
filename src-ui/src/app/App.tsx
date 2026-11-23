@@ -20,6 +20,7 @@ import { CommandPalette } from './CommandPalette';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { HelpSheet } from './HelpSheet';
 import { DockPanel } from './panels/DockPanel';
+import { DocumentReviewHost } from './plugin-windows/DocumentReviewHost';
 import { PluginWindowsHost } from './plugin-windows/PluginWindowsHost';
 import { TipHost } from './tip';
 import { useDocumentTitle } from './use-document-title';
@@ -49,6 +50,8 @@ export function App() {
         <v.component key={v.id} />
       ))}
       <PluginWindowsHost />
+      {/* 改稿单确认面（文档通道批 2）：与窗口层并列，窗关了也不消失 */}
+      <DocumentReviewHost />
       <ExitConfirmDialog />
       {/* 悬停提示宿主（2026-10-30）：全库单点，事件委托读 data-tip / data-tip-hint。
           常在 = 常驻一个节点（不随悬停挂载卸载），故入场/退场 transition 都有落点。 */}

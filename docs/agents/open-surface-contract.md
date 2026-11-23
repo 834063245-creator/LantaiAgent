@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：70
+当前版本：71
 
-<!-- contract-fingerprint: dec731e1f8a58d38f83f0a17fd061d5b8d9e25e5e6c7280a4f259fceae972bd5 -->
+<!-- contract-fingerprint: ece413bc217cd54035bb7598367d2e0b672e50d8f1e8a434e0fba7fcce2dd246 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -41,7 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
-| 70 | 2026-11-23 | **`AppDecl` 增可选 `documents`（插件文档通道 · 批 1 只读）**：`manifest.app.documents: true` 才受理开窗文档载荷（`openPluginWindow(name, { document: { path } })`）与桥方法 `doc.read`；令牌由宿主签发（`state/plugin-document-store.ts`），**窗只交 docToken，路径解释权只在宿主**，令牌绑 windowId + pluginName、关窗/换文档整窗回收；就绪后宿主推 `doc-open` 事件（`{ docToken, path }`）。不声明 ⇒ 桥里没有 `doc.*`、载荷被忽略（源码零迁移）。写回（`doc.save` + 改稿单）留批 2。 | 施工单 `docs/plans/plugin-document-channel-plan.md`；前置 `examples/plugins/md-editor/`（`51e3a48a`）；测试 `tests/plugin-window-document.test.ts` |
+| 71 | 2026-11-23 | **`window-bridge.ts` 入册 + 桥方法增 `doc.save`（文档通道批 2 写回）**：`postMessage` 白名单（方法集 / 事件集 / deps 形状）此前只是实现、未入契约面——第三方实际依赖它，故登记入册，此后变更必须升版。本版白名单增 `doc.save`、事件增 `doc-saved` / `doc-rejected`、`WindowBridgeDeps` 增 `writeDocument`。**写回不内联落盘**：交单即回 `pending-review`（含宿主算的差分与全量 `+a −b` 计数），用户批准才写；退回或写盘失败回 `doc-rejected`。未声明 `app.documents` 的插件行为不变。 | 施工单 `docs/plans/plugin-document-channel-plan.md` 批 2；测试 `tests/plugin-document-save.test.ts` || 70 | 2026-11-23 | **`AppDecl` 增可选 `documents`（插件文档通道 · 批 1 只读）**：`manifest.app.documents: true` 才受理开窗文档载荷（`openPluginWindow(name, { document: { path } })`）与桥方法 `doc.read`；令牌由宿主签发（`state/plugin-document-store.ts`），**窗只交 docToken，路径解释权只在宿主**，令牌绑 windowId + pluginName、关窗/换文档整窗回收；就绪后宿主推 `doc-open` 事件（`{ docToken, path }`）。不声明 ⇒ 桥里没有 `doc.*`、载荷被忽略（源码零迁移）。写回（`doc.save` + 改稿单）留批 2。 | 施工单 `docs/plans/plugin-document-channel-plan.md`；前置 `examples/plugins/md-editor/`（`51e3a48a`）；测试 `tests/plugin-window-document.test.ts` |
 | 69 | 2026-11-22 | **`ToolArgPreview` 的发出面扩档（形状零变更）**：此前该 chunk 只描述 write/edit 的 content 流式预览；现 `code_execution` 也在参数增量期间按 `ARG_PREVIEW_BEAT_MS`（120ms）节流发出**已生成的程序体**——折叠着的程文卡（kind=code）用它在折叠行显示「生成中 + 程序体最新一行」，解决「大程序生成几十秒、卡片只剩一个静止的待执行」的观感缺口。形状仍是 `{ tool_id, tool_name, content }`；第三方 adapter 不发 = 行为逐字节不变；消费方按工具名分流（`part.preview` 只给 code_execution，args 到齐即清空——程序体只在 args 里存一份）。 | 2026-11-22 用户报「code_execution 大程序时观感是卡在 pending」；守护 `tests/provider-code-arg-preview.test.ts` + `tests/code-stream-preview.test.ts` |
 | 68 | 2026-11-22 | **新增 `ChunkType.Heartbeat` 流活性心跳（纯增量成员 = 9）**：工具参数增量（openai `function.arguments` 片段 / anthropic `input_json_delta` / responses `function_call_arguments.delta`）在三个方言里都只累加、不产语义 chunk，而空闲守卫（`provider/idle-stream.ts`，30s）只在收到 chunk 时复位计时 ⇒ 参数生成超过 30 秒的工具调用被误判成「服务商零字节」，掐断后重试再从零生成同一份大参数、再撞同一面墙。方言现按 `ARG_ACTIVITY_BEAT_MS`（1s）节流发心跳；消费方忽略（不投影 UI、不进会话），只用于守卫复位。**对外可感知**：第三方 adapter 不产心跳 = 既有行为逐字节不变；消费方按 chunk 类型 switch，未知类型本就落到忽略分支 ⇒ 源码零迁移。 | 2026-11-22 用户报「165 卷 code_execution 无由来的重复调用」（实为断流重试 + 半成卡堆积）；守护 `tests/provider-tool-arg-heartbeat.test.ts` |
 | 67 | 2026-11-22 | **用户组合新增 `directOnly` 直调 allowlist（fail-closed code 模式）**：`composition/roster.ts` 的 `CompositionPatchSchema` 增可选顶层键 `directOnly: string[]`，非 null 即启用——仅列出的模型工具名进入 `schemas()` 直调面，其余仍留 `visibleTools()` 供 `code_execution` 程序内调用；`ResolvedComposition.directOnly` 同步为 `string[] \| null`（缺省 null = 零漂移，后层整体替换）。内置 `code` 组合从逐工具黑名单改为 allowlist，新工具/新插件默认不泄漏到直调面。 | `docs/plans/code-mode-preset-plan.md`；守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts` |

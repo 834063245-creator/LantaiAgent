@@ -22,9 +22,15 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 70;
+export const OPEN_SURFACE_CONTRACT_VERSION = 71;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v71（2026-11-23）**`window-bridge.ts` 入册 + 桥方法增 `doc.save`（插件文档通道 · 批 2 写回）**：
+ *  此前 postMessage 白名单（方法集 / 事件集 / deps 形状）只是实现，不入契约面——第三方插件实际
+ *  依赖它，事实契约就该登记。本版起它随契约指纹走：白名单增 `doc.save`，事件增 `doc-saved` /
+ *  `doc-rejected`，`WindowBridgeDeps` 增 `writeDocument`（缺省真源 = 宿主 fs 写）。
+ *  写回不过内联落盘：交单 → `pending-review` → 用户批准才写；退回/失败回 `doc-rejected`。
+ *  **对外可感知**：只有声明了 `app.documents` 的插件多一个方法；其余插件行为不变。
  *  v70（2026-11-23）**`AppDecl` 增可选 `documents`（插件文档通道 · 批 1 只读）**：
  *  `manifest.app.documents: true` 才受理开窗文档载荷（`openPluginWindow(name, { document })`）、
  *  桥面才解析 `doc.read`（令牌化——窗只交 docToken，路径由宿主令牌表解析）。
@@ -479,6 +485,9 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   'src/agent/agent-loop/agent-loop-active.ts',
   // 插件 manifest 契约（loader 装载面；v38 起含 activation 块）
   'src/plugins/types.ts',
+  // 窗内能力的唯一通道（postMessage 白名单：方法集 / 事件集 / deps 形状）——工序上它先于
+  // types.ts 的 app 声明被第三方依赖（v71 入册）：白名单变更必须升版，不得静默扩面。
+  'src/plugins/window-bridge.ts',
   // 用户 preset 写法契约（v38 补登记——用户裁定 F：patch schema 此前靠
   // 「文件不在清单里」逃过指纹；内容 = CompositionPatchSchema 的四行域 + 七
   // seam 裁剪域键，用户手写在 ~/.lantai/composition/presets/<id>/roster.patch.yml）

@@ -1,0 +1,35 @@
+/* 改稿单确认面（插件文档通道 · 批 2）——差分只读展示，不参与交互 */
+.doc-review {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.doc-review-path {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.doc-review-count {
+  font-size: 12px;
+}
+.doc-review-count .plus {
+  color: #3f6b4a;
+}
+.doc-review-count .minus {
+  color: #8c3b26;
+}
+.doc-review-count .src {
+  color: #6f6558;
+}
+.doc-review-diff {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+}

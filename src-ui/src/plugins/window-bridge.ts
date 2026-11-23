@@ -21,7 +21,9 @@
 // （名字 + rel 双围栏 + canonicalize 前缀），本桥只做形状校验。
 
 import { useShellStore } from '../app/shell-store';
-import { kernelReadFile } from '../rpc-contract';
+import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
+import { summarizeDocumentDiff } from '../state/plugin-document-diff';
+import { hasPendingReviewForWindow, requestDocumentReview } from '../state/plugin-document-review';
 import { resolveDocumentGrant } from '../state/plugin-document-store';
 import type { PluginDataFs } from './data-fs';
 import { pluginDataFs } from './data-fs';
@@ -33,7 +35,13 @@ export const WINDOW_BRIDGE_PROTOCOL = 'lantai-plugin-bridge';
  *  - bridge-ready：宿主桥已就绪（窗内从此发 call 不会丢）；
  *  - window-closing：即将关窗（尽力而为告警——iframe 移除与投递同拍，
  *    收到与否无保证；需要可靠持久化的插件应改动即存）。 */
-export type WindowBridgeEvent = 'bridge-ready' | 'window-closing' | 'doc-open';
+export type WindowBridgeEvent =
+  | 'bridge-ready'
+  | 'window-closing'
+  | 'doc-open'
+  /** 改稿单裁决回推（批 2）：approve → 已落盘；reject → 用户退回或写盘失败（带 reason）。 */
+  | 'doc-saved'
+  | 'doc-rejected';
 
 /** 桥方法白名单（默认最小集——扩展须过契约审视，克制开面）。 */
 export type WindowBridgeMethod =
@@ -43,7 +51,9 @@ export type WindowBridgeMethod =
   | 'fs.delete'
   | 'notify'
   /** 文档通道（批 1 只读）：凭令牌读宿主文档——只收 docToken，不收路径。 */
-  | 'doc.read';
+  | 'doc.read'
+  /** 文档通道（批 2 写回）：交新正文 → 宿主出改稿单；回执只报 pending-review。 */
+  | 'doc.save';
 
 /** 每窗依赖（fs/notify 可注入——测试隔离 RPC 通道；缺省真源）。 */
 export interface WindowBridgeDeps {
@@ -51,6 +61,8 @@ export interface WindowBridgeDeps {
   notify: (text: string) => void;
   /** 读宿主文档正文（路径来自宿主签发的令牌解析，窗不参与——见 plugin-document-store）。 */
   readDocument: (path: string) => Promise<string>;
+  /** 写回宿主文档（只在改稿单被批准后调用；路径同样来自令牌解析）。 */
+  writeDocument: (path: string, content: string) => Promise<void>;
 }
 
 export function defaultWindowBridgeDeps(): WindowBridgeDeps {
@@ -58,6 +70,9 @@ export function defaultWindowBridgeDeps(): WindowBridgeDeps {
     fs: pluginDataFs,
     notify: (text) => useShellStore.getState().pushStatus(text),
     readDocument: (path) => kernelReadFile(path),
+    writeDocument: async (path, content) => {
+      await kernelWriteFile(path, content);
+    },
   };
 }
 
@@ -105,6 +120,17 @@ function postResult(cw: Window, payload: Record<string, unknown>): void {
   }
 }
 
+/** 按 windowId 定向广播（批 2：改稿单裁决要回推到**发起它的那扇窗**，不打扰别的窗）。 */
+export function postBridgeEventToWindow(
+  windowId: string,
+  event: WindowBridgeEvent,
+  payload?: Record<string, unknown>,
+): void {
+  for (const [cw, binding] of bindings) {
+    if (binding.windowId === windowId) postBridgeEvent(cw, event, windowId, payload);
+  }
+}
+
 /** 宿主 → 窗：广播（bridge-ready / window-closing）。 */
 export function postBridgeEvent(
   cw: Window,
@@ -144,6 +170,56 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
       const path = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
       if (path == null) throw new Error('doc.read 拒绝：文档令牌无效或已过期');
       return { path, text: await binding.deps.readDocument(path) };
+    }
+    // 文档通道（批 2 写回）：门口与 doc.read 同三道（能力 / 令牌 / 绑窗），再多一道
+    // 「一窗一笔待审」——同一扇窗不许同时挂两张改稿单（会在用户面前互相打架）。
+    // **不直接落盘**：交单后立刻回 pending-review，用户批准才写（写盘调用零次是默认态）。
+    case 'doc.save': {
+      if (!binding.documents) {
+        throw new Error('doc.save 拒绝：插件未声明 app.documents（文档通道未开启）');
+      }
+      const docToken = reqStr(p.docToken, 'docToken');
+      const path = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
+      if (path == null) throw new Error('doc.save 拒绝：文档令牌无效或已过期');
+      if (hasPendingReviewForWindow(binding.windowId)) {
+        throw new Error('doc.save 拒绝：本窗已有一张待审改稿单');
+      }
+      const content = reqStr(p.content, 'content');
+      const before = await binding.deps.readDocument(path);
+      const summary = summarizeDocumentDiff(before, content);
+      if (summary.added === 0 && summary.removed === 0) return { status: 'unchanged', path };
+      const { reviewId, approved } = requestDocumentReview({
+        windowId: binding.windowId,
+        pluginName: binding.pluginName,
+        path,
+        content,
+        added: summary.added,
+        removed: summary.removed,
+        diff: summary.text,
+      });
+      const windowId = binding.windowId;
+      void approved
+        .then(async (ok) => {
+          if (!ok) {
+            postBridgeEventToWindow(windowId, 'doc-rejected', { reviewId, path, reason: 'rejected' });
+            return;
+          }
+          try {
+            await binding.deps.writeDocument(path, content);
+            postBridgeEventToWindow(windowId, 'doc-saved', { reviewId, path });
+          } catch (e) {
+            postBridgeEventToWindow(windowId, 'doc-rejected', { reviewId, path, reason: errText(e) });
+          }
+        })
+        .catch(() => undefined);
+      return {
+        status: 'pending-review',
+        reviewId,
+        path,
+        added: summary.added,
+        removed: summary.removed,
+        diff: summary.text,
+      };
     }
     default:
       throw new Error(`方法 "${method}" 不在白名单（默认最小集 fs.list/fs.read/fs.write/fs.delete/notify——按需申请）`);

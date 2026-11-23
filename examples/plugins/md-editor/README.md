@@ -53,5 +53,3 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 5. 拆：删掉插件目录 / 卸载后，窗、进程、数据目录都不留残渣。
 
 第 3、4 条只覆盖「插件自己的地盘」——**覆盖不到宿主文档**，这是第 2 步的活。
-
-[file: D:/HoloGramHG/examples/plugins/md-editor/README.md]

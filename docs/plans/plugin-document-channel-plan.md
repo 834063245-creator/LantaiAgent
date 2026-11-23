@@ -1,8 +1,10 @@
 # 插件文档通道（受治文档面）— 施工单
 
-> **状态**：**批 1 已落地**（2026-11-23，契约 v70——`AppDecl.documents` + `openPluginWindow` 文档载荷 +
-> 桥方法 `doc.read` + `doc-open` 事件，令牌表在 `src/state/plugin-document-store.ts`）。
-> 批 2（`doc.save` + 改稿单）/ 批 3（纸面入口 + `md-editor` 接入）待办。前置：软件级插件第 1 步 `md-editor` 已交付并提交
+> **状态**：**批 1 + 批 2 已落地**（2026-11-23，契约 v70 → v71）。
+> 批 1 = 只读打通（`AppDecl.documents` + `openPluginWindow` 文档载荷 + `doc.read` + `doc-open`，令牌表 `state/plugin-document-store.ts`）；
+> 批 2 = 写回过审（`doc.save` 交单 → 宿主算差分 → 确认面 → 批准才写；`doc-saved` / `doc-rejected` 回推；
+> `window-bridge.ts` 同批入册契约面）。**批 3（纸面入口 + `md-editor` 接入）待办**——做完才能在真机上看到实物。
+> 前置：软件级插件第 1 步 `md-editor` 已交付并提交
 > （`examples/plugins/md-editor/`，窗 + 桥 + 数据地盘回归基线）。
 > **来由**：用户 2026-12 拍板「编辑器以**窗**的形态住进架阁」——第 1 步证明窗内只能
 > 摸自己的数据地盘（`plugins/window-bridge.ts` 白名单 = dataDir 四动作 + notify，
@@ -67,7 +69,13 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 | `app/plugin-windows/PluginWindowFrame.tsx` | `bridge-ready` 后按登记推 `doc-open` |
 | `plugins/builtin/shelf-domain/ShelfOverlay.tsx` | 软件页条目维持（开窗入口不变；带文档入参留待批 3） |
 
-### 批 2 · 写回过审（改稿单）
+### 批 2 · 写回过审（改稿单）——**已落地 2026-11-23（契约 v71）**
+
+> 实落：`doc.save` 三道门 + 「一窗一笔待审」；宿主侧差分 `plugins/document-diff.ts`（行级 LCS，计数全量、展示可截）→
+> 待审状态 `state/plugin-document-review-store.ts` → 编排 `plugins/document-review.ts` → 确认面
+> `app/plugin-windows/DocumentReviewHost.tsx`（App 根挂一次，窗关了不消失）；批准才写（`kernelWriteFile`），
+> 退回/失败回 `doc-rejected`。**`doc.save` 回执立刻回 `pending-review`**（不等用户——桥调用有超时，用户可能看几分钟）。
+> 测试 `tests/plugin-document-save.test.ts`（4 例：正路零写盘直到批准 / 退回零写盘 / 未声明拒绝 / 无令牌拒绝 + unchanged 不弹单）。
 
 - `doc.save` → 宿主算 diff（复用 `paper/code-view.ts` 的差分口径）→ 弹确认面 →
   确认后走既有写通道落盘；拒绝则回 `{ status: "rejected" }`，窗内保持脏标记。
