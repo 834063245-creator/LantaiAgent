@@ -1,0 +1,87 @@
+# 插件文档通道（受治文档面）— 施工单
+
+> **状态**：Proposed（立案）。前置：软件级插件第 1 步 `md-editor` 已交付并提交
+> （`examples/plugins/md-editor/`，窗 + 桥 + 数据地盘回归基线）。
+> **来由**：用户 2026-12 拍板「编辑器以**窗**的形态住进架阁」——第 1 步证明窗内只能
+> 摸自己的数据地盘（`plugins/window-bridge.ts` 白名单 = dataDir 四动作 + notify，
+> `openPluginWindow(name)` 不收参数，宿主 → 窗只有 `bridge-ready` / `window-closing`）。
+>
+> **一句话**：让窗能安全地打开并回写**宿主的文档**——**令牌化 + 能力声明 + 保存过审**，
+> 而不是把 fs 放开。
+
+## 0. 边界（先定死，违反即返工）
+
+| 条 | 判据 | 为什么 |
+|---|---|---|
+| 窗永不自报路径 | 窗只能说「保存 token X」，路径解释权只在宿主 | 让窗自报路径 = 给插件任意写权限 |
+| 默认关 | manifest 未声明 `app.documents` ⇒ 桥里没有 `doc.*`、开窗不发 `doc-open` | 沿用既有 kill switch 语义（不声明 = 不发生） |
+| 令牌绑窗 | token 绑定 windowId + pluginName，跨窗/跨插件使用一律拒绝 | 一个窗拿不到另一个窗的文档 |
+| 保存过审 | `doc.save` 不直接落盘：先出改稿单（diff），确认后才走**既有写通道** | 审阅型的地基；也复用现有的差分视图与审批门 |
+
+## 1. 今天缺什么（实证）
+
+| 缺 | 现状 |
+|---|---|
+| 开窗带文档 | `openPluginWindow(pluginName): string \| null`——无 opts，无载荷 |
+| 读宿主文档 | `WindowBridgeMethod = fs.list \| fs.read \| fs.write \| fs.delete \| notify`，fs 作用域 = `<dataRoot>/<插件名>/` |
+| 写回宿主 | 同上；且没有「确认」这一层 |
+| 宿主 → 窗的数据推送 | 只有 `bridge-ready` / `window-closing` 两个事件 |
+
+## 2. 契约变更
+
+```ts
+// ① manifest.app 增可选能力声明（kill switch）
+interface AppDecl { documents?: boolean }
+
+// ② 开窗带文档：宿主签发令牌
+openPluginWindow(name: string, opts?: { document?: { path: string } }): string | null
+
+// ③ 桥白名单（仅在 ① 声明且窗口已绑令牌时可达）
+type WindowBridgeMethod = … | 'doc.read' | 'doc.save';
+doc.read({ docToken }) → { path, text }
+doc.save({ docToken, content }) → { status: "pending-review" | "written", diff?: string }
+
+// ④ 宿主 → 窗：文档推送事件
+{ protocol, op: 'event', event: 'doc-open', docToken, path, text }
+```
+
+**令牌表归属**：`state/plugin-document-store.ts`（宿主侧单例；`windowId → { docToken → path }`），
+开窗时写入，关窗时整窗回收。
+
+## 3. 批次
+
+### 批 1 · 只读打通（最小垂直切片）
+
+| 文件 | 动作 |
+|---|---|
+| `plugins/types.ts` | `AppDeclSchema` 增 `documents?: boolean`（strictObject 内加字段） |
+| `plugins/window-facility.ts` | `openPluginWindow(name, opts)`；开窗登记令牌 |
+| `plugins/window-bridge.ts` | 白名单扩 `doc.read`；分发前校验「声明 + 令牌 + 绑窗」 |
+| `app/plugin-windows/PluginWindowFrame.tsx` | `bridge-ready` 后按登记推 `doc-open` |
+| `plugins/builtin/shelf-domain/ShelfOverlay.tsx` | 软件页条目维持（开窗入口不变；带文档入参留待批 3） |
+
+### 批 2 · 写回过审（改稿单）
+
+- `doc.save` → 宿主算 diff（复用 `paper/code-view.ts` 的差分口径）→ 弹确认面 →
+  确认后走既有写通道落盘；拒绝则回 `{ status: "rejected" }`，窗内保持脏标记。
+- 首次保存走审批门（既有 `dynamic-runner` approval 同族语义），不做「永久信任」灰色开关。
+
+### 批 3 · 入口与插件侧
+
+- 纸面/引用处加「用文卷打开」入口（从卷里/工作区取当前文档）；
+- `examples/plugins/md-editor/` 接入 `doc-open` 与 `doc.save`，README 撤掉「刻意不做」里的对应行。
+
+## 4. 门禁与守护
+
+- 契约变更按 `composition/contract-version.ts` 四步升版（当前版本见 `docs/facts.generated.md`），
+  并跑 `npm run verify:convergence`（双轨）。
+- 新增 `tests/window-bridge-doc.test.ts`：未声明 / 无令牌 / 跨窗串用 / 过期令牌 →**四类拒绝**各一条；
+  `doc.save` 未确认前**不得**产生写盘副作用（以 mock fs 断言调用零次）。
+- 现有 `window-bridge` 白名单测试同步加两项（方法面扩了就必须有正面用例）。
+
+## 5. 明确不做
+
+- **不**放开任意 fs 读（文档通道≠文件管理器）；
+- **不**支持多文档同时打开（一次一文档；多标签是另一个产品决定）；
+- **不**给 `url`（环回远端页）窗开 `doc.*`——远端页不是插件代码，信任模型不同；
+- **不**做协作光标 / 实时同步（窗与 Agent 同时改同一文档的冲突留给改稿单判定）。
