@@ -279,8 +279,8 @@ inject 依赖存在性 → webview 动态 import → `root.plugin(obj)`。任何
 面——工具贡献注册 / 桥进程启动；贡献注销与进程 kill 挂同一 fiber——插件
 卸载即链式停，见 §3「manifest.tools」与「MCP 机器桥」）。
 
-软件级字段（`dataDir` / `app` / mcpServers 条目的 `restart`·`lifecycle` 治理
-字段 / tools 条目的 `async`）见 **§10 软件级插件（app shell）**；
+软件级字段（`dataDir` / `app` / mcpServers 条目的 `governed`·`restart` 治理
+字段 / `engines` 兼容声明）见 **§10 软件级插件（app shell）**；
 `activation`（S6 P3a 激活声明）见 **§3「ctx.activation」**。
 
 ## 3. 通道 API
@@ -453,7 +453,7 @@ patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需�
   冻结**——行工厂的产物（`mcp__<server>__*` 清单）进了注册表就不再重取，而工作区
   **共享注册表**建一次即被所有同组合的卷复用，**不存在「下次装配」**。因此
   「装配这一刻还没握手完 ⇒ 空集 ⇒ 下次装配重试」这条老语义在受治档上等于
-  **永久没有工具**（实测：任何声明 `restart`/`lifecycle` 的 server 全部命中；旧形态
+  **永久没有工具**（实测：任何声明受治字段（`governed`）的 server 全部命中；旧形态
   条目因为是在装配期自己连接并 await，故不受影响）。现行语义：
   `ASSEMBLY_READY_WAIT_MS`（10s）内**有界等待就绪**再取面；失败仍留空集 + 可见
   warn（真因照抄治理器原文）。回归 `tests/third-party-mcp-assembly.test.ts`
@@ -785,8 +785,9 @@ export default {
 
 - **kill switch**：manifest **不写** `activation` 块 ⇒ 本批全部新行为不发生
   （退回「登记即激活」的 P3 前语义，逐字节不变）。
-- **`lazy: true` 与 `mcpServers[].lifecycle: "eager"` 互斥**：声明懒激活的插件
-  不得在 apply 期起进程（装载期拒绝，manifest 级校验）。
+- **与 mcpServers 的关系（2026-11-23 减形后）**：原先「`lazy: true` 与
+  `mcpServers[].lifecycle: "eager"` 互斥」的 manifest 级 refine 随 `lifecycle` 退役
+  一并删除——受治进程只剩懒起一档（`governed: true`），「apply 期起进程」的口子已不存在。
 - **声明-接线对齐**：`lazy: true` 但 apply 未调 `ctx.activation.declare` ⇒ 装载
   失败记录（error，设置面板可见）——「装了开关却没接线」不静默放过。
 - 装载层为声明 `activation` 的插件自动补 `inject: ["activation"]`（与 `tools`
@@ -794,9 +795,9 @@ export default {
 - 释放归 `ctx.effect` 所有权：账由装配面在 Agent 装配期 `retain`，句柄交给
   `ctx.effect` 的清理链 ⇒ Agent dispose / 切组合即归零 → `stop`（无泄漏面）。
 - **声明 `activation` + 声明 `mcpServers` 的插件不必自己写 start/stop**（S6 P3d）：
-  装载层会把受治进程**lazy 档**的拉起/停止推导成激活回调——净效果 = 「所有持有
-  它的卷都关了 ⇒ 进程停」（不再等空闲回收）。另两档不经手（如实声明）：`eager`
-  归装载期（装载即拉起、卸载才停），`with-window` 归窗口（开窗拉起、关窗即杀）。
+  装载层会把受治进程的拉起/停止推导成激活回调——净效果 = 「所有持有它的卷都关了
+  ⇒ 进程停」（不再等空闲回收）。受治面只剩这一档（2026-11-23 减形：`eager` /
+  `with-window` 两档已删）。
 - `start()` 抛错 = **激活失败可见**：当前工具/贡献面已物化，无法事后逐行剥离，
   因此 runtime **中止本次 Agent 装配**并回滚已获取的激活句柄/独占资源；原因同时
   抛给调用方并经诊断面可见（第四栏「被跳过」）——不会带着半启动的工具面运行。
@@ -1117,14 +1118,15 @@ factory（出厂表，代码真源）
 
 | 件 | manifest 字段 | 宿主给什么 |
 |---|---|---|
-| **A 窗口原语** | `app: { entry: "./app/index.html" }`（资产 HTML）**或** `app: { url: "http://127.0.0.1:<port>/…" }`（**环回**远端页，二态互斥必给其一）；`mode?: "floating"\|"dock"\|"fullscreen"`（url 形态禁 fullscreen）；`title?` | 装载只登记窗口定义；开窗才实例化 iframe 视口。**入口二态（契约 v28，2026-09-13）**：①`entry` = 插件自包含 HTML——**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥，窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）；宿主→窗广播限 `bridge-ready` / `window-closing` 两种。②`url` = **环回**远端页（本机服务，如 `officecli watch` 活预览）——iframe 给 `allow-same-origin`（跨源文档保住自己 origin，其同源 `EventSource`/`fetch` 才通；父页仍拿不到它的 DOM），**且不绑宿主桥**（远端文档不是插件代码）。白名单：host ∈ {127.0.0.1, localhost, ::1}、禁凭据、禁非 http(s)——远端文档能覆盖宿主视觉面，所以只许环回 + 禁全屏。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
+| **A 窗口原语** | `app: { entry: "./app/index.html" }`（资产 HTML）**或** `app: { url: "http://127.0.0.1:<port>/…" }`（**环回**远端页，二态互斥必给其一）；`mode?: "floating"\|"dock"\|"fullscreen"`（url 形态禁 fullscreen；**`dock`/`fullscreen` 冻结**：0 消费者，窗口管理重做时再定）；`title?` | 装载只登记窗口定义；开窗才实例化 iframe 视口。**入口二态（契约 v28，2026-09-13）**：①`entry` = 插件自包含 HTML——**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥，窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）；宿主→窗广播限 `bridge-ready` / `window-closing` 两种。②`url` = **环回**远端页（本机服务，如 `officecli watch` 活预览）——iframe 给 `allow-same-origin`（跨源文档保住自己 origin，其同源 `EventSource`/`fetch` 才通；父页仍拿不到它的 DOM），**且不绑宿主桥**（远端文档不是插件代码）。白名单：host ∈ {127.0.0.1, localhost, ::1}、禁凭据、禁非 http(s)——远端文档能覆盖宿主视觉面，所以只许环回 + 禁全屏。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
 | **B 数据目录** | `dataDir: true` | 装载即分配 `<数据根>/<插件名>/`（幂等 ensure）；受治进程经 spawn env `LANTAI_PLUGIN_DATA_DIR` 拿到路径；窗经桥 fs 读写（Rust 侧名字 + rel 双围栏 + canonicalize 前缀锁死插件根）；卸载随 `plugin_uninstall` 整体挪 `.trash` 回收（备份一个目录全家走） |
-| **C 受治进程** | `mcpServers` 条目 `restart?: "off"\|"on-crash"` / `lifecycle?: "lazy"\|"eager"\|"with-window"`（任一在场 = 受治面；皆缺席 = 旧形态不变；http 条目声明治理字段拒绝） | 就绪 = initialize 握手 + tools/list 限窗完成（缺省 60s，到点判启动失败 + 杀挂壁进程）；on-crash 指数退避重启（1s×2 封顶 30s）；三档生命周期（lazy：装配/调用/开窗拉起 + 空闲回收 5min，无窗才计时；eager：装载即拉起卸载才停；with-window：随窗开合，关窗默认杀）；未就绪调用立即报 `service_not_ready` + 触发拉起（宿主永不阻塞等待）；进程树终止（Windows taskkill /T；kill 挂插件 fiber） |
-| **D 后台唤醒** | tools 条目 `async: true`（工具口） | 执行即返回卡片（宿主生成 taskId 注入 `args._task_id` + 登记发起者）；完成唤醒发起 Agent + **minimal 定位键 `{status, taskId, sessionId}`**（内容不进唤醒体——凭 taskId 调插件工具按需取）；MCP 路对位：server 完成通知 `lantai/deferred`（params.progressToken 回带调用期 token）由桥翻译成同一唤醒 |
+| **C 受治进程** | `mcpServers` 条目 `governed?: true`（声明 = 受治面；缺席 = 旧形态不变；http 条目声明受治字段拒绝）+ `restart?: "off"\|"on-crash"`（**只对受治进程有意义**：写它必须同时写 `governed: true`） | 就绪 = initialize 握手 + tools/list 限窗完成（缺省 60s，到点判启动失败 + 杀挂壁进程）；on-crash 指数退避重启（1s×2 封顶 30s）；生命周期只有一档（装配/调用/开窗拉起 + 空闲回收 5min，窗开期间不回收；**关窗不即杀**——那档已随 `with-window` 退役，v72）；未就绪调用立即报 `service_not_ready` + 触发拉起（宿主永不阻塞等待）；进程树终止（Windows taskkill /T；kill 挂插件 fiber） |
+| **D 后台唤醒** | `mcpServers` + server 完成通知（**工具口 `tools[].async` 已于 v73 退役**：两张门收成一张） | 调用期宿主绑 deferred progressToken（登记发起者）；server 完成后发 `lantai/deferred`（params.progressToken 回带 + 自订 taskId）→ 唤醒发起 Agent + **minimal 定位键 `{status, taskId, sessionId}`**（内容不进唤醒体——凭 taskId 调插件工具按需取） |
 
 ### 10.3 两张门规则（决策 8——没有第三张门）
 
-工具进 Agent 主路只有两张既有门：
+工具进 Agent 主路只有两张既有门（**后台唤醒只剩 MCP 这一条**：工具口 `async`
+已于 v73 退役）：
 
 - **工具口**（`manifest.tools` + entry 的 `toolHandlers`）：实现必须住在宿主
   webview（窗口设施这类宿主能力——Node 进程碰不到）；
@@ -1137,11 +1139,12 @@ factory（出厂表，代码真源）
 
 ### 10.4 装载 / 回收语义
 
-- **装载**：manifest 校验（软件级字段见上表）→ 数据目录 ensure（失败 = 插件
-  error 记录）→ entry.apply → 工具声明挂接 → MCP 注册（eager 档装载期拉起
-  到就绪，失败 = 插件 error）→ 窗口定义登记（纯数据，开窗才实例化）。
-- **开窗 / 关窗**：开 = iframe 视口实例化 + 受治进程拉起（lazy/with-window）
-  + 空闲回收计时清零（lazy）；关 = 实例回收 + with-window 计数归零即杀。
+- **装载**：manifest 校验（软件级字段见上表；`engines` 不满足 = 具名拒载）→ 数据
+  目录 ensure（失败 = 插件 error）→ entry.apply → 工具声明挂接 → MCP 注册（**装载期
+  不拉起**——首次装配/调用/开窗才起；受治进程起不来 = 装配期 warn / 调用期 fail-fast）
+  → 窗口定义登记（纯数据，开窗才实例化）。
+- **开窗 / 关窗**：开 = iframe 视口实例化 + 受治进程拉起 + 空闲回收计时清零；
+  关 = 实例回收 + **重新起算空闲回收**（不即杀——窗关不等于没人再调工具）。
 - **卸载**：fiber dispose 链式——工具贡献注销 + 受治进程树终止 + 窗全关 +
   定义摘除；数据目录随 `plugin_uninstall` 挪 `.trash`（回收失败降级 warn
   不阻断卸载——数据留原位是安全方向）。

@@ -55,8 +55,6 @@ export {
   probeBundledEngine,
   setBundledEngineEnabled,
 } from '../../../plugins/bundled-engine-prefs';
-// 插件医生（2026-11-23 契约工具包 · 批 3）：只读聚合，读面全在既有 store/注册表里
-export { collectPluginDiagnostics, type PluginDiagnostics } from '../../../plugins/diagnostics';
 // 装卸面（PluginsPage 的启用/禁用/卸载按钮；与 loader 的循环为运行期取用，见
 // host-modules.ts 头注）
 export { activateExternalPlugin, deactivateExternalPlugin } from '../../../plugins/loader';
@@ -134,6 +132,8 @@ export { notifyAgentConfigChanged } from '../../../state/agent-config-store';
 export { describeReceipt, useBundledEngineStore } from '../../../state/bundled-engine-store';
 export { useCompositionStore } from '../../../state/composition-store';
 export { useDockStore } from '../../../state/dock-store';
+// 插件医生（2026-11-23 契约工具包 · 批 3）：只读聚合，读面全在既有 store/注册表里
+export { collectPluginDiagnostics, type PluginDiagnostics } from '../../../state/plugin-diagnostics';
 export { usePluginPrefs } from '../../../state/plugin-prefs';
 export { type PluginRecord, usePluginStore } from '../../../state/plugin-store';
 export { usePresetStore } from '../../../state/preset-store';

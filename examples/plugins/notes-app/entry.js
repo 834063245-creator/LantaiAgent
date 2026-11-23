@@ -13,7 +13,7 @@
 //     找到 server 的 HTTP 面。
 //   - 受治进程（件 C）：server.cjs = 零依赖 Node 进程，两副面孔——对宿主说
 //     MCP（stdio：数据四工具随 tools/list 动态进注册表），对自己的窗说极简
-//     HTTP API（宿主不掺和）；lifecycle: lazy（首次装配/调用/开窗拉起，空闲
+//     HTTP API（宿主不掺和）；governed: true（首次装配/调用/开窗拉起，空闲
 //     回收，再拉再起）。
 //   - 后台唤醒（件 D）：notes_export 异步——提交即回卡片，完成经
 //     lantai/deferred 完成通知由桥翻译成后台唤醒 + minimal 定位键
@@ -52,7 +52,7 @@ export default {
   name: 'notes-app',
   apply() {
     // 装载期零副作用：app/mcpServers/dataDir 全由装载器包装层挂接。
-    // （with-window 档的「随窗开合」在治理器层——本插件用 lazy 档，
-    // 开窗会触发拉起并阻塞空闲回收，窗关后空闲超时回收。）
+    // （窗口与受治进程的联动在治理器层：开窗触发拉起并阻塞空闲回收，
+    // 窗关只重新起算空闲回收——不即杀。）
   },
 };

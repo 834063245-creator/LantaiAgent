@@ -3,6 +3,10 @@
 
 // 插件医生（2026-11-23 契约工具包 · 批 3）——**只读**聚合。
 //
+// 住 `state/` 而不是 `plugins/` 顶层：后者是特权区、自由度是**负数**
+// （tests/privileged-zone-freeze.test.ts 封口「装载链只减不增」），而本模块不是装载链的
+// 一环——它是既有 store / 注册表 / 账的**读面拼装**。
+//
 // 纪律：
 //   - 只读：不改任何账、不建第二条真源。每个字段都指向既有的 store / 注册表读数
 //     （plugin-store 记录 / mcp-bridge 治理器 / plugin-window-store / activation 账 /
@@ -13,11 +17,11 @@
 
 import { activationFailure, activationStates } from '../composition/activation';
 import { OPEN_SURFACE_CONTRACT_VERSION } from '../composition/contract-version';
+import { ensurePluginDataDir } from '../plugins/data-fs';
+import { type GovernorStateView, governorStatesFor } from '../plugins/mcp-bridge';
 import { typedRpc } from '../rpc-contract';
-import type { PluginRecord } from '../state/plugin-store';
-import { usePluginWindowStore } from '../state/plugin-window-store';
-import { ensurePluginDataDir } from './data-fs';
-import { type GovernorStateView, governorStatesFor } from './mcp-bridge';
+import type { PluginRecord } from './plugin-store';
+import { usePluginWindowStore } from './plugin-window-store';
 
 /** 路径读面（生产 = RPC；测试注入——读面不制造第二条通路）。 */
 export interface DiagnosticsPaths {

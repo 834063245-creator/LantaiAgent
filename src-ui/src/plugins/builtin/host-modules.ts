@@ -271,8 +271,6 @@ import {
   probeBundledEngine,
   setBundledEngineEnabled,
 } from '../../plugins/bundled-engine-prefs';
-// 插件医生（2026-11-23 批 3）：只读聚合，让插件面读数一处可见
-import { collectPluginDiagnostics } from '../../plugins/diagnostics';
 import { activateExternalPlugin, deactivateExternalPlugin } from '../../plugins/loader';
 // 批 10 部件三（部件二落地）：MCP 受治桥面对第一方产物可见（设计件 §4.2 方案 A）
 import { ASSEMBLY_READY_WAIT_MS, registerMcpServerTools, waitWithin } from '../../plugins/mcp-bridge';
@@ -411,6 +409,7 @@ import {
 } from '../../state/draft-sheet-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../state/mode-store';
 import { usePanelDefsStore } from '../../state/panel-defs-store';
+import { collectPluginDiagnostics } from '../../state/plugin-diagnostics';
 import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
 import { usePluginWindowStore } from '../../state/plugin-window-store';

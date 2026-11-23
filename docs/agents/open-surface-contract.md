@@ -10,7 +10,7 @@
 
 当前版本：74
 
-<!-- contract-fingerprint: 21983b37cf343911aff0888aa4d6c164f23b95532c8afb8396bbb015fe047bb7 -->
+<!-- contract-fingerprint: 09e98c42df35d2466cdd8bf9366814cfbdc16fafa7512e33e777b6671cb15dbc -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 

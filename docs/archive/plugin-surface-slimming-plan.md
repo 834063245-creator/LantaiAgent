@@ -1,6 +1,9 @@
 # 插件面减形与贡献者体验（施工单）
 
-> **状态**：在办（2026-11-23 开工；批 0 基线 + 批 1A 已落）。
+> **状态**：已归档（2026-11-23 竣工，批 0–5 全落；契约 v71 → **v74**）。
+> 落地面：`governed: true` 一档受治进程 · `tools[].async` 退役 · `engines` 兼容声明 ·
+> 未知顶层字段转 warnings · 契约工具包（一页纸 / JSON Schema / validate CLI / 模板）·
+> 插件医生 + 外部重载。全量 vitest / build / biome / doc-sync / doc-check / convergence 绿。
 > **来由**：三问——软件级插件的生命周期归谁、UI 归谁、有多少能转移给插件面。
 > 结论：不转移不变量；先删零消费者形状，再把宿主保证与开发者工具做厚。
 > **一句话**：宿主少管功能、多管不变量；这一轮只做「减形 + 开发者体验」，不新增运行时能力。
@@ -39,7 +42,7 @@
 | `restart: on-crash` | bundled-engine | 留 |
 | `activation` | bundled-engine（代码路径，[wiring.ts:157](../../src-ui/src/plugins/builtin/bundled-engine/wiring.ts)） | 留——**不是死代码** |
 | `tools[].async` | 0 | 删（MCP deferred 保留） |
-| `app.documents` | 0（[文档通道批 1+2 已落](plugin-document-channel-plan.md)，批 3 待办） | 冻结 |
+| `app.documents` | 0（[文档通道批 1+2 已落](../plans/plugin-document-channel-plan.md)，批 3 待办） | 冻结 |
 | `permissions` | 0 | 冻结（安全门，不扩） |
 | `mode: dock / fullscreen` | 0（全 floating） | 冻结 |
 | `frame:'self'`（面板） | canvas-nav ×2 | 留（家具特权，不是软件级） |

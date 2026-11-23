@@ -11,8 +11,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProcIO } from '../src/agent/mcp';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
-import { collectPluginDiagnostics, type DiagnosticsPaths } from '../src/plugins/diagnostics';
 import { type McpBridgeIO, registerMcpServerTools, resetMcpGovernorForTests } from '../src/plugins/mcp-bridge';
+import { collectPluginDiagnostics, type DiagnosticsPaths } from '../src/state/plugin-diagnostics';
 import { usePluginWindowStore } from '../src/state/plugin-window-store';
 
 const PATHS: DiagnosticsPaths = {

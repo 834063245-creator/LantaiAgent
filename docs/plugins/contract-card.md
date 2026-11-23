@@ -5,7 +5,7 @@
 > [`manifest.schema.json`](manifest.schema.json)（编辑器补全用）。
 > 规则优先级：`docs/adr/project-constitution.md` > `INVARIANTS.md` > `CONVENTIONS.md` > 本页。
 
-## 1. 能写什么（manifest 顶层 12 字段，多一个都没有）
+## 1. 能写什么（manifest 顶层 13 字段，多一个都没有）
 
 | 字段 | 一句话 |
 |---|---|
@@ -18,6 +18,7 @@
 | `app` | 一扇窗：`entry`（自包含 HTML）**或** `url`（环回 http(s) 页）二选一；`title`/`mode`；`documents: true` 才可读宿主文档 |
 | `dataDir` | 声明 `true` = 装载即分配 `<数据根>/<插件名>/`（经宿主桥 fs 读写，卸载随插件挪 `.trash`） |
 | `activation` | 登记 ≠ 激活：`{ lazy?, resources?, exclusive? }`，副作用挪到组合装配期按引用计数启停 |
+| `engines` | 宿主兼容声明：`{ lantai: ">=1.0.0" }`（semver range）。**声明了就必须满足**——不满足 = 具名拒载；宿主版本未知（开发/测试）只记 warning |
 | `displace` | 与同名内置产物共用一个贡献 id（第三方覆盖内置的显式声明） |
 
 **新增字段的门槛**：≥2 个真实消费者，或一个明确产品承诺（`tests/plugin-surface-budget.test.ts` 钉死白名单，加字段必须改它、diff 必可见）。

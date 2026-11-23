@@ -21,8 +21,8 @@ notes-app/
 |---|---|---|
 | A 窗口原语 | manifest.app 登记 → 窗口注册表 + iframe 视口（真隔离）+ postMessage 白名单桥（默认最小集 `fs` + `notify`）+ 窗口设施（宿主桥 `windows` 键） | 声明 `app.entry: "./app/index.html"`；窗页经桥 fs 读 `port.json`、经桥 notify 发状态通知；`notes_open` 工具调 `host.windows.open('notes-app')` 开窗 |
 | B 数据目录 | 装载即分配 `<数据根>/notes-app/`；spawn env `LANTAI_PLUGIN_DATA_DIR` 注入受治进程；桥 fs 面锁死插件根；卸载随 `plugin_uninstall` 挪 `.trash` | server 进程用 env 定位自己的地盘（`notes.json` / `port.json` / 导出文件全在里面）；窗经桥 fs 读 `port.json` |
-| C 受治进程 | 治理字段声明 = 受治面：就绪 = initialize 握手（60s 时限）、崩溃退避重启、三档生命周期、空闲回收、关窗/卸载回收出口 | `lifecycle: "lazy"`——首次装配/调用/**开窗**拉起，无窗且空闲 5 分钟回收，再拉再起 |
-| D 后台唤醒 | async 语义两张门统一：工具口 `async: true`（宿主注入 `args._task_id`，完成经 `host.deferred.complete`）；MCP 路完成通知 `lantai/deferred`（progressToken 回带）由桥翻译成同一唤醒 | `notes_export` 不带 taskId = 提交即回卡片，1.2s 后 server 发完成通知 → 宿主唤醒发起 Agent（minimal 定位键 `{status, taskId, sessionId}`）；凭 taskId 再调 `notes_export` 取内容 |
+| C 受治进程 | `governed: true` = 受治面：就绪 = initialize 握手（60s 时限）、崩溃退避重启、空闲回收、卸载回收出口；生命周期只有一档 | `governed: true`——首次装配/调用/**开窗**拉起，窗开着不回收，无窗且空闲 5 分钟回收，再拉再起（关窗不即杀） |
+| D 后台唤醒 | **只剩 MCP 路**（工具口 `tools[].async` 已于契约 v73 退役）：server 完成通知 `lantai/deferred`（progressToken 回带）由桥翻译成唤醒 | `notes_export` 不带 taskId = 提交即回卡片，1.2s 后 server 发完成通知 → 宿主唤醒发起 Agent（minimal 定位键 `{status, taskId, sessionId}`）；凭 taskId 再调 `notes_export` 取内容 |
 
 ## 插件自己的责任（宿主不负责）
 
@@ -57,15 +57,17 @@ notes-app/
 4. `app/index.html`：整页换成你的软件 UI（桥 SDK 段可原样拷走）；
 5. `README.md`：改成你的软件说明。
 
-## 三档启动策略差异（lifecycle 字段）
+## 受治进程只有一档（`governed: true`）
 
-- `lazy`（本范本缺省档）：首次装配/调用/开窗拉起；无窗且空闲超时（缺省
-  5 分钟）回收；再调用再拉起（首调报 `service_not_ready` 并已触发拉起，
-  稍后重试即可——宿主永不阻塞等待，等待由调用方按需重试承担）。
-- `eager`：装载即拉起，卸载才停——常驻引擎型软件（崩溃后下次装配/调用
-  兜底拉起；配 `restart: "on-crash"` 则退避自动重启）。
-- `with-window`：随窗开合——开窗拉起、关窗即杀（多窗计数全关才杀）；
-  窗口即外壳的软件用这档。
+三档 `lifecycle`（`lazy` / `eager` / `with-window`）已于契约 v72 退役——真实消费者
+只有「懒起」一种语义。现行语义：
+
+- 首次装配/调用/开窗拉起；**窗开着期间不空闲回收**；无窗且空闲超时（缺省 5 分钟）
+  回收，再调用再拉起（首调可能报 `service_not_ready` 并已触发拉起，稍后重试即可
+  ——宿主永不阻塞等待，等待由调用方按需重试承担）。
+- **关窗不即杀**：窗关只是重新起算空闲回收（`with-window` 那档的「关窗即杀」随之消失）。
+- 要常驻：配 `restart: "on-crash"` 只解决「崩了自愈」，不改变空闲回收——真有常驻需求
+  给插件声明更长的空闲预算（先例：随包引擎）。
 
 ## 真机验收路径
 

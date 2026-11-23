@@ -143,8 +143,10 @@ manifest.json 字段（\`name\`/\`version\`/\`entry\` 必填）：
 | \`loadCss\` | \`(url)\` 幂等注入插件 CSS |
 | \`fs\` | 插件数据目录面（ensure/list/read/write/delete——manifest.dataDir 声明后用） |
 | \`windows\` | 开/关/聚焦插件窗口（manifest.app 声明的软件形态） |
-| \`deferred\` | 后台唤醒：\`complete(taskId, status, message?)\`（async 工具用） |
 | \`mods\` | 宿主模块真实例注册表（进阶） |
+
+（\`deferred\` 键已于契约 v73 退役：工具口 async 整条路删了，后台唤醒只剩 MCP 完成
+通知 \`lantai/deferred\` 一条——插件自带 server 的调用期 token 回带即唤醒。）
 
 ### 2.3 贡献通道与 def 形状（全部经 \`ctx.<服务>.register(def)\`）
 
@@ -277,9 +279,10 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
   （npx/node/...），相对形态相对 ~/.lantai 解析；
 - \`failurePolicy\`：\`lazy\`（缺省：首装配连接，失败下次重试）|
   \`startup-error\`（装载期急连接，失败 = 插件 error）；
-- 可选治理字段 \`restart: 'off' | 'on-crash'\` 与
-  \`lifecycle: 'lazy' | 'eager' | 'with-window'\`（声明任一 = 进受治面：
-  就绪握手带时限、崩溃退避重启、空闲回收；http 条目声明治理字段会被拒）。
+- 可选受治开关 \`governed: true\`（声明 = 进受治面：就绪握手带时限、崩溃退避重启、
+  空闲回收；http 条目声明受治字段会被拒）+ \`restart: 'off' | 'on-crash'\`
+  （**只对受治进程有意义**——写它必须同时写 \`governed: true\`；三档 \`lifecycle\`
+  已于契约 v72 退役，改写 \`governed: true\`）。
 - server 的工具经机器桥折算成宿主工具行（\`plugin/<名>/mcp/<server>\` 寻址，
   组合可禁用）。
 - 可选 \`readOnly: true\`：**只读担保**（该 server 全部工具）。缺省不表态——
@@ -305,20 +308,22 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
 | 资产 HTML | \`"entry": "./app/index.html"\`（\`./\` 相对插件目录；须以 \`.html\` 结尾） | iframe 走 opaque origin，**宿主桥是它唯一的能力通道** |
 | 环回远端页 | \`"url": "http://127.0.0.1:PORT"\`（只许本机 127.0.0.1/localhost/::1，禁凭据） | 给 \`allow-same-origin\`（远端页保住自己 origin，同源 SSE/fetch 才通）且**不绑宿主桥**；禁 \`fullscreen\` |
 
-- \`mode\`：\`floating\`（缺省，画布浮动窗）/ \`dock\`（右停靠栏）/ \`fullscreen\`（盖满视口）。
+- \`mode\`：\`floating\`（缺省，画布浮动窗）/ \`dock\`（右停靠栏，**冻结**：0 消费者）/
+  \`fullscreen\`（盖满视口，**冻结**）——窗口管理重做时再定，现在只许 floating 有把握。
 - 窗内要宿主能力走 **postMessage 白名单桥**：默认最小集 = 数据目录 fs 面 + \`notify\`（\`manifest.dataDir: true\` + \`app\` 搭配最顺）。
 - 宿主桥 \`windows\` 设施面（插件的工具执行体里调，工具语义归插件）：
   \`open(pluginName) → windowId|null\`（已开则聚焦返回原窗；v1 每插件单窗）、
   \`close(windowId)\`、\`focus(windowId)\`、\`setMode(windowId, mode)\`、
   \`list()\`、\`isOpen(pluginName)\`。
-- **与受治进程联动**（S2×S3）：真开新窗才通知治理器——\`lifecycle: 'with-window'\`
-  的 MCP server 随之拉起、关窗计数归零即杀；lazy 档有窗时不回收。所以「插件窗口 +
-  自带后端进程」的软件形态 = \`app\` + \`mcpServers\`（带 \`lifecycle\`）两条一起声明。
-- 卸载收口：定义注销 + 开着窗口全关（受治进程随关窗杀）。
+- **与受治进程联动**（S2×S3）：真开新窗才通知治理器——受治 server 随之拉起；窗开着
+  期间不空闲回收，关窗只是**重新起算**（不即杀；\`with-window\` 那档已于 v72 退役）。
+  所以「插件窗口 + 自带后端进程」的软件形态 = \`app\` + \`mcpServers\`（带
+  \`governed: true\`）两条一起声明。
+- 卸载收口：定义注销 + 开着窗口全关（受治进程随插件 fiber 终止）。
 - **当前没有窗口管理 UI 面**（启动器/任务栏形态待用户设计定稿）：开窗靠插件自己的
   工具（如范本 \`notes_open\`）——你写软件级插件时，记得给一个开窗工具，否则用户
   没有入口。
-- 完整范本：\`examples/plugins/notes-app/\`（窗口 + 数据目录 + MCP 后端 + async 工具
+- 完整范本：\`examples/plugins/notes-app/\`（窗口 + 数据目录 + MCP 后端 + deferred 唤醒
   五件齐全）；指南：\`docs/cookbook/plugin-as-software.md\`；契约：\`docs/plugins/README.md\`
   §10。
 

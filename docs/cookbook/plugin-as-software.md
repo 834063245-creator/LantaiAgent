@@ -22,7 +22,7 @@
   "app": { "entry": "./app/index.html", "mode": "floating", "title": "便签" },
   "dataDir": true,
   "mcpServers": [
-    { "name": "notes", "transport": "stdio", "command": "node", "args": ["./server.cjs"], "lifecycle": "lazy" }
+    { "name": "notes", "transport": "stdio", "command": "node", "args": ["./server.cjs"], "governed": true }
   ],
   "tools": [
     { "name": "notes_open", "description": "打开便签软件窗口", "parameters": { "type": "object", "properties": {} }, "readOnly": true }
@@ -73,10 +73,8 @@ notes-app 的用法：server 启动后把 HTTP 端口写 `port.json` 进地盘�
 
 | 字段 | 取值 | 语义 |
 |---|---|---|
-| `lifecycle` | `lazy`（缺省） | 首次装配/调用/**开窗**拉起；无窗且空闲超 5 分钟回收；再拉再起 |
-| | `eager` | 装载即拉起，卸载才停（常驻引擎型） |
-| | `with-window` | 随窗开合——开窗拉起、关窗即杀 |
-| `restart` | `off`（缺省）/ `on-crash` | 崩溃后指数退避自动重启（1s×2 封顶 30s，就绪清零） |
+| `governed` | `true` | 进受治面（**唯一开关**）。生命周期只有一档：首次装配/调用/**开窗**拉起；窗开着不回收；无窗且空闲超 5 分钟回收，再拉再起。**关窗不即杀**（`with-window` 那档已于契约 v72 退役） |
+| `restart` | `off`（缺省）/ `on-crash` | 崩溃后指数退避自动重启（1s×2 封顶 30s，就绪清零）。**只对受治进程有意义**——写它必须同时写 `governed: true` |
 
 受治语义（宿主承担）：就绪 = initialize 握手 + tools/list 限窗完成（缺省
 60s，到点判启动失败 + 清场）；未就绪调用立即报 `service_not_ready`（带
@@ -107,20 +105,18 @@ export const toolHandlers = {
 
 ## 第 5 步：异步长任务（件 D）
 
-「提交即返回卡片，完成后台唤醒，凭定位键取内容」：
+「提交即返回卡片，完成后台唤醒，凭定位键取内容」。**只有一条路**——MCP 路
+（工具口 `async: true` 与宿主桥 `deferred.complete` 已于契约 v73 退役：纯 JS
+插件没有后台，有后台的插件已经有 MCP server）：
 
-- **工具口**：manifest.tools 条目加 `"async": true`——宿主生成 taskId 注入
-  `args._task_id`（回执引用同一键）；你的后台代码完成后调宿主桥
-  `deferred.complete(taskId, 'completed' | 'failed', message?)`；
-- **MCP 路**：`tools/call` 立即回卡片（记住请求 `_meta.progressToken`），
-  完成后发通知：
+- `tools/call` 立即回卡片（记住请求 `_meta.progressToken`），完成后发通知：
 
 ```json
 { "jsonrpc": "2.0", "method": "lantai/deferred",
   "params": { "progressToken": "<调用期回带的 token>", "taskId": "export-x1", "status": "completed", "message": "导出完成" } }
 ```
 
-两条路汇成同一唤醒：发起 Agent 收到 minimal 定位键
+唤醒体：发起 Agent 收到 minimal 定位键
 `{"status":"completed","taskId":"export-x1","sessionId":"7"}`——**内容不进
 唤醒体**，模型凭 taskId 调你的查询工具按需取（notes_export 带 taskId = 取
 导出内容的双模设计）。
