@@ -24,17 +24,16 @@ const hasProject = (ctx: PromptSectionContext): boolean =>
   ctx.hasProject !== undefined ? ctx.hasProject : ctx.projectPath !== '';
 const noProject = (ctx: PromptSectionContext): boolean => !hasProject(ctx);
 
-/** 模型身份双行（两面共用；从 buildSystemPrompt 机械迁出）。 */
-function modelIdentityLines(providerName?: string): { negation: string; identity: string } {
-  const identity =
-    providerName === 'anthropic'
-      ? '你的后端 API 是 Anthropic (Claude)。任何关于模型品牌的问题，回答"Claude（由兰台调度）"。'
-      : `你的后端 API 是 ${providerName || 'DeepSeek'}。任何关于模型品牌的问题，回答"${providerName || 'DeepSeek'}（由兰台调度）"。`;
-  const negation =
-    providerName === 'anthropic'
-      ? '你可以承认自己是 Claude，但需说明你运行在兰台调度框架中。'
-      : '你不是 Claude、不是 Anthropic 模型，不要声称自己是 Claude 或 Anthropic 的产品。';
-  return { negation, identity };
+/** 模型身份行（两面共用）——只报装配期的真实值：当前会话选的模型 id + 提供方身份。
+ *  2026-12-01 用户拍板：删掉「你不是 Claude…不要声称…」的否定句与「由兰台调度」的品牌
+ *  话术——模型看到的就是它自己（provider 契约 `model()`：会话覆盖 ?? 提供方行值）。
+ *  空值不编造（旧版缺省兜底 'DeepSeek' 一并删除）。 */
+function modelIdentityLines(modelId?: string, providerName?: string): string {
+  const id = modelId?.trim() ?? '';
+  const provider = providerName?.trim() ?? '';
+  if (!id && !provider) return '';
+  if (!id) return `\n- 提供方: ${provider}`;
+  return `\n- 当前模型: \`${id}\`${provider ? `（提供方: ${provider}）` : ''}`;
 }
 
 /** 运行环境段（两面格式一致：内容 trim 后拼入）。 */
@@ -55,11 +54,9 @@ const IDENTITY_BRIEF: PromptSection = {
   id: 'identity-brief',
   applicable: noProject,
   render: (ctx) => {
-    const { negation, identity } = modelIdentityLines(ctx.providerName);
-    return `你是兰台的 AI 编码助手。当前没有加载项目。
-## 模型身份
-- ${negation}
-- ${identity}`;
+    const lines = modelIdentityLines(ctx.modelId, ctx.providerName);
+    const head = '你是兰台的 AI 编码助手。当前没有加载项目。';
+    return lines ? `${head}\n## 模型身份${lines}` : head;
   },
 };
 
@@ -92,11 +89,9 @@ const MODEL_IDENTITY: PromptSection = {
   id: 'model-identity',
   applicable: hasProject,
   render: (ctx) => {
-    const { negation, identity } = modelIdentityLines(ctx.providerName);
+    const lines = modelIdentityLines(ctx.modelId, ctx.providerName);
     return `
-## 模型身份
-- ${negation}
-- ${identity}
+## 模型身份${lines}
 - 项目: \`${ctx.projectPath}\``;
   },
 };

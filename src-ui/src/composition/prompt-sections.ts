@@ -59,6 +59,9 @@ export interface PromptSectionContext {
    *  transient reminder 注入对话尾部（agent.ts 的 memoryDigest）。 */
   claudeMdSection?: string;
   providerName?: string;
+  /** 当前会话生效的**真实模型 id**（provider 契约的 `model()`：会话覆盖 ?? 提供方行值）
+   *  ——模型身份段只报它，不报"后端 API 是谁"的话术（2026-12-01 用户拍板）。 */
+  modelId?: string;
   /** provider 配置文件绝对路径（2026-09-24 配方改文件批）——空 = 不注入配置段。 */
   providerConfigPath?: string;
   shellEnvSection?: string;

@@ -62,21 +62,29 @@ describe('phase-0 契约快照', () => {
     // memory 输入，且断言反转为「卷首必须不含记忆库」。
     await withFirstPartyPromptChannel(async () => {
       // 有目录面：claudeMd/shellEnv/providerName 全注入。
+      // 2026-12-01 规格变更：模型身份报真实模型（provider.model()）——两面夹具都带
+      // 提供方 + 模型（生产 runtime 两面传同一组值），旧「你不是 Claude…」文案退役。
       const project = buildSystemPrompt(
         '/projects/demo',
         '### CLAUDE.md 固定内容\n- 规范条目 A',
         'deepseek',
         '- OS: win32\n- Shell: bash (Git Bash)',
+        undefined,
+        '',
+        undefined,
+        'deepseek-chat',
       );
       // 零目录面：占位工作区装配真值（path='' → hasProject=false）。
-      const noProject = buildSystemPrompt('');
+      const noProject = buildSystemPrompt('', '', 'deepseek', '', undefined, '', undefined, 'deepseek-chat');
       // 面内实况断言（对照 prompt-sections.ts 的 IDENTITY/IDENTITY_BRIEF/
       // ENV/MODEL_IDENTITY/CLAUDE_MD 段渲染）——不依赖 baseline，
       // 两面的段位与关键内容直接钉死：
       expect(project.startsWith('你是兰台的编码 Agent。')).toBe(true);
       expect(project).toContain('\n\n## 运行环境\n- OS: win32\n- Shell: bash (Git Bash)');
       expect(project).toContain('## 模型身份');
+      expect(project).toContain('- 当前模型: `deepseek-chat`（提供方: deepseek）');
       expect(project).toContain('- 项目: `/projects/demo`');
+      expect(project).not.toContain('Anthropic');
       // 记忆库不进卷首（2026-10-28）：卷首字节里不许出现它——否则记忆一改，
       // 其后的全部对话前缀按未缓存计费。
       expect(project).not.toContain('## 记忆库');

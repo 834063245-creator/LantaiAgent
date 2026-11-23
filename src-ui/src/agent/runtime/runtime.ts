@@ -746,16 +746,28 @@ export class AgentRuntime implements RuntimePort {
         }
       } catch {}
 
+      // 模型身份真值（2026-12-01 用户拍板）：只报本会话实际选中的模型，不再写
+      // 「后端 API 是 X（由兰台调度）」的品牌话术。provider.model() = 会话覆盖 ??
+      // 提供方行值；契约缺 model()（旧 adapter）＝ 不注入模型行，不编造（零注入纪律）。
+      const providerRuntime = ctx.resolve('provider');
+      let modelId = '';
+      try {
+        modelId = providerRuntime.model();
+      } catch {}
+
       sysPrompt = buildSystemPrompt(
         ctx.projectPath,
         claudeMd,
-        ctx.resolve('provider').name(),
+        providerRuntime.name(),
         shellEnvSection,
         composition.prompt,
         await loadSkillCatalogFor(ctx.projectPath),
         // provider 配置文件路径（2026-09-24 配方改文件批）：让 agent 知道
         // 「配 provider」落在哪份文件上——它能直接读写它，不必请用户去点设置页。
         providersFilePath(),
+        // 装配时快照：切模型只换 provider（applyAgentConfig 不重建 Agent），已开卷的
+        // 卷首不重写——模型身份随下次开卷/恢复卷更新。
+        modelId,
       );
     }
 

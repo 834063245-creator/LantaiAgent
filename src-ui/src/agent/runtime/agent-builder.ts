@@ -63,6 +63,8 @@ export function buildSystemPrompt(
   sections?: PromptSection[],
   skillCatalog?: string,
   providerConfigPath?: string,
+  /** 当前会话生效的真实模型 id（provider.model()）——模型身份段只报它。 */
+  modelId?: string,
 ): string {
   const base = assembleSystemPrompt(
     {
@@ -70,6 +72,7 @@ export function buildSystemPrompt(
       hasProject: projectPath !== '',
       claudeMdSection,
       providerName,
+      modelId,
       shellEnvSection,
       providerConfigPath,
     },

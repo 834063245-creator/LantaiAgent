@@ -27,19 +27,33 @@ import { withFirstPartyPromptChannel } from '../src/composition/first-party-prom
 // P4 B④ 收官（2026-08-23）：出厂面全段经 ctx.prompts 通道贡献——
 // 出厂拼装的断言须在通道腰内复现生产装配面（无通道 = 空提示词）。
 describe('buildSystemPrompt', () => {
-  it('零目录 prompt 含身份与模型身份说明', async () => {
+  // 2026-12-01 规格变更（用户拍板）：模型身份只报**真实模型**——「你不是 Claude…
+  // 不要声称…」否定句与「由兰台调度」品牌话术退役，缺省兜底 'DeepSeek' 一并删除。
+  it('零目录 prompt 含身份与真实模型身份（无品牌否定句）', async () => {
     await withFirstPartyPromptChannel(async () => {
-      const prompt = buildSystemPrompt('');
+      const prompt = buildSystemPrompt('', '', 'deepseek', '', undefined, '', undefined, 'deepseek-chat');
       expect(prompt).toContain('没有加载项目');
-      expect(prompt).toContain('DeepSeek');
+      expect(prompt).toContain('- 当前模型: `deepseek-chat`（提供方: deepseek）');
+      expect(prompt).not.toContain('Anthropic');
+      expect(prompt).not.toContain('由兰台调度');
     });
   });
 
-  it('有目录 prompt 含项目路径与模型身份说明', async () => {
+  it('有目录 prompt 含项目路径与真实模型身份', async () => {
     await withFirstPartyPromptChannel(async () => {
-      const prompt = buildSystemPrompt('D:\\test-project');
-      expect(prompt).toContain('D:\\test-project');
-      expect(prompt).toContain('DeepSeek');
+      const prompt = buildSystemPrompt(
+        'D:\\test-project',
+        '',
+        'opencode',
+        '',
+        undefined,
+        '',
+        undefined,
+        'opencode/sonnet-4-5',
+      );
+      expect(prompt).toContain('- 当前模型: `opencode/sonnet-4-5`（提供方: opencode）');
+      expect(prompt).toContain('- 项目: `D:\\test-project`');
+      expect(prompt).not.toContain('Anthropic');
     });
   });
 

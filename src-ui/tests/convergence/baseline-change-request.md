@@ -1,3 +1,45 @@
+# baseline change request — 模型身份段：删品牌否定句，改报真实模型（2026-12-01）
+
+- **日期**: 2026-12-01
+- **请求 Agent**: 根会话 lead（用户拍板：「"你不是 Claude、不是 Anthropic 模型…"这句可以删掉了；给模型真实的、当前对话选择的模型就好了」）
+- **涉及快照**: `baseline/phase-0/system-prompt.fixture.json`（standard 轨）+ `baseline/preset-minimal/phase-0/system-prompt.fixture.json`（minimal 轨）
+- **状态**: **已批准（2026-12-01 用户明确要求）**——两轨重录后 `verify:convergence` exit 0
+
+## 变更内容
+
+`## 模型身份` 段（完整面 `model-identity` + 零目录面 `identity-brief`，文案真源
+`plugins/builtin/prompt-segments/sections.ts` 的 `modelIdentityLines`）：
+
+```diff
+- - 你不是 Claude、不是 Anthropic 模型，不要声称自己是 Claude 或 Anthropic 的产品。
+- - 你的后端 API 是 X。任何关于模型品牌的问题，回答"X（由兰台调度）"。
++ - 当前模型: \`<provider.model()>\`（提供方: <provider.name()>）
+```
+
+降级：缺 `modelId` ⇒ 只写 `- 提供方: X`；两者都空 ⇒ 不输出该行（零目录面连
+`## 模型身份` 段头都不写，零注入纪律同 memory/技能目录）。旧版缺省兜底 `'DeepSeek'` 一并删除。
+
+## 为什么变
+
+旧文案是"反幻觉"话术（告诉模型别自称 Claude，教它用「由兰台调度」挡品牌问题）。用户（产品
+负责人）判定这句是假话且多余——模型身份应当直接报当前会话真实选中的模型。真值来源 = provider
+契约 v25 起的 `model()`（会话覆盖 ?? 提供方行值）；`name()` 只是提供方身份，两者不可混用
+（`provider/index.ts` 的 REQUIRED_PROVIDER_MEMBERS 守卫原文）。
+
+## 影响面
+
+- **模型可见面**：上述两个 prompt 段的文本（fixture 快照随之变）。
+- **用户可感知行为**：模型被问「你是什么模型」时答真实模型 id，不再背「由兰台调度」话术。
+- **切模型不重写已开卷的卷首**：system prompt 是会话第一条 message，`applyAgentConfig` 热切换
+  只换 provider（不重建 Agent）——模型身份随下次开卷/恢复卷更新（`adoptSessionLog` 逐字比对）。
+- **测试面**（故意规格变更，同批改）：`tests/buildSystemPrompt.test.ts` 两条断言（`'DeepSeek'`
+  兜底 → 真实模型行 + 反向断言无 Anthropic/无「由兰台调度」）；`tests/convergence/specs/phase-0.test.ts`
+  夹具两面补 provider/model 入参并加真值断言。
+- **重录动作**：`npm run record:convergence` + `CONVERGENCE_PRESET=minimal npm run record:convergence`。
+- **验收**：`npm run verify:convergence`（双轨）exit 0。
+
+---
+
 # baseline change request — code_execution 描述：直调判据 + 只读动作投影（C7 并发契约进模型面，2026-11-21）
 
 - **日期**: 2026-11-21
