@@ -19,6 +19,7 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isInteractiveTarget } from '../../../app/interaction/interactive-target';
 import { useLostFocusCancel } from '../../../app/interaction/lost-focus';
 import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import type { PaperStrip } from '../../../paper/selection-contract';
@@ -613,6 +614,13 @@ export function usePaperStrips(params: {
   const onStripPointerDown = useCallback(
     (e: React.PointerEvent, s: PaperStrip) => {
       if (e.button !== 0) return;
+      /* 交互件归它自己（2026-11-23 用户报「纸条右上角的叉按钮失灵」批）：纸条本体
+       * 是拖拽起手面，gesture.begin 一拍即 setPointerCapture(.pp-strip)——此后 click
+       * 一律送到纸条，叉钮（.pp-strip-remove）的 onClick 永不触发：用户读作「点了
+       * 没反应」，连首击的「确认？」态都进不去。旧防法「叉钮停传 onMouseDown」在
+       * 批 C3（2026-11-17 换 pointerdown）之后失效。判据表 = 单一真源
+       * app/interaction/interactive-target（同台手术：2026-11-21 钉住卡片的出处行）。 */
+      if (isInteractiveTarget(e.target)) return;
       e.stopPropagation();
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;

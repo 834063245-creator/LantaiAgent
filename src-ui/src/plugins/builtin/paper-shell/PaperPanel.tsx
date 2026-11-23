@@ -562,12 +562,12 @@ export function PaperPanel() {
                   >
                     <div className="pp-strip-head">
                       <span className="pp-strip-tag">纸条</span>
+                      {/* 销毁钮：这一下归按钮自己——起手面让出交互件（见 use-paper-strips 注）。 */}
                       <button
                         type="button"
                         className={`pp-strip-remove${stripConfirmId === s.id ? ' pp-strip-remove--confirm' : ''}`}
                         data-tip={stripConfirmId === s.id ? '再击一次确认销毁' : '销毁纸条'}
                         aria-label={stripConfirmId === s.id ? '再击一次确认销毁纸条' : '销毁纸条'}
-                        onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRemoveStrip(s.id);

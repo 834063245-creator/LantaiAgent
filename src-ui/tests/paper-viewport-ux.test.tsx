@@ -886,6 +886,61 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(Math.abs(after.y - preview.y)).toBeLessThan(30);
   }, 30_000);
 
+  /* 2026-11-23 用户报「纸条右上角的叉按钮失灵」的考官（同台手术见 11-21 出处行）。
+   * 病灶 = 指针捕获改 click 目标：纸条本体是拖拽起手面，onStripPointerDown 一拍
+   * setPointerCapture(.pp-strip) ⇒ click 全送到纸条，叉钮 .pp-strip-remove 的
+   * onClick 永不运行（首击连「确认？」态都不进）。旧防法「叉钮停传 onMouseDown」
+   * 在批 C3（2026-11-17）换 pointerdown 后失效。判据 = app/interaction/interactive-target。
+   * jsdom 没有真捕获，测的是判据本身：交互件上的按下不许起手（纸条不位移）；
+   * 本体照常起拖（反证）；两击确认照常销毁（用户看到的终态）。 */
+  it('纸条叉钮按住不起拖（交互件让出），本体照常起拖——「销毁纸条」失效回归', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const strip = makeStrip('纸条正文——叉钮不该把纸条拖走', 200, 200, 480);
+    getCanvasStore(panel.panelId).getState().addStrip(strip);
+    await act(async () => {});
+    const stripEl = (): HTMLElement | null => container?.querySelector<HTMLElement>('.pp-strip') ?? null;
+    expect(stripEl()).not.toBeNull();
+    const btn = stripEl()?.querySelector('.pp-strip-remove') as Element;
+    expect(btn).not.toBeNull();
+    await act(async () => {
+      fire(btn, 'mousedown', { button: 0, clientX: 300, clientY: 220 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 380, clientY: 280 });
+    });
+    expect(container?.querySelector('.pp-strip.pp-dragging')).toBeNull(); // 没起手
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 380, clientY: 280 });
+    });
+    // 没起手 ⇒ 不能落新位（起拖后松手会写回新位置）
+    const still = getCanvasStore(panel.panelId)
+      .getState()
+      .strips.find((s) => s.id === strip.id);
+    expect(still?.x).toBe(strip.x);
+    expect(still?.y).toBe(strip.y);
+    // 反证：同一手势落在纸条本体（非交互件）上 ⇒ 拖拽照常起手（判据只让出交互件）
+    await act(async () => {
+      fire(stripEl() as Element, 'mousedown', { button: 0, clientX: 300, clientY: 220 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 380, clientY: 280 });
+    });
+    expect(container?.querySelector('.pp-strip.pp-dragging')).not.toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 380, clientY: 280 });
+    });
+    // 叉钮照常走两击确认（首击 = 确认态、再击 = 真删）
+    await act(async () => {
+      fire(btn, 'click');
+    });
+    expect(stripEl()?.querySelector('.pp-strip-remove--confirm')).not.toBeNull();
+    await act(async () => {
+      fire(btn, 'click');
+    });
+    expect(getCanvasStore(panel.panelId).getState().strips.length).toBe(0);
+  }, 30_000);
+
   it('抽纸条（lift）拖出：贴缘滚屏 + ghost 跟手，松手在滚动后的世界位成条', async () => {
     await mountCanvas();
     const canvas = container?.querySelector<HTMLDivElement>('.pp-canvas');
