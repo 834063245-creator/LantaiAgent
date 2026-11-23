@@ -179,6 +179,11 @@ const AppDeclSchema = z
     mode: APP_WINDOW_MODE.optional(),
     /** 窗标题（书眉显示；缺省用插件名）。 */
     title: z.string().min(1).optional(),
+    /** 文档通道（批 1 只读）：声明 true 才允许窗经桥 `doc.read` 读宿主文档——
+     *  令牌由宿主在开窗时签发（`openPluginWindow(name, { document })`），窗只说
+     *  「读 token X」，路径解释权只在宿主。不声明 ⇒ 桥里没有 `doc.*`、开窗也不
+     *  接受 document 载荷（kill switch：不声明 = 不发生）。 */
+    documents: z.boolean().optional(),
   })
   .refine((v) => (v.entry !== undefined) !== (v.url !== undefined), {
     message: 'app 必须且只能声明 entry（资产 HTML）或 url（环回远端页）之一',

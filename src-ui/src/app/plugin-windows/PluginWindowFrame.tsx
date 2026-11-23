@@ -30,6 +30,7 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
+import { pendingDocumentGrant } from '../../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
 import { useDragGesture } from '../interaction/use-drag-gesture';
 import { PluginBoundary } from '../PluginBoundary';
@@ -67,8 +68,15 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     const cw = iframeRef.current?.contentWindow;
     if (!cw) return;
     boundWindowRef.current = cw;
-    bindBridgeWindow(cw, instance.pluginName, instance.windowId);
+    bindBridgeWindow(cw, instance.pluginName, instance.windowId, undefined, { documents: def.documents });
     postBridgeEvent(cw, 'bridge-ready', instance.windowId);
+    // 文档通道（批 1）：开窗时带过文档 ⇒ 就绪后推令牌（窗凭令牌 doc.read，
+    // 宿主从不把路径交给它去拼——路径只在这条事件里随令牌同行，窗拿到的仍只是
+    // 「你要读哪一页」的标识而非文件系统权限）。
+    const grant = def.documents ? pendingDocumentGrant(instance.windowId) : null;
+    if (grant) {
+      postBridgeEvent(cw, 'doc-open', instance.windowId, { docToken: grant.docToken, path: grant.path });
+    }
   };
 
   const stop = (e: { stopPropagation(): void }) => e.stopPropagation();

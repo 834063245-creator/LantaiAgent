@@ -1,6 +1,8 @@
 # 插件文档通道（受治文档面）— 施工单
 
-> **状态**：Proposed（立案）。前置：软件级插件第 1 步 `md-editor` 已交付并提交
+> **状态**：**批 1 已落地**（2026-11-23，契约 v70——`AppDecl.documents` + `openPluginWindow` 文档载荷 +
+> 桥方法 `doc.read` + `doc-open` 事件，令牌表在 `src/state/plugin-document-store.ts`）。
+> 批 2（`doc.save` + 改稿单）/ 批 3（纸面入口 + `md-editor` 接入）待办。前置：软件级插件第 1 步 `md-editor` 已交付并提交
 > （`examples/plugins/md-editor/`，窗 + 桥 + 数据地盘回归基线）。
 > **来由**：用户 2026-12 拍板「编辑器以**窗**的形态住进架阁」——第 1 步证明窗内只能
 > 摸自己的数据地盘（`plugins/window-bridge.ts` 白名单 = dataDir 四动作 + notify，
@@ -50,7 +52,12 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 
 ## 3. 批次
 
-### 批 1 · 只读打通（最小垂直切片）
+### 批 1 · 只读打通（最小垂直切片）——**已落地 2026-11-23（契约 v70）**
+
+> 实落：令牌表 `src/state/plugin-document-store.ts`（一窗一文档、绑 windowId + pluginName、关窗/换文档/卸载整窗回收）；
+> 桥面三道闸（能力声明 → 令牌存在 → 令牌绑窗）与 `{ path, text }` 回执；帧在 `bridge-ready` 后推 `doc-open`。
+> 测试 `tests/plugin-window-document.test.ts`（5 例：正路 / 未声明零读盘 / 无令牌·撤销 / 跨窗串用 / 缺 token）。
+> **已知限制**：窗已开着时再带新文档只重签令牌、不重推 `doc-open`（需重开窗才收到）——批 3 接入口时一并解决。
 
 | 文件 | 动作 |
 |---|---|

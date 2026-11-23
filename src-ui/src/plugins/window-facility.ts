@@ -13,6 +13,7 @@
 // 定稿后另批施工（走 canvas-nav 同款第一方产物通道），不阻塞本设施。
 
 import type { Context } from '../cordis';
+import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../state/plugin-window-store';
 import { notifyPluginWindowClosed, notifyPluginWindowOpened } from './mcp-bridge';
 import type { AppDecl, PluginWindowMode } from './types';
@@ -38,12 +39,17 @@ export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, o
     entryUrl: remote ? (app.url as string) : appEntryUrl(origin, pluginName, app.entry ?? ''),
     mode: app.mode ?? 'floating',
     title: app.title ?? pluginName,
+    documents: app.documents === true,
   };
   usePluginWindowStore.getState().registerAppDef(def);
   ctx.effect(
     () => () => {
       const closed = usePluginWindowStore.getState().unregisterAppDef(pluginName);
-      for (let i = 0; i < closed.length; i++) notifyPluginWindowClosed(pluginName);
+      for (let i = 0; i < closed.length; i++) {
+        // 卸载收口：窗没了，令牌跟着死（不留给下一任同 id 窗口）
+        revokeDocumentGrantsForWindow(closed[i].windowId);
+        notifyPluginWindowClosed(pluginName);
+      }
     },
     `${pluginName}/app-window`,
   );
@@ -54,10 +60,20 @@ export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, o
 /** 开窗：无定义 → null（插件未声明 app 或已卸载）；已开 → 聚焦返回原窗
  *  （v1 每插件单窗）。真开新窗才通知治理器（with-window 拉起 / lazy 阻塞
  *  空闲回收）——窗口计数与真实开窗恒等，聚焦不虚增。 */
-export function openPluginWindow(pluginName: string): string | null {
-  const result = usePluginWindowStore.getState().openWindow(pluginName);
+export function openPluginWindow(pluginName: string, opts?: { document?: { path: string } }): string | null {
+  const state = usePluginWindowStore.getState();
+  const def = state.defs[pluginName];
+  // 文档载荷只在插件声明 app.documents 时受理（能力不是权限：未声明 = 载荷被
+  // 忽略、窗照常开——但要让作者看得见，不静默）。
+  const requested = opts?.document;
+  if (requested && def?.documents !== true) {
+    console.warn(`[plugin-window] ${pluginName} 未声明 app.documents——文档载荷被忽略`);
+  }
+  const doc = def?.documents === true ? requested : undefined;
+  const result = state.openWindow(pluginName);
   if (!result) return null;
   if (result.opened) notifyPluginWindowOpened(pluginName);
+  if (doc) issueDocumentGrant(result.windowId, pluginName, doc.path);
   return result.windowId;
 }
 
@@ -65,6 +81,7 @@ export function openPluginWindow(pluginName: string): string | null {
  *  计数归零回收 / lazy 重新起算空闲）。 */
 export function closePluginWindow(windowId: string): boolean {
   const pluginName = usePluginWindowStore.getState().closeWindow(windowId);
+  revokeDocumentGrantsForWindow(windowId);
   if (pluginName == null) return false;
   notifyPluginWindowClosed(pluginName);
   return true;

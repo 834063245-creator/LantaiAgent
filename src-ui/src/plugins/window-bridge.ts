@@ -21,6 +21,8 @@
 // （名字 + rel 双围栏 + canonicalize 前缀），本桥只做形状校验。
 
 import { useShellStore } from '../app/shell-store';
+import { kernelReadFile } from '../rpc-contract';
+import { resolveDocumentGrant } from '../state/plugin-document-store';
 import type { PluginDataFs } from './data-fs';
 import { pluginDataFs } from './data-fs';
 
@@ -31,21 +33,31 @@ export const WINDOW_BRIDGE_PROTOCOL = 'lantai-plugin-bridge';
  *  - bridge-ready：宿主桥已就绪（窗内从此发 call 不会丢）；
  *  - window-closing：即将关窗（尽力而为告警——iframe 移除与投递同拍，
  *    收到与否无保证；需要可靠持久化的插件应改动即存）。 */
-export type WindowBridgeEvent = 'bridge-ready' | 'window-closing';
+export type WindowBridgeEvent = 'bridge-ready' | 'window-closing' | 'doc-open';
 
 /** 桥方法白名单（默认最小集——扩展须过契约审视，克制开面）。 */
-export type WindowBridgeMethod = 'fs.list' | 'fs.read' | 'fs.write' | 'fs.delete' | 'notify';
+export type WindowBridgeMethod =
+  | 'fs.list'
+  | 'fs.read'
+  | 'fs.write'
+  | 'fs.delete'
+  | 'notify'
+  /** 文档通道（批 1 只读）：凭令牌读宿主文档——只收 docToken，不收路径。 */
+  | 'doc.read';
 
 /** 每窗依赖（fs/notify 可注入——测试隔离 RPC 通道；缺省真源）。 */
 export interface WindowBridgeDeps {
   fs: Pick<PluginDataFs, 'list' | 'read' | 'write' | 'delete'>;
   notify: (text: string) => void;
+  /** 读宿主文档正文（路径来自宿主签发的令牌解析，窗不参与——见 plugin-document-store）。 */
+  readDocument: (path: string) => Promise<string>;
 }
 
 export function defaultWindowBridgeDeps(): WindowBridgeDeps {
   return {
     fs: pluginDataFs,
     notify: (text) => useShellStore.getState().pushStatus(text),
+    readDocument: (path) => kernelReadFile(path),
   };
 }
 
@@ -53,6 +65,8 @@ interface BridgeBinding {
   pluginName: string;
   windowId: string;
   deps: WindowBridgeDeps;
+  /** 文档通道（manifest.app.documents 折算）：false ⇒ 桥面不认 doc.*（kill switch）。 */
+  documents: boolean;
 }
 
 /** 绑定表：contentWindow → 插件身份（容器侧权威——消息不携带插件名）。 */
@@ -92,9 +106,14 @@ function postResult(cw: Window, payload: Record<string, unknown>): void {
 }
 
 /** 宿主 → 窗：广播（bridge-ready / window-closing）。 */
-export function postBridgeEvent(cw: Window, event: WindowBridgeEvent, windowId?: string): void {
+export function postBridgeEvent(
+  cw: Window,
+  event: WindowBridgeEvent,
+  windowId?: string,
+  payload?: Record<string, unknown>,
+): void {
   try {
-    cw.postMessage({ protocol: WINDOW_BRIDGE_PROTOCOL, op: 'event', event, windowId }, '*');
+    cw.postMessage({ protocol: WINDOW_BRIDGE_PROTOCOL, op: 'event', event, windowId, ...(payload ?? {}) }, '*');
   } catch {
     // 窗已关——尽力而为，丢即丢
   }
@@ -115,6 +134,17 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
     case 'notify':
       binding.deps.notify(reqStr(p.text, 'text'));
       return null;
+    // 文档通道（批 1 只读）：三道闸——能力声明 / 令牌 / 令牌绑窗（resolve 内判）。
+    // 窗永远只说令牌，路径由令牌表解析：窗自报路径 ⇒ 等于任意读，这条不能破。
+    case 'doc.read': {
+      if (!binding.documents) {
+        throw new Error('doc.read 拒绝：插件未声明 app.documents（文档通道未开启）');
+      }
+      const docToken = reqStr(p.docToken, 'docToken');
+      const path = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
+      if (path == null) throw new Error('doc.read 拒绝：文档令牌无效或已过期');
+      return { path, text: await binding.deps.readDocument(path) };
+    }
     default:
       throw new Error(`方法 "${method}" 不在白名单（默认最小集 fs.list/fs.read/fs.write/fs.delete/notify——按需申请）`);
   }
@@ -167,8 +197,9 @@ export function bindBridgeWindow(
   pluginName: string,
   windowId: string,
   deps: WindowBridgeDeps = defaultWindowBridgeDeps(),
+  capabilities: { documents?: boolean } = {},
 ): void {
-  bindings.set(cw, { pluginName, windowId, deps });
+  bindings.set(cw, { pluginName, windowId, deps, documents: capabilities.documents === true });
   ensureListener();
 }
 

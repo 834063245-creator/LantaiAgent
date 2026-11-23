@@ -35,6 +35,9 @@ export interface PluginWindowDef {
   kind: 'asset' | 'remote';
   mode: PluginWindowMode;
   title: string;
+  /** 文档通道（manifest.app.documents 折算，批 1 只读）：true 才允许开窗带文档
+   *  载荷、桥面才解析 `doc.read`。判定单一真源在本字段（渲染处不重推）。 */
+  documents: boolean;
 }
 
 /** 开着窗口实例（iframe 视口渲染源）。 */

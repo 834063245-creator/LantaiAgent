@@ -22,9 +22,13 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 69;
+export const OPEN_SURFACE_CONTRACT_VERSION = 70;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v70（2026-11-23）**`AppDecl` 增可选 `documents`（插件文档通道 · 批 1 只读）**：
+ *  `manifest.app.documents: true` 才受理开窗文档载荷（`openPluginWindow(name, { document })`）、
+ *  桥面才解析 `doc.read`（令牌化——窗只交 docToken，路径由宿主令牌表解析）。
+ *  **对外可感知**：不声明 = 既有行为一字不变（源码零迁移）；声明了才多出 `doc-open` 事件与 `doc.read`。
  *  v69（2026-11-22）**`ToolArgPreview` 的发出面扩档**（`provider/types.ts` 注释即契约面，
  *  粗粒度指纹按原文算）：v7 起它只描述 write/edit 的 content 预览；现扩到
  *  `code_execution` 的**程序体流式预览**（参数生成几十秒，折叠的程文卡只有折叠行可见）。
