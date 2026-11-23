@@ -16,6 +16,11 @@
 // 崩溃隔离：帧体包 PluginBoundary（宿主渲染面自保——iframe 内容异常天然隔离
 // 在独立 document，到不了宿主）。
 //
+// 尺寸（floating，2026-11-23 批）：**窗不是固定大小的**——右下角握把 `useDragGesture`
+// 拖拽改宽高（实例 w/h 落在 plugin-window-store），←→↑↓ 微调；最小 320×240、
+// 最大视口减 24。写死 460×360 是遗留（所有软件共用一个宽高 = 替插件决定一页纸多大），
+// 不是设计决定。dock/fullscreen 不吃握把（前者的宽度是停靠栏的、后者是视口）。
+//
 // 拖拽（floating）：书眉 pointerdown → `useDragGesture`（2026-11-17 交互原语批 C3 · 4/9）。
 // 换 pointer 的好处在这里最实在：**指针拖出窗口仍然收得到**——旧实现靠
 // document 级 mousemove 硬扛（快速拖出书眉会断线），现在 `setPointerCapture`
@@ -27,11 +32,22 @@
 // click ⇒「× 点不动、窗关不掉」（批 C3 换 pointer 时埋的，旧 mousedown 不捕获故
 // 无此症）。判据 = `isTopbarInteractiveTarget` 早退，与坞 `isComposerDragSurface` 同族。
 
-import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+} from 'react';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
 import { pendingDocumentGrant } from '../../state/plugin-document-store';
-import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
+import {
+  PLUGIN_WINDOW_MIN_H,
+  PLUGIN_WINDOW_MIN_W,
+  type PluginWindowDef,
+  type PluginWindowInstance,
+  usePluginWindowStore,
+} from '../../state/plugin-window-store';
 import { useDragGesture } from '../interaction/use-drag-gesture';
 import { PluginBoundary } from '../PluginBoundary';
 import { isTopbarInteractiveTarget } from '../window-drag';
@@ -39,6 +55,20 @@ import { isTopbarInteractiveTarget } from '../window-drag';
 interface FrameProps {
   instance: PluginWindowInstance;
   def: PluginWindowDef;
+}
+
+/** 键盘微调步长（px）——与书脊/侧栏调宽同档，可聚焦件的键盘义务。 */
+const RESIZE_STEP = 16;
+
+/** 尺寸夹持：最小 320×240；最大 = 视口减 24（与 `plugin-windows.css` 的
+ *  max-width/max-height 同一把尺子——那边是兜底护栏，这边是写回前的真值）。 */
+function clampSize(w: number, h: number): { w: number; h: number } {
+  const maxW = Math.max(PLUGIN_WINDOW_MIN_W, window.innerWidth - 24);
+  const maxH = Math.max(PLUGIN_WINDOW_MIN_H, window.innerHeight - 24);
+  return {
+    w: Math.round(Math.min(maxW, Math.max(PLUGIN_WINDOW_MIN_W, w))),
+    h: Math.round(Math.min(maxH, Math.max(PLUGIN_WINDOW_MIN_H, h))),
+  };
 }
 
 export function PluginWindowFrame({ instance, def }: FrameProps) {
@@ -100,6 +130,36 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     },
   });
 
+  /** 尺寸手势（右下角握把）：起手快照 w/h，位移直接加——x/y 不动，只长身体。 */
+  const sizeAtStartRef = useRef<{ w: number; h: number }>({ w: instance.w, h: instance.h });
+  const sizeGesture = useDragGesture({
+    onStart: () => {
+      sizeAtStartRef.current = { w: instance.w, h: instance.h };
+    },
+    onMove: (_e, d) => {
+      const next = clampSize(sizeAtStartRef.current.w + d.dx, sizeAtStartRef.current.h + d.dy);
+      usePluginWindowStore.getState().resizeWindow(instance.windowId, next.w, next.h);
+    },
+  });
+
+  const onResizePointerDown = (e: ReactPointerEvent) => {
+    stop(e);
+    focusPluginWindow(instance.windowId);
+    if (e.button !== 0) return;
+    /* 拖握把 = 改尺寸，不是扫过纸面选区（与书眉拖动同一条选区政策）。 */
+    e.preventDefault();
+    sizeGesture.begin(e);
+  };
+
+  const onResizeKeyDown = (e: ReactKeyboardEvent) => {
+    const dw = e.key === 'ArrowRight' ? RESIZE_STEP : e.key === 'ArrowLeft' ? -RESIZE_STEP : 0;
+    const dh = e.key === 'ArrowDown' ? RESIZE_STEP : e.key === 'ArrowUp' ? -RESIZE_STEP : 0;
+    if (dw === 0 && dh === 0) return;
+    e.preventDefault();
+    const next = clampSize(instance.w + dw, instance.h + dh);
+    usePluginWindowStore.getState().resizeWindow(instance.windowId, next.w, next.h);
+  };
+
   const onTitlePointerDown = (e: ReactPointerEvent) => {
     stop(e);
     focusPluginWindow(instance.windowId);
@@ -127,6 +187,8 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
       ? {
           left: `${instance.x}px`,
           top: `${instance.y}px`,
+          width: `${instance.w}px`,
+          height: `${instance.h}px`,
           zIndex: `calc(var(--z-plugin-window) + ${instance.z})`,
         }
       : undefined;
@@ -171,6 +233,17 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
               onLoad={handleLoad}
             />
           </div>
+          {/* 右下角调宽握把（只 floating）：纯热区、hover/focus 显形墨角——
+              与侧栏 `.ss-resize` 同一形态纪律。 */}
+          {instance.mode === 'floating' ? (
+            <button
+              type="button"
+              className="pw-resize"
+              aria-label="拖拽调整窗口大小（聚焦后方向键微调）"
+              onPointerDown={onResizePointerDown}
+              onKeyDown={onResizeKeyDown}
+            />
+          ) : null}
         </div>
       </PluginBoundary>
     </div>

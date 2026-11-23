@@ -130,7 +130,7 @@ export default {
 
 | ctx 通道 | 贡献什么 | 生效时机（各通道声明的 `timing`） |
 |---|---|---|
-| `ctx.panels` | 面板（`side:'left'/'right'` = 侧栏，壳出书眉与定位；`side:null` = 全屏覆盖，自己定位）。**入口 = 架阁「软件型」页** | 装载后即时（`immediate`） |
+| `ctx.panels` | 面板（`side:'left'/'right'` = 侧栏，壳出书眉与定位，内侧缘可拖拽调宽；`side:null` = 全屏覆盖，自己定位）。**入口 = 架阁「软件型」页** | 装载后即时（`immediate`） |
 | `ctx.commands` | 命令（命令面板 Ctrl+K） | 装载后即时（`immediate`） |
 | `ctx.overlays` | 画布覆盖层（视口固定槽位：创作坞 / 右缘窄条） | 装载后即时（`immediate`） |
 | `ctx.renderers` | 块渲染器（纸壳块体渲染，后注册胜 + `*` 兜底） | 渲染期每帧重取（`frame`） |

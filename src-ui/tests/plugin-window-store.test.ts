@@ -42,7 +42,11 @@ import {
   setPluginWindowMode,
 } from '../src/plugins/window-facility';
 import { usePluginStore } from '../src/state/plugin-store';
-import { usePluginWindowStore } from '../src/state/plugin-window-store';
+import {
+  PLUGIN_WINDOW_DEFAULT_H,
+  PLUGIN_WINDOW_DEFAULT_W,
+  usePluginWindowStore,
+} from '../src/state/plugin-window-store';
 
 const HELLO = { name: 'hello', version: '1.0.0', entry: 'entry.js' };
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
@@ -155,6 +159,24 @@ describe('S3 窗口原语：窗口注册表（plugin-window-store）', () => {
     expect(second?.opened).toBe(false); // 聚焦不开新窗
     expect(usePluginWindowStore.getState().windows).toHaveLength(1);
     expect(usePluginWindowStore.getState().windows[0].z).toBeGreaterThan(2); // 聚焦抬升海拔
+  });
+
+  it('浮动窗带缺省尺寸；resizeWindow 就地改（重开回到缺省——尺寸跟实例走）', () => {
+    const st = usePluginWindowStore.getState();
+    st.registerAppDef(DEF);
+    const id = st.openWindow('hello')?.windowId ?? '';
+    expect(usePluginWindowStore.getState().windows[0]).toMatchObject({
+      w: PLUGIN_WINDOW_DEFAULT_W,
+      h: PLUGIN_WINDOW_DEFAULT_H,
+    });
+    st.resizeWindow(id, 720, 540);
+    expect(usePluginWindowStore.getState().windows[0]).toMatchObject({ w: 720, h: 540 });
+    st.closeWindow(id);
+    st.openWindow('hello');
+    expect(usePluginWindowStore.getState().windows[0]).toMatchObject({
+      w: PLUGIN_WINDOW_DEFAULT_W,
+      h: PLUGIN_WINDOW_DEFAULT_H,
+    });
   });
 
   it('closeWindow 返回所属插件；focus/setMode/moveWindow 就地改实例', () => {

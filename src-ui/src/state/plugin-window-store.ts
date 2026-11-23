@@ -48,6 +48,11 @@ export interface PluginWindowInstance {
   /** 浮动窗位置（dock/fullscreen 模式忽略；拖拽经 moveWindow 写回）。 */
   x: number;
   y: number;
+  /** 浮动窗尺寸（px；dock/fullscreen 模式忽略；拖右下角握把经 resizeWindow 写回）。
+   *  **尺寸归用户**：窗口是 iframe 视口，软件内容形态千差万别，写死一个宽高
+   *  等于替所有插件决定「一页纸多大」。 */
+  w: number;
+  h: number;
   /** 焦点海拔（单调递增——最后触碰的窗在最上；store 持计数器）。 */
   z: number;
 }
@@ -85,9 +90,20 @@ interface PluginWindowState {
   setWindowMode: (windowId: string, mode: PluginWindowMode) => void;
   /** 浮动窗拖拽写回位置。 */
   moveWindow: (windowId: string, x: number, y: number) => void;
+  /** 浮动窗尺寸写回（右下角握把 / 键盘微调）。夹持在调用点——本 store 是纯状态
+   *  层，不读 window（与 moveWindow 同一条纪律）。 */
+  resizeWindow: (windowId: string, w: number, h: number) => void;
   /** 测试复位（vitest 同 worker 模块态跨用例共享——防串味）。 */
   resetPluginWindowsForTests: () => void;
 }
+
+/** 浮动窗缺省尺寸（px）：第一次开窗的一张「便签」量——**只是起手值**，
+ *  用户拖右下角握把即可改（改动记在实例上，关窗即忘；与位置同一生命周期）。 */
+export const PLUGIN_WINDOW_DEFAULT_W = 460;
+export const PLUGIN_WINDOW_DEFAULT_H = 360;
+/** 浮动窗最小尺寸（px）：再小书眉与窗内容都挤成一团，拖也拖不出意义。 */
+export const PLUGIN_WINDOW_MIN_W = 320;
+export const PLUGIN_WINDOW_MIN_H = 240;
 
 /** 浮动窗缺省位置：瀑布级联（每窗右下错位一格，环回防出屏）。 */
 function cascadePosition(index: number): { x: number; y: number } {
@@ -129,6 +145,8 @@ export const usePluginWindowStore = create<PluginWindowState>((set, get) => ({
       mode: def.mode,
       x,
       y,
+      w: PLUGIN_WINDOW_DEFAULT_W,
+      h: PLUGIN_WINDOW_DEFAULT_H,
       z: ++st.zTop,
     };
     set({ windows: [...st.windows, instance] });
@@ -155,6 +173,11 @@ export const usePluginWindowStore = create<PluginWindowState>((set, get) => ({
   moveWindow: (windowId, x, y) =>
     set((st) => ({
       windows: st.windows.map((w) => (w.windowId === windowId ? { ...w, x, y } : w)),
+    })),
+
+  resizeWindow: (windowId, width, height) =>
+    set((st) => ({
+      windows: st.windows.map((w) => (w.windowId === windowId ? { ...w, w: width, h: height } : w)),
     })),
 
   resetPluginWindowsForTests: () => set({ defs: {}, windows: [], seq: 0, zTop: 1 }),

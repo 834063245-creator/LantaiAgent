@@ -45,6 +45,61 @@
   border-left: var(--rule-strong);
 }
 
+/* 用户拖过的宽度：盖过兜底上限（45vw 是「作者没声明宽度」时的护栏，
+   不是用户的天花板；用户的夹持在 DockSlot 里算）。 */
+.dock-slot[data-resized] {
+  max-width: none;
+}
+
+/* ── 内侧缘调宽柄：纯热区 + hover/focus 显形墨条（同 .ss-resize 的形态纪律）── */
+.dock-slot-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.dock-slot[data-side="right"] .dock-slot-resize {
+  left: -3px;
+}
+
+.dock-slot[data-side="left"] .dock-slot-resize {
+  right: -3px;
+}
+
+.dock-slot-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background var(--snap);
+}
+
+.dock-slot[data-side="right"] .dock-slot-resize::after {
+  left: 2px;
+}
+
+.dock-slot[data-side="left"] .dock-slot-resize::after {
+  right: 2px;
+}
+
+.dock-slot-resize:hover::after,
+.dock-slot-resize:focus-visible::after {
+  background: var(--ink-2);
+}
+
+.dock-slot-resize:focus-visible {
+  outline: none; /* 显形走墨条（6px 热区里再套描边会糊） */
+}
+
 /* ── 书眉（壳出：图标 + 标题 + 关闭钮；面板不重复画）── */
 .dock-slot-head {
   display: flex;

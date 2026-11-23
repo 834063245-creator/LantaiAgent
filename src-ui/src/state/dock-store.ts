@@ -25,12 +25,21 @@ interface DockState {
    *  校验 + 消费面字面量纪律守住，store 不做调用点校验。 */
   open: Record<string, boolean>;
 
+  /** 壳面板（`frame: 'shell'`）的运行时宽度（px）——用户拖内侧缘调宽后写在这里。
+   *  未拖过 = 缺省：取 `PanelDef.width`，再缺省由 CSS 的内容撑开兜底带接管。
+   *  **宽度归用户**（与插件窗 w/h 同一条理由）：注册期声明的 width 只是作者建议，
+   *  不是用户改不了的定数。 */
+  panelWidths: Record<string, number>;
+
   /** 关闭守卫（2026-08 UI 大清扫）：面板注册（典型：SettingsPanel 的 dirty 拦截）。
    *  closePanel/togglePanel 的关闭路径先问守卫——false = 拦截（面板自弹确认）。
    *  面板确认后的强关 = 先 unregisterCloseGuard 再 closePanel（守卫已摘，直通）。 */
   closeGuards: Record<string, (() => boolean) | undefined>;
   registerCloseGuard: (id: DockPanelId, guard: () => boolean) => void;
   unregisterCloseGuard: (id: DockPanelId) => void;
+
+  /** 写回壳面板宽度（拖拽 / 键盘微调；夹持在调用点——本 store 不读 window）。 */
+  setPanelWidth: (id: DockPanelId, width: number) => void;
 
   openPanel: (id: DockPanelId) => void;
   closePanel: (id: DockPanelId) => void;
@@ -44,6 +53,7 @@ export const useDockStore = create<DockState>((set, get) => ({
     paper: false,
   },
   closeGuards: {},
+  panelWidths: {},
 
   registerCloseGuard: (id, guard) => set((st) => ({ closeGuards: { ...st.closeGuards, [id]: guard } })),
   unregisterCloseGuard: (id) =>
@@ -52,6 +62,8 @@ export const useDockStore = create<DockState>((set, get) => ({
       const { [id]: _dropped, ...rest } = st.closeGuards;
       return { closeGuards: rest };
     }),
+
+  setPanelWidth: (id, width) => set((st) => ({ panelWidths: { ...st.panelWidths, [id]: width } })),
 
   openPanel: (id) => set((st) => ({ open: { ...st.open, [id]: true } })),
   closePanel: (id) => {

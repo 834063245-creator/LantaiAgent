@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginWindowsHost } from '../src/app/plugin-windows/PluginWindowsHost';
 import { resetMcpGovernorForTests } from '../src/plugins/mcp-bridge';
 import { closePluginWindow, openPluginWindow } from '../src/plugins/window-facility';
-import { usePluginWindowStore } from '../src/state/plugin-window-store';
+import { PLUGIN_WINDOW_MIN_H, PLUGIN_WINDOW_MIN_W, usePluginWindowStore } from '../src/state/plugin-window-store';
 
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
 
@@ -211,6 +211,47 @@ describe('S3 视口层：d) 不抢画布 pan（帧内指针事件不冒泡）+ f
       pointer(window, 'pointermove', 800, 600);
     });
     expect(usePluginWindowStore.getState().windows[0].x).toBe(360);
+  });
+
+  it('右下角握把：拖拽改宽高（写回实例 + 内联尺寸），回拖夹到最小 320×240', () => {
+    mountHost();
+    act(() => {
+      openPluginWindow('acme/notes');
+    });
+    const frame = document.body.querySelector<HTMLElement>('.pw-frame-floating');
+    const before = usePluginWindowStore.getState().windows[0];
+    // 缺省尺寸由实例给（CSS 里不再写死宽高，避免两把尺子）
+    expect(frame?.style.width).toBe(before.w + 'px');
+    expect(frame?.style.height).toBe(before.h + 'px');
+    const handle = document.body.querySelector<HTMLElement>('.pw-resize');
+    expect(handle, '浮动窗应当有右下角调宽握把').not.toBeNull();
+    act(() => {
+      pointer(handle as HTMLElement, 'pointerdown', 500, 400);
+      pointer(window, 'pointermove', 590, 460);
+    });
+    const after = usePluginWindowStore.getState().windows[0];
+    expect(after.w).toBe(before.w + 90);
+    expect(after.h).toBe(before.h + 60);
+    expect(frame?.style.width).toBe(after.w + 'px');
+    act(() => {
+      pointer(window, 'pointerup', 590, 460);
+    });
+    // 往回拖到极小：夹到最小尺寸（书眉与窗内容不能挤没）
+    act(() => {
+      pointer(handle as HTMLElement, 'pointerdown', 500, 400);
+      pointer(window, 'pointermove', -2000, -2000);
+    });
+    const tiny = usePluginWindowStore.getState().windows[0];
+    expect(tiny.w).toBe(PLUGIN_WINDOW_MIN_W);
+    expect(tiny.h).toBe(PLUGIN_WINDOW_MIN_H);
+    act(() => {
+      pointer(window, 'pointerup', -2000, -2000);
+    });
+    // 键盘微调（可聚焦件的键盘义务）：→ 宽 +16
+    act(() => {
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    });
+    expect(usePluginWindowStore.getState().windows[0].w).toBe(PLUGIN_WINDOW_MIN_W + 16);
   });
 
   /** 书眉上的交互件（关窗钮）**不得被拖拽捕获吞掉**（2026-11-18 实机事故）：

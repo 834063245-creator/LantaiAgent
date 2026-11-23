@@ -31,6 +31,13 @@ function SelfFramed() {
   return <div className="t-self">家具</div>;
 }
 
+/** 派发一次指针事件（happy-dom 无真实手势层；补 pointerId 让手势核心认账）。 */
+function pointer(target: EventTarget, type: string, x: number, y: number): void {
+  const ev = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+  Object.defineProperty(ev, 'pointerId', { value: 1 });
+  target.dispatchEvent(ev);
+}
+
 const PROBES: PanelContribution[] = [
   { id: 't-shell-right', side: 'right', title: '研报工作台', icon: 'agent', component: Bare },
   { id: 't-shell-left', side: 'left', title: '左侧面', icon: 'list', component: Bare },
@@ -61,6 +68,36 @@ describe('DockSlot 宿主壳（v66）', () => {
     root = null;
     container = null;
     for (const p of PROBES) useDockStore.getState().closePanel(p.id);
+    useDockStore.setState({ panelWidths: {} });
+  });
+
+  it('内侧缘调宽柄：拖拽写回 panelWidths（右缘面板往左拖 = 变宽）', async () => {
+    await act(async () => useDockStore.getState().openPanel('t-shell-right'));
+    const slot = container!.querySelector<HTMLElement>('.dock-slot');
+    expect(slot, '壳盒子没渲染').not.toBeNull();
+    // 未拖过 = 不写内联宽度，交给 CSS 兜底带（作者声明 / 内容撑开）
+    expect(slot!.style.width).toBe('');
+    const handle = slot!.querySelector<HTMLElement>('.dock-slot-resize');
+    expect(handle, '壳面板应当有内侧缘调宽柄').not.toBeNull();
+    act(() => {
+      pointer(handle as HTMLElement, 'pointerdown', 600, 200);
+      // 指针捕获成功后监听挂在柄上（没捕获则冒泡回 window）——一律派在柄上，
+      // 两条路径都收得到（2026-11-23：happy-dom 有 setPointerCapture，派在
+      // window 上会漏）。
+      pointer(handle as HTMLElement, 'pointermove', 540, 200);
+    });
+    // 未布局环境下起手宽度 = 兜底下限 260；往左 60px = 320
+    expect(useDockStore.getState().panelWidths['t-shell-right']).toBe(320);
+    expect(slot!.style.width).toBe('320px');
+    expect(slot!.hasAttribute('data-resized')).toBe(true);
+    act(() => {
+      pointer(handle as HTMLElement, 'pointerup', 540, 200);
+    });
+    // 键盘 ←：右侧面板的柄在内侧，往左 = 变宽（+16）
+    act(() => {
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    });
+    expect(useDockStore.getState().panelWidths['t-shell-right']).toBe(336);
   });
 
   it('不写任何 CSS 的面板被壳包进 .dock-slot[data-side]（本 issue 的正面解决）', async () => {
