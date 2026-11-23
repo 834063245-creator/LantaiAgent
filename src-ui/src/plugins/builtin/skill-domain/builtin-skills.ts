@@ -40,7 +40,11 @@ const PLUGIN_DEV_PROMPT = `# 为兰台写插件——Agent 操作手册
 幂等 disposer + 声明式生效时机），第一方与第三方一致。
 用户让你「加个功能 / 写个插件 / 接个工具」时，按本手册动手。
 
-### 动手前的四样东西（2026-11-23 契约工具包，先看再写）
+### 动手前的四样东西（**只在兰台源码树里可用**）
+
+> 下面 1–4 都住在兰台的源码仓库里。你在**用户自己的项目**中写插件时没有这些东西——
+> 那就按 §2 手写 manifest，把装载器的报错当校验器：它给的是**同一套**字段路径错误
+> （装载期唯一校验点），提示里带迁移写法。别去猜字段名。
 
 1. **一页纸契约**：\`docs/plugins/contract-card.md\`——能写什么（manifest 顶层 13 字段）/
    宿主保证什么 / 永不下放什么 / 怎么调。**读完这一页就够动手**。
@@ -393,6 +397,25 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
    拒载闸才换，**被拒时旧版原样继续跑**且错误显示在卡片上。命令行等价动作 = 卸载再装
    （同版本重装会被版本守卫拒）。
 6. **工具面验证**：开新会话让用户确认工具可用。在途会话看不到新工具是纪律不是 bug。
+
+### 3.1 症状 → 先看什么（排障表）
+
+| 用户看到 / 你遇到 | 先查这一条 |
+|---|---|
+| 设置页「装载失败」+ error 原文 | 原文就是原因：\`manifest 校验失败: <字段路径>: …\` = 形状错；\`engines 不满足…\` = 兼容声明；\`Unrecognized key\` = 写了不该写的键（\`app\`/\`mcpServers\`/\`tools\` 都是 strictObject，一个多余键整条拒载）；\`已退役\` = 写了旧字段，按提示改 |
+| 状态「待授权」 | \`~/.lantai/plugins/plugins.json\` 的 \`granted\` 段没覆盖 \`manifest.permissions\` 声明的类 |
+| 装载正常，但 Agent 调不到工具 | 工具面在**下次 Agent 装配**生效——开新会话；在途会话看不到是纪律不是 bug |
+| 窗打不开（\`windows.open\` 回 null） | manifest 没有 \`app\` 声明，或插件已停用/卸载（窗口定义随插件 fiber 注销） |
+| 窗开了但空白 | asset 形态：\`app.entry\` 路径不在插件目录里（\`./\` 相对、须 \`.html\`）；remote 形态：本机服务没起 / 端口不对 |
+| 点了文件引用没反应 | 没有任何插件声明 \`app.documents\`（状态栏会具名说），或那个插件没装载 |
+| \`doc.read\` / \`doc.save\` 报「未声明 app.documents」 | 忘了 \`app.documents: true\`（kill switch：不声明就没有 \`doc.*\`） |
+| \`doc.save\` 报「已有一张待审改稿单」 | 一窗一单：等用户裁决（窗会收 \`doc-saved\` / \`doc-rejected\`）再交下一张 |
+| 工具调用报 \`service_not_ready\` | 受治进程没就绪：宿主**已**触发拉起，稍后重试即可；一直起不来 → 看设置页「诊断」里的状态与**最近停止原因**（idle-timeout / startup-failed / plugin-unloaded / activation-released） |
+| 受治进程过一会儿自己没了 | 空闲回收（无窗 + 无在途调用，缺省 5 分钟）。要常驻：保持窗开，或让声明方给更长的空闲预算（先例：随包引擎） |
+| 改了 entry.js / 窗页没生效 | 点卡片「重新加载」（外部插件）或卸载再装；JS/CSS 由 loader 带恒新版本号，模块图不会复用旧模块 |
+| 插件里 \`import 'react'\` 报解析失败 | 插件必须**自包含**：零裸 import，UI 走宿主桥 \`createElement\` / \`hooks\` |
+| plan 模式下 MCP 工具被拦 | server 没声明 \`readOnly: true\`（缺省按远端 hint；远端也无 → fail-closed 视为写） |
+| 改完 manifest 不确定对不对 | 在源码树里跑 \`npm run plugin:validate -- <目录>\`；不在源码树就**装一次看报错**——装载器是同一个校验器 |
 
 ## 4. 发布（可选）
 
