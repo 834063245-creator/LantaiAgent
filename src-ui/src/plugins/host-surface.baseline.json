@@ -1,5 +1,5 @@
 {
-  "fingerprint": "1d07af12",
+  "fingerprint": "ef9c65b2",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -105,6 +105,7 @@
     "clearWorkspaceListCache",
     "closePluginWindow",
     "collapseToolGroups",
+    "collectPluginDiagnostics",
     "completeGoal",
     "consumeFactAuthorization",
     "convergeRegistry",

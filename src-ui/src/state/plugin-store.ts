@@ -25,6 +25,9 @@ export interface PluginRecord {
   /** 待授权的权限类（status = blocked 时必填——C11-2 装载期一票否决：
    *  manifest.permissions 声明未被 plugins.json granted 段覆盖的部分）。 */
   missingPermissions?: string[];
+  /** 非阻断警告（manifest 里有 schema 不认识的顶层字段 / engines 宿主版本未知…
+   *  ——装载照常，但「写了但没生效」必须可见：设置页原样陈列）。 */
+  warnings?: string[];
   /** 第一方插件（编译期 bundle 内，非磁盘通道）。缺省 = 第三方。 */
   builtin?: boolean;
   /** 第一方元数据（builtin=true 时必有——守护测试钉死）。 */

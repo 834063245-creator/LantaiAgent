@@ -18,13 +18,93 @@ import { useState } from 'react';
 // plugins/builtin/settings-domain/；loader 的装卸面按既有循环注记运行期取用）。
 import {
   activateExternalPlugin,
+  collectPluginDiagnostics,
   deactivateExternalPlugin,
   Icon,
+  type PluginDiagnostics,
   type PluginRecord,
   typedRpc,
   usePluginPrefs,
   usePluginStore,
 } from './host';
+
+/** 复制到剪贴板（无 API 环境返回 false——UI 如实说，不假装复制成功）。 */
+async function copyText(text: string): Promise<boolean> {
+  const clip = globalThis.navigator?.clipboard;
+  if (!clip) return false;
+  try {
+    await clip.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 插件医生展开面（只读快照：字段表 + 复制 JSON）。
+ *  数据全由 `collectPluginDiagnostics` 拼装（单一入口）——这里只管摆放。 */
+function PluginDiagnosticsView({ diag }: { diag: PluginDiagnostics }) {
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const rows: Array<[string, string]> = [
+    ['状态', diag.status + (diag.error ? `——${diag.error}` : '')],
+    [
+      '版本 / 入口',
+      diag.manifest ? `v${diag.manifest.version} · ${diag.manifest.entry}` : '无 manifest（内核插件或校验失败）',
+    ],
+    ['契约版本', `v${diag.contractVersion}`],
+    ['插件目录', diag.pluginDir ?? (diag.builtin ? '内置（无磁盘目录）' : '不可得')],
+    ['数据目录', diag.dataDir ?? (diag.manifest ? '未声明 dataDir' : '—')],
+    ['声明工具', diag.tools.declared.length > 0 ? diag.tools.declared.join(' · ') : '未声明 tools'],
+    [
+      '受治进程',
+      diag.tools.mcp.length > 0
+        ? diag.tools.mcp
+            .map(
+              (m) =>
+                `${m.server}: ${m.state} · ${m.toolCount} 工具` +
+                (m.lastStopReason ? ` · 最近停止 ${m.lastStopReason}` : ''),
+            )
+            .join('；')
+        : '无',
+    ],
+    ['窗口', diag.windows.declared ? `${diag.windows.mode ?? 'floating'} · 当前开 ${diag.windows.open}` : '未声明 app'],
+    [
+      '激活声明',
+      diag.activation.declared
+        ? `lazy=${diag.activation.lazy ? '是' : '否'} · 资源 ${diag.activation.resources.join('/') || '—'} · ${diag.activation.started ? '已启动' : '未启动'}`
+        : '未声明 activation',
+    ],
+    ...(diag.activation.failure ? ([['激活失败', diag.activation.failure]] as Array<[string, string]>) : []),
+    ...(diag.warnings.length > 0 ? ([['警告', diag.warnings.join('；')]] as Array<[string, string]>) : []),
+  ];
+  return (
+    <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+      <table style={{ width: '100%', fontSize: 'var(--fs-caption)', borderCollapse: 'collapse' }}>
+        <tbody>
+          {rows.map(([key, value]) => (
+            <tr key={key}>
+              <td
+                style={{ whiteSpace: 'nowrap', padding: '2px 8px 2px 0', color: 'var(--ink-2)', verticalAlign: 'top' }}
+              >
+                {key}
+              </td>
+              <td style={{ padding: '2px 0', wordBreak: 'break-all' }}>{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        type="button"
+        className="sp-btn-sm"
+        style={{ marginTop: 6 }}
+        onClick={() => {
+          void copyText(JSON.stringify(diag, null, 2)).then((ok) => setCopied(ok ? 'ok' : 'fail'));
+        }}
+      >
+        {copied === 'ok' ? '已复制' : copied === 'fail' ? '复制失败（剪贴板不可用）' : '复制 JSON'}
+      </button>
+    </div>
+  );
+}
 
 /** 状态标签（对应 PluginStatus）。 */
 function statusBadge(s: PluginRecord['status']): { text: string; color: string } {
@@ -40,12 +120,19 @@ function PluginCard({
   busyName,
   onToggle,
   onUninstall,
+  onReload,
+  onDiagnose,
+  diagnostics,
 }: {
   plugin: PluginRecord;
   /** 操作中的插件名（按插件粒度禁用——全局 busy 会锁住无关插件，2026-08 UI 大清扫） */
   busyName: string | null;
   onToggle: (name: string, action: 'enable' | 'disable' | 'reload') => void;
   onUninstall: (name: string) => void;
+  /** 外部插件「重新加载」（改完插件目录 → 点一下；失败保留旧 fiber）。 */
+  onReload: (name: string) => void;
+  onDiagnose: (name: string) => void;
+  diagnostics?: React.ReactNode;
 }) {
   const badge = statusBadge(plugin.status);
   const enabled = plugin.status !== 'disabled';
@@ -95,6 +182,12 @@ function PluginCard({
           >
             {plugin.status === 'blocked' ? '重新装载' : enabled ? '禁用' : '启用'}
           </button>
+          <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => onReload(plugin.name)}>
+            重新加载
+          </button>
+          <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => onDiagnose(plugin.name)}>
+            诊断
+          </button>
           <button
             type="button"
             className="sp-btn-sm pp-btn-danger"
@@ -104,6 +197,7 @@ function PluginCard({
             卸载
           </button>
         </div>
+        {diagnostics}
       </div>
     </div>
   );
@@ -119,10 +213,14 @@ function FirstPartyCard({
   plugin,
   onToggle,
   onReload,
+  onDiagnose,
+  diagnostics,
 }: {
   plugin: PluginRecord;
   onToggle: (name: string, enabled: boolean) => void;
   onReload?: (name: string) => void;
+  onDiagnose: (name: string) => void;
+  diagnostics?: React.ReactNode;
 }) {
   const meta = plugin.meta;
   const enabled = plugin.status !== 'disabled';
@@ -162,7 +260,11 @@ function FirstPartyCard({
               重新加载
             </button>
           )}
+          <button type="button" className="sp-btn-sm" onClick={() => onDiagnose(plugin.name)}>
+            诊断
+          </button>
         </div>
+        {diagnostics}
       </div>
     </div>
   );
@@ -179,6 +281,24 @@ export function PluginsPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  /** 展开中的插件医生（同一时刻只展一份——表宽、少噪声）。 */
+  const [diag, setDiag] = useState<{ name: string; data: PluginDiagnostics } | null>(null);
+
+  /** 展开/收起诊断（只读聚合；已展开的再点 = 收起）。 */
+  function toggleDiagnostics(name: string): void {
+    if (diag?.name === name) {
+      setDiag(null);
+      return;
+    }
+    const record = usePluginStore.getState().plugins.find((p) => p.name === name);
+    if (!record) return;
+    void collectPluginDiagnostics(record).then((data) => setDiag({ name, data }));
+  }
+
+  /** 某插件当前的诊断节点（未展开 = undefined）。 */
+  function diagnosticsFor(name: string): React.ReactNode {
+    return diag?.name === name ? <PluginDiagnosticsView diag={diag.data} /> : undefined;
+  }
 
   /** 第一方禁用/启用（偏好持久化；下次启动生效——boot 期装载跳过）。 */
   function toggleBuiltin(name: string, enabled: boolean): void {
@@ -324,7 +444,13 @@ export function PluginsPage() {
           <div className="sp-section-title">平台服务（{services.length}）</div>
           <div className="sp-hint-sub">组合层服务 / 引擎缝 / 运行体本体——应用运行所需，不可禁用。</div>
           {services.map((p) => (
-            <FirstPartyCard key={p.name} plugin={p} onToggle={toggleBuiltin} />
+            <FirstPartyCard
+              key={p.name}
+              plugin={p}
+              onToggle={toggleBuiltin}
+              onDiagnose={toggleDiagnostics}
+              diagnostics={diagnosticsFor(p.name)}
+            />
           ))}
         </div>
       )}
@@ -342,6 +468,8 @@ export function PluginsPage() {
               key={p.name}
               plugin={p}
               onToggle={toggleBuiltin}
+              onDiagnose={toggleDiagnostics}
+              diagnostics={diagnosticsFor(p.name)}
               onReload={(name) => {
                 // 渲染器重载即时生效——不经 run 的通用后缀（「工具面下次装配」
                 // 语义不适用）；直接执行并展示 reloadBuiltin 的精确文案。
@@ -377,6 +505,13 @@ export function PluginsPage() {
                   return disableThenDeactivate(name);
                 });
               }}
+              onReload={(name) => {
+                // 外部插件重载 = 既有「先验后拆」路径（loader.activateExternalPlugin：
+                // 新版过完全部拒载闸才 dispose 旧 fiber；被拒 = 场上旧版原样继续跑）
+                void run(name, () => activateThenReport(name));
+              }}
+              onDiagnose={toggleDiagnostics}
+              diagnostics={diagnosticsFor(p.name)}
               onUninstall={(name) => {
                 void run(name, () => uninstallThenDeactivate(name));
               }}

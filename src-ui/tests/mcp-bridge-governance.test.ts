@@ -26,6 +26,7 @@ import { compositionServicesPlugin } from '../src/composition/services';
 import type { BuiltinToolRow } from '../src/composition/tool-rows';
 import { Context } from '../src/cordis';
 import {
+  governorStatesFor,
   type McpBridgeIO,
   type McpGovernorTiming,
   notifyPluginWindowClosed,
@@ -525,6 +526,32 @@ describe('受治进程治理（S2）：e) 回收出口（空闲计时 × 窗口�
     expect(await pollUntil(() => procs[0].killed === true, 1000)).toBe(true);
     expect(procs[0].killReasons[0]).toBe('idle-timeout');
     await cleanup(root, fiber);
+  });
+});
+
+describe('受治进程治理（S2）：governorStatesFor 只读读面（插件医生消费）', () => {
+  beforeEach(() => {
+    resetMcpGovernorForTests();
+  });
+
+  it('未注册的插件 = 空集；就绪后有 server/state/toolCount，停止后 lastStopReason 可见', async () => {
+    expect(governorStatesFor('acme/none')).toEqual([]);
+    const { io, procs } = makeFakeIO();
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
+      timing: { startupDeadlineMs: 2000, idleTimeoutMs: 60, restartBackoffMs: 40 },
+    });
+    await waitForTools();
+    expect(governorStatesFor('acme/tools')).toEqual([
+      { server: 'my-engine', state: 'ready', toolCount: 2, lastStopReason: null },
+    ]);
+    // 空闲回收：仍在注册表（未卸载），但状态 + 停止原因可读
+    expect(await pollUntil(() => procs[0]?.killed === true, 1000)).toBe(true);
+    expect(governorStatesFor('acme/tools')).toEqual([
+      { server: 'my-engine', state: 'not-running', toolCount: 2, lastStopReason: 'idle-timeout' },
+    ]);
+    // 卸载：出注册表（读面随之空——诊断不会指向已死的治理器）
+    await cleanup(root, fiber);
+    expect(governorStatesFor('acme/tools')).toEqual([]);
   });
 });
 

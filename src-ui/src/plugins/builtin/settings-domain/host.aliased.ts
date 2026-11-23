@@ -143,6 +143,8 @@ export const panelReload = impl.panelReload;
 // 日志可观测性批 4：级别开关面（DiagnosticPage 取用；与 host.ts 同形状镜像）
 export const logLevel = impl.logLevel;
 export const setLogLevelPreference = impl.setLogLevelPreference;
+// 插件医生（2026-11-23 批 3）：只读聚合函数本体留在内核，产物域只经宿主桥取用
+export const collectPluginDiagnostics = impl.collectPluginDiagnostics;
 
 export type AppSettings = import('./host').AppSettings;
 export type ConnectionProbe = import('./host').ConnectionProbe;
@@ -151,6 +153,7 @@ export type ProviderSettings = import('./host').ProviderSettings;
 export type ProviderId = import('./host').ProviderId;
 export type BundledEngineInfo = import('./host').BundledEngineInfo;
 export type McpServerDecl = import('./host').McpServerDecl;
+export type PluginDiagnostics = import('./host').PluginDiagnostics;
 export type PluginRecord = import('./host').PluginRecord;
 export type SkillDef = import('./host').SkillDef;
 export type LogLevel = import('./host').LogLevel;

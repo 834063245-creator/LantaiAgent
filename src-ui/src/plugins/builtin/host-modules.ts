@@ -271,6 +271,8 @@ import {
   probeBundledEngine,
   setBundledEngineEnabled,
 } from '../../plugins/bundled-engine-prefs';
+// 插件医生（2026-11-23 批 3）：只读聚合，让插件面读数一处可见
+import { collectPluginDiagnostics } from '../../plugins/diagnostics';
 import { activateExternalPlugin, deactivateExternalPlugin } from '../../plugins/loader';
 // 批 10 部件三（部件二落地）：MCP 受治桥面对第一方产物可见（设计件 §4.2 方案 A）
 import { ASSEMBLY_READY_WAIT_MS, registerMcpServerTools, waitWithin } from '../../plugins/mcp-bridge';
@@ -698,6 +700,8 @@ const faceDeps = {
   setBundledEngineEnabled,
   activateExternalPlugin,
   deactivateExternalPlugin,
+  // 插件医生（2026-11-23 批 3）：只读聚合——函数本体留内核，产物域经宿主桥取用
+  collectPluginDiagnostics,
   McpServerDeclSchema,
   isUserMcpMissingError,
   parseUserMcpJson,

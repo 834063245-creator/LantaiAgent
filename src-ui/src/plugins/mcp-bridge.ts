@@ -375,6 +375,8 @@ class ServerGovernor {
   private crashAttempts = 0;
   private disposed = false;
   private stopping = false;
+  /** 最近一次停止的具名原因（诊断读面——「为什么没在跑」不必翻控制台日志）。 */
+  private lastStop: GovernorStopReason | null = null;
   /** 在途调用计数（#1 总闸）：>0 时**不布防**空闲回收。
    *
    *  病灶（2026-09-25 实测）：续期口 `touch()` 全文件唯一调用点 = `acquireForCall()`
@@ -398,6 +400,11 @@ class ServerGovernor {
 
   get status(): GovernorState {
     return this.state;
+  }
+
+  /** 最近一次停止原因（null = 从没停过；诊断面用）。 */
+  get lastStopReason(): GovernorStopReason | null {
+    return this.lastStop;
   }
 
   /** 拉起（到就绪 settle；失败抛出——激活账 / 装配期等待 / 测试 await 消费）。
@@ -623,6 +630,7 @@ class ServerGovernor {
     }
     const stateBefore = this.state;
     this.stopping = true;
+    this.lastStop = reason;
     this.failStart?.(new Error(`受治进程 "${this.server.name}"（${this.pluginName}）启动被停止`));
     this.teardownProc(reason);
     this.state = 'not-running';
@@ -674,6 +682,28 @@ class ServerGovernor {
       this.idleTimer = null;
     }
   }
+}
+
+/** 一个受治进程的只读状态快照（插件医生消费——不暴露治理器实例本身）。 */
+export interface GovernorStateView {
+  server: string;
+  state: GovernorState;
+  /** 当前工具面快照大小（未就绪 = 0）。 */
+  toolCount: number;
+  /** 最近一次停止原因（null = 从没停过）。 */
+  lastStopReason: GovernorStopReason | null;
+}
+
+/** 某插件的全部受治进程状态（**只读**：诊断面用，不改任何账）。 */
+export function governorStatesFor(pluginName: string): GovernorStateView[] {
+  const governors = governedByPlugin.get(pluginName);
+  if (!governors) return [];
+  return [...governors].map((g) => ({
+    server: g.server.name,
+    state: g.status,
+    toolCount: g.toolFace().length,
+    lastStopReason: g.lastStopReason,
+  }));
 }
 
 /** 受治工具包装：就绪检查在**调用期**做（client 从治理器现取——回收/重启后

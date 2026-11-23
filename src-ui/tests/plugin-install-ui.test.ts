@@ -126,6 +126,73 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
     cleanup();
   });
 
+  it('外部插件「重新加载」→ activateExternalPlugin（先验后拆路径；失败不改动旧 fiber）', async () => {
+    usePluginStore
+      .getState()
+      .setPlugins([
+        { name: 'hello', manifest: { name: 'hello', version: '1.0.0', entry: 'entry.js' }, status: 'active' },
+      ]);
+    mockActivate.mockClear();
+    mockActivate.mockResolvedValueOnce({
+      name: 'hello',
+      manifest: null,
+      status: 'error',
+      error: 'manifest 校验失败: mcpServers[].lifecycle: 已退役',
+    });
+    root.render(createElement(PluginsPage));
+    await vi.waitFor(() => expect(container.textContent).toContain('hello'));
+    const btn = [...container.querySelectorAll('button')].find((b) => b.textContent === '重新加载');
+    expect(btn, '外部插件卡片必须有「重新加载」').toBeTruthy();
+    btn?.click();
+    // 走的就是 loader 的 activateExternalPlugin（同一份「先验后拆」——被拒不拆旧版）
+    await vi.waitFor(() => expect(mockActivate).toHaveBeenCalledWith('hello'));
+    // 被拒后错误原文可见（不静默换成「已重载」）
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('已退役');
+    });
+    cleanup();
+  });
+
+  it('插件医生展开：只读字段表 + 复制 JSON（再点收起）', async () => {
+    usePluginStore.getState().setPlugins([
+      { name: 'hello', manifest: { name: 'hello', version: '1.0.0', entry: 'entry.js' }, status: 'active' },
+      {
+        name: 'hologram/paper-shell',
+        manifest: null,
+        status: 'active',
+        builtin: true,
+        meta: { kind: 'feature', required: false, version: '1.0.0' },
+      },
+    ]);
+    root.render(createElement(PluginsPage));
+    await vi.waitFor(() => expect(container.textContent).toContain('hello'));
+    /** 按插件名取卡片（卡片 = .sp-lsp-card，名 = .lang-name）。 */
+    const cardOf = (name: string): Element | undefined =>
+      [...container.querySelectorAll('.sp-lsp-card')].find((c) => c.querySelector('.lang-name')?.textContent === name);
+    const btnIn = (card: Element | undefined, label: string): HTMLElement | undefined =>
+      [...(card?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label) as HTMLElement | undefined;
+
+    // 内置内核插件（无 manifest）：目录一栏如实说「内置」，不当错误
+    const builtinCard = cardOf('hologram/paper-shell');
+    expect(btnIn(builtinCard, '诊断'), '每张卡片都要有「诊断」').toBeTruthy();
+    btnIn(builtinCard, '诊断')?.click();
+    await vi.waitFor(() => expect(container.textContent).toContain('内置（无磁盘目录）'));
+    expect(container.textContent).toContain('契约版本');
+    expect(container.textContent).toContain('复制 JSON');
+
+    // 外部插件：plugin_dir 经 RPC 取（本用例 rpc mock 返回 undefined ⇒ 如实显示「不可得」）
+    const externalCard = cardOf('hello');
+    btnIn(externalCard, '诊断')?.click();
+    await vi.waitFor(() => expect(container.textContent).toContain('不可得'));
+    expect(container.textContent).not.toContain('内置（无磁盘目录）'); // 同时只展一份
+    expect(container.textContent).toContain('未声明 activation');
+
+    // 再点同一张 → 收起
+    btnIn(cardOf('hello'), '诊断')?.click();
+    await vi.waitFor(() => expect(container.textContent).not.toContain('契约版本'));
+    cleanup();
+  });
+
   it('安装动作 → plugin_install RPC + 运行时激活（D6）', async () => {
     usePluginStore.getState().setPlugins([]);
     /* 显式规格变更（2026-11-18）：plugin_install 的 result 由「JSON 字符串
