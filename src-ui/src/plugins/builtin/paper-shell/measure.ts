@@ -1155,6 +1155,17 @@ export function splitObservedKey(key: string): [string, string] {
  *  立即通知重排（等去抖会看见块错位一瞬）；同态值变 = 动态高（媒体图加载/
  *  iframe 上报/拟策反馈框展开/流式长高），立即通知。 */
 export function reportObservedBlockHeight(observedKey: string, w: number, h: number): ObservedReport {
+  /* ⚠ 0 宽回报不是观测（2026-11-23「会话流区上下抽动」批，真机 CDP 取证）：
+   * ResizeObserver 对**移出文档**的观察元素会补报一次 0×0（本机实测：observe →
+   * 首报 200×50 → `remove()` 后 401ms 内回调 `{w:0,h:0}`）。旧实现把它当
+   * 「宽度变了 = 首报」写进记录，把有效实测（720×1144）覆盖成 0 宽 ⇒
+   * `observedBlockHeightOf` 因宽度不匹配不认账 ⇒ 布局回落静态估高（1263.69）⇒
+   * 该块重新落进虚拟化窗口（OVERSCAN 200）⇒ 挂载再报 1144 ⇒ 120ms 收敛后
+   * 又出窗口 ⇒ 卸载再报 0 —— 两态无限振荡：整段流区的块每 ~155ms 整体上下
+   * 位移 119.69px（真机实测：块盒交替 -4662.94 / -4782.62，区域高交替
+   * 96718.3 / 96838）。0 宽不是任何一块的盒子 ⇒ 不认账、不写记录（保留上一次
+   * 有效实测）；壳层同时在卸载时 unobserve（use-block-measure.ts），两道闸。 */
+  if (!(w > 0)) return 'unchanged';
   const rec = Math.ceil(h);
   const [blockId, key] = splitObservedKey(observedKey);
   const prev = observedHeights.get(blockId);

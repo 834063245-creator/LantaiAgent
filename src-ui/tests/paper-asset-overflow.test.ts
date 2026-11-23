@@ -420,6 +420,25 @@ describe('实测回写桥（动态高兜底）', () => {
     off();
   });
 
+  it('卸载补报 0×0 不得覆盖有效实测（2026-11-23 会话流区上下抽动）', () => {
+    const events: number[] = [];
+    const off = subscribeObservedBlockHeights(() => events.push(events.length));
+    const b = block('markdown', { text: '正文' });
+    const key = observedKeyOf(b, false, false, false);
+    expect(reportObservedBlockHeight(key, b.w, 1144)).toBe('registered');
+    expect(events).toHaveLength(0);
+    /* RO 对移出文档的观察元素会补报 0×0（真机实测：observe → 首报 → remove()
+     * 后回调 {w:0,h:0}）。0 宽不是任何一种盒子：不认账、不写记录、不触发重排——
+     * 否则有效实测被覆盖成 0 宽 ⇒ 布局回落静态估高 ⇒ 边界块在虚拟化窗口里
+     * 反复进出 ⇒ 整段流区文字每 ~155ms 上下抽动 119.69px。 */
+    expect(reportObservedBlockHeight(key, 0, 0)).toBe('unchanged');
+    expect(observedBlockHeightOf(key, b.w)).toBe(1144);
+    expect(events).toHaveLength(0);
+    // 重挂载同值重报仍是「无变化」——不会因为吃过一口 0 就退化成首报（振荡的另一半）
+    expect(reportObservedBlockHeight(key, b.w, 1144)).toBe('unchanged');
+    off();
+  });
+
   it('宽度变化 = 旧实测作废待重报（钉住改宽），首次上报属登记', () => {
     const events: number[] = [];
     const off = subscribeObservedBlockHeights(() => events.push(events.length));

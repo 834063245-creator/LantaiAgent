@@ -66,7 +66,7 @@ export function useBlockMeasure() {
   );
   const blockRootRef = useCallback(
     (el: HTMLDivElement | null) => {
-      if (!el) return; // 卸载清理由 RO 弱目标语义 + WeakMap GC 兜底（记录保留防振荡）
+      if (!el) return; // React 19 起卸载走 ref cleanup（见本函数尾部）；此分支仅旧版兜底
       if (typeof ResizeObserver === 'undefined') return; // jsdom 测试环境无 RO
       /* 观测键 = 块 id + 渲染态（paper/measure.observedKeyOf 单一真源）——RO 报的
        * 是「当前那个盒子」的尺寸，键不带态就会把折叠态的读数喂给展开态。
@@ -80,17 +80,20 @@ export function useBlockMeasure() {
             const target = e.target as HTMLElement;
             const sidecarKey = sidecarRoElIds.current.get(e.target);
             if (sidecarKey) {
+              const extent = box ? box.blockSize : target.offsetHeight;
+              /* 移出文档的补报 0×0 不是观测（2026-11-23 抽动批）：不挡就会把
+               * 眉批 extent 写成 0+MARGINALIA_TOP（见 measure 侧 0 宽守卫注）。 */
+              if (!(extent > 0)) continue;
               // 眉批栏 extent = 顶距 + 栏高（块高按设计要容下它，见 paper/measure 头注）
-              reportObservedSidecarExtent(sidecarKey, (box ? box.blockSize : target.offsetHeight) + MARGINALIA_TOP);
+              reportObservedSidecarExtent(sidecarKey, extent + MARGINALIA_TOP);
               continue;
             }
             const ekey = blockRoElIds.current.get(e.target);
             if (!ekey) continue;
-            const verdict = reportObservedBlockHeight(
-              ekey,
-              box ? box.inlineSize : target.offsetWidth,
-              box ? box.blockSize : target.offsetHeight,
-            );
+            const inline = box ? box.inlineSize : target.offsetWidth;
+            /* 同上：卸载补报的 0×0 连宽都是 0，0 宽不可能是真盒子 —— 不认账。 */
+            if (!(inline > 0)) continue;
+            const verdict = reportObservedBlockHeight(ekey, inline, box ? box.blockSize : target.offsetHeight);
             // 首报/换宽校准登记：去抖一次收敛（changed/restated 已由订阅即时重排）
             if (verdict === 'registered') scheduleConverge();
           }
@@ -106,6 +109,20 @@ export function useBlockMeasure() {
         sidecarRoElIds.current.set(aside, key);
         blockRoRef.current.observe(aside);
       }
+      /* React 19 ref cleanup（2026-11-23 抽动批）：卸载即解除观察。不解除的话
+       * RO 会对移出文档的元素补报 0×0（真机实测 removal 后回调 `{w:0,h:0}`）——
+       * 那口 0 会把有效实测记录写坏，虚拟化边界块遂在「估高/实测」两态间无限
+       * 振荡（症状：整段流区文字每 ~155ms 上下抽动 119.69px）；且 RO 会一直
+       * 持有已卸载元素，滚动虚拟化每挂/卸一次漏一个。返回 cleanup 后 React 19
+       * 不再以 null 回调本 ref（上方 `!el` 分支仅旧版兜底）。 */
+      return () => {
+        blockRoRef.current?.unobserve(el);
+        blockRoElIds.current.delete(el);
+        if (aside) {
+          blockRoRef.current?.unobserve(aside);
+          sidecarRoElIds.current.delete(aside);
+        }
+      };
     },
     [scheduleConverge],
   );
