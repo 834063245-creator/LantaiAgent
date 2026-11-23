@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>文卷</title>
+<!--
+  md-editor 窗内容 —— 软件级插件「第 1 步回归基线」的自包含页（零依赖、无打包、无后端）。
+
+  这一页要证的不是「编辑器多好用」，是四件事：
+    ① 窗内拿不到宿主桥（opaque origin）：能力只能走 postMessage 白名单桥；
+    ② fs 四动作（list/read/write/delete）锁死在本插件数据地盘，碰不到宿主文件；
+    ③ bridge-ready / window-closing 两个广播足够撑起「开窗取数、关窗告警」；
+    ④ 关窗即回收、卸载不残留（宿主侧机制，本页只需不做常驻副作用）。
+
+  编辑器内核是**适配点**（见 mountEditor）：这里用原生 textarea（IME 天然稳、零依赖），
+  将来换 CodeMirror 6 / Monaco 只换这一个函数，桥与文档逻辑一字不改。
+-->
+<style>
+  :root {
+    --paper: #f7f2e7; --paper-deep: #efe7d6; --ink: #2b2620; --ink-soft: #6f6558;
+    --line: #ddd3c2; --accent: #8c3b26; --ok: #3f6b4a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper); color: var(--ink); font-size: 14px;
+    font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", Georgia, serif;
+    display: flex; overflow: hidden;
+  }
+  aside {
+    width: 172px; flex: 0 0 172px; display: flex; flex-direction: column;
+    border-right: 1px solid var(--line); background: var(--paper-deep);
+  }
+  aside header { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 8px; }
+  aside header .t { font-size: 13px; letter-spacing: 2px; color: var(--ink-soft); }
+  button {
+    font: inherit; font-size: 12px; color: var(--ink); background: transparent;
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; cursor: pointer;
+  }
+  button:hover { border-color: var(--ink-soft); }
+  button:disabled { opacity: .45; cursor: default; }
+  #list { list-style: none; margin: 0; padding: 0 6px; overflow: auto; flex: 1; }
+  #list li {
+    padding: 5px 8px; border-radius: 4px; cursor: pointer; display: flex;
+    align-items: center; justify-content: space-between; gap: 6px;
+  }
+  #list li:hover { background: rgba(140, 59, 38, .07); }
+  #list li.on { background: rgba(140, 59, 38, .13); color: var(--accent); }
+  #list li .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #list li .x { visibility: hidden; color: var(--ink-soft); font-size: 12px; }
+  #list li:hover .x { visibility: visible; }
+  aside .foot { padding: 8px 10px; font-size: 11px; color: var(--ink-soft); border-top: 1px solid var(--line); }
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .bar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-soft);
+  }
+  .bar .doc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; }
+  .bar .dot.on { background: var(--accent); }
+  .bar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .body { flex: 1; min-height: 0; display: flex; }
+  textarea, .view {
+    flex: 1; min-width: 0; border: 0; outline: 0; padding: 16px 20px; margin: 0;
+    background: var(--paper); color: var(--ink); resize: none;
+    font: 13px/1.75 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    white-space: pre-wrap; overflow: auto;
+  }
+  .view { display: none; line-height: 1.85; font-size: 14px; }
+  .view h1, .view h2, .view h3 { font-weight: 600; margin: 18px 0 8px; line-height: 1.4; }
+  .view h1 { font-size: 22px; } .view h2 { font-size: 18px; } .view h3 { font-size: 16px; }
+  .view p { margin: 10px 0; }
+  .view code { background: rgba(0,0,0,.055); padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 12.5px; }
+  .view pre { background: rgba(0,0,0,.055); padding: 10px 12px; border-radius: 4px; overflow: auto; }
+  .view pre code { background: none; padding: 0; }
+  .view blockquote { margin: 10px 0; padding: 2px 12px; border-left: 2px solid var(--line); color: var(--ink-soft); }
+  .view a { color: var(--accent); }
+  .empty { color: var(--ink-soft); font-size: 13px; padding: 40px 20px; text-align: center; }
+  .err { color: var(--accent); }
+  .ok { color: var(--ok); }
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <span class="t">文卷</span>
+    <span><button id="fresh" title="新建（会写进插件数据地盘）">新建</button></span>
+  </header>
+  <ul id="list"></ul>
+  <div class="foot" id="foot">连接中…</div>
+</aside>
+<main>
+  <div class="bar">
+    <span class="dot" id="dirty"></span>
+    <span class="doc" id="doc">未选文档</span>
+    <label><input type="checkbox" id="preview" /> 预览</label>
+    <button id="save" disabled>保存</button>
+  </div>
+  <div class="body">
+    <textarea id="editor" spellcheck="false" placeholder="左侧选一份文档，或点「新建」。"></textarea>
+    <div class="view" id="view"></div>
+  </div>
+</main>
+<script type="module">
+const PROTO = 'lantai-plugin-bridge';
+
+// ── 桥客户端（协议真源 = 宿主 src-ui/src/plugins/window-bridge.ts）──
+const pending = new Map();
+let seq = 0;
+let bridgeReady = false;
+const readyWaiters = [];
+
+function call(method, params) {
+  return new Promise((resolve, reject) => {
+    const reqId = ++seq;
+    pending.set(reqId, { resolve: resolve, reject: reject });
+    window.parent.postMessage({ protocol: PROTO, op: "call", reqId: reqId, method: method, params: params || {} }, "*");
+    setTimeout(() => {
+      if (pending.has(reqId)) { pending.delete(reqId); reject(new Error("超时：" + method)); }
+    }, 8000);
+  });
+}
+
+window.addEventListener("message", (ev) => {
+  const d = ev.data;
+  if (!d || d.protocol !== PROTO) return;
+  if (d.op === "result") {
+    const p = pending.get(d.reqId);
+    if (!p) return;
+    pending.delete(d.reqId);
+    if (d.ok) p.resolve(d.result); else p.reject(new Error(String(d.error || "桥调用失败")));
+    return;
+  }
+  if (d.op === "event") {
+    if (d.event === "bridge-ready") markReady();
+    if (d.event === "window-closing") foot(dirty ? "关窗时还有未保存改动（本次未拦截）" : "关窗", true);
+  }
+});
+
+function markReady() {
+  if (bridgeReady) return;
+  bridgeReady = true;
+  while (readyWaiters.length) readyWaiters.shift()();
+}
+
+function whenReady() {
+  if (bridgeReady) return Promise.resolve();
+  return new Promise((r) => {
+    readyWaiters.push(r);
+    // 兜底：宿主若在脚本执行前就广播过 bridge-ready，探一次把 ready 判据补上
+    setTimeout(() => { markReady(); }, 1500);
+  });
+}
+
+// ── 编辑器适配点（换内核只改这里：CodeMirror 6 / Monaco 都落在这个形状里）──
+function mountEditor(el, handlers) {
+  const onInput = () => handlers.onChange(el.value);
+  el.addEventListener("input", onInput);
+  el.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); handlers.onSave(); }
+  });
+  return {
+    getText: () => el.value,
+    setText: (t) => { el.value = t; },
+    setReadOnly: (ro) => { el.readOnly = ro; },
+    destroy: () => el.removeEventListener("input", onInput)
+  };
+}
+
+// ── DOM ──
+const $ = (id) => document.getElementById(id);
+const listEl = $("list"), docEl = $("doc"), dirtyEl = $("dirty"), footEl = $("foot");
+const editorEl = $("editor"), viewEl = $("view"), saveEl = $("save"), previewEl = $("preview");
+
+let current = null;
+let dirty = false;
+
+function foot(text, isErr) {
+  footEl.textContent = text;
+  footEl.className = "foot" + (isErr ? " err" : "");
+}
+
+function setDirty(v) {
+  dirty = v;
+  dirtyEl.classList.toggle("on", v);
+  saveEl.disabled = !current || !v;
+}
+
+const editor = mountEditor(editorEl, {
+  onChange: () => setDirty(true),
+  onSave: () => { save().catch((e) => foot(e.message, true)); }
+});
+
+// ── 极简 Markdown 预览（够看，不求全：标题/粗斜/行内码/围栏/列表/引用/链接）──
+function escapeHtml(s) {
+  const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+  return s.replace(/[&<>"]/g, (c) => map[c] || c);
+}
+
+function renderMarkdown(src) {
+  const esc = escapeHtml(src);
+  const blocks = esc.split(/^```/m);
+  let out = "";
+  for (let i = 0; i < blocks.length; i++) {
+    if (i % 2 === 1) { out += "<pre><code>" + blocks[i].replace(/^[a-zA-Z0-9-]*\n/, "") + "</code></pre>"; continue; }
+    const lines = blocks[i].split(/\n/);
+    let para = [];
+    const flush = () => { if (para.length) { out += "<p>" + inline(para.join(" ")) + "</p>"; para = []; } };
+    for (const raw of lines) {
+      const line = raw.trimEnd();
+      if (!line.trim()) { flush(); continue; }
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) { flush(); out += "<h" + h[1].length + ">" + inline(h[2]) + "</h" + h[1].length + ">"; continue; }
+      if (/^>\s?/.test(line)) { flush(); out += "<blockquote>" + inline(line.replace(/^>\s?/, "")) + "</blockquote>"; continue; }
+      const li = /^[-*+]\s+(.*)$/.exec(line);
+      if (li) { flush(); out += "<p>· " + inline(li[1]) + "</p>"; continue; }
+      para.push(line);
+    }
+    flush();
+  }
+  return out || "<p class=\"empty\">（空文档）</p>";
+}
+
+function inline(s) {
+  return s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, "<a href=\"$2\" target=\"_blank\" rel=\"noreferrer\">$1</a>");
+}
+
+function paintPreview() {
+  if (!previewEl.checked) { viewEl.style.display = "none"; editorEl.style.display = "block"; return; }
+  viewEl.innerHTML = renderMarkdown(editor.getText());
+  viewEl.style.display = "block";
+  editorEl.style.display = "none";
+}
+
+previewEl.addEventListener("change", paintPreview);
+
+// ── 数据地盘（桥 fs 四动作，作用域 = <dataRoot>/md-editor/）──
+async function refresh() {
+  const res = await call("fs.list", { path: "" });
+  const entries = (res && res.entries) || [];
+  const docs = entries.filter((e) => !e.is_dir && /\.md$/i.test(e.name)).map((e) => e.name).sort();
+  listEl.innerHTML = "";
+  for (const name of docs) {
+    const li = document.createElement("li");
+    li.className = name === current ? "on" : "";
+    const n = document.createElement("span");
+    n.className = "n"; n.textContent = name;
+    const x = document.createElement("span");
+    x.className = "x"; x.textContent = "删除";
+    x.addEventListener("click", (ev) => { ev.stopPropagation(); removeDoc(name).catch((e) => foot(e.message, true)); });
+    li.append(n, x);
+    li.addEventListener("click", () => { openDoc(name).catch((e) => foot(e.message, true)); });
+    listEl.append(li);
+  }
+  if (!docs.length) {
+    const li = document.createElement("li");
+    li.className = "empty"; li.textContent = "地盘里还没有文档";
+    listEl.append(li);
+  }
+  foot("地盘 " + docs.length + " 份 · 改动只写插件自己的目录");
+}
+
+async function openDoc(name) {
+  if (dirty && current && !confirm("「" + current + "」有未保存改动，切走会丢。继续？")) return;
+  const text = await call("fs.read", { path: name });
+  current = name;
+  docEl.textContent = name;
+  editor.setText(typeof text === "string" ? text : "");
+  setDirty(false);
+  paintPreview();
+  await refresh();
+}
+
+async function save() {
+  if (!current) return;
+  await call("fs.write", { path: current, content: editor.getText() });
+  setDirty(false);
+  paintPreview();
+  foot("已保存 · " + current, false);
+  await call("notify", { text: "文卷已保存 " + current });
+}
+
+async function removeDoc(name) {
+  if (!confirm("删除「" + name + "」？此操作不可撤销。")) return;
+  await call("fs.delete", { path: name });
+  if (current === name) { current = null; docEl.textContent = "未选文档"; editor.setText(""); setDirty(false); }
+  await refresh();
+  foot("已删除 · " + name, false);
+}
+
+async function createDoc() {
+  const input = prompt("新文档名（自动补 .md）：", "未命名");
+  if (input == null) return;
+  let name = input.trim().replace(/[\\/:*?"<>|]/g, "-");
+  if (!name) return;
+  if (!/\.md$/i.test(name)) name += ".md";
+  await call("fs.write", { path: name, content: "# " + name.replace(/\.md$/i, "") + "\n\n" });
+  await openDoc(name);
+}
+
+$("fresh").addEventListener("click", () => { createDoc().catch((e) => foot(e.message, true)); });
+saveEl.addEventListener("click", () => { save().catch((e) => foot(e.message, true)); });
+
+// ── 启动 ──
+async function boot() {
+  await whenReady();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await refresh();
+      return;
+    } catch (e) {
+      if (attempt === 2) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+  }
+}
+
+boot().catch((e) => foot("桥不可用：" + e.message + "（需在兰台宿主内打开）", true));
+</script>
+</body>
+</html>

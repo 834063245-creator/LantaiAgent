@@ -1,0 +1,12 @@
+{
+  "name": "md-editor",
+  "version": "0.1.0",
+  "description": "软件级插件 · 第 1 步回归基线：Markdown 文卷编辑器以「窗」形态住进架阁——窗内编辑自己数据地盘（dataDir）里的 .md，经 postMessage 白名单桥的 fs 四动作存取；不碰宿主文档（受治文档通道是第 2 步）。零依赖、无打包、无后端进程。",
+  "entry": "entry.js",
+  "app": {
+    "entry": "./app/index.html",
+    "mode": "floating",
+    "title": "文卷"
+  },
+  "dataDir": true
+}
