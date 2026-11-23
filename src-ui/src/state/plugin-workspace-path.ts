@@ -104,3 +104,70 @@ export function contentRevision(text: string): string {
   }
   return `${source.length.toString(36)}.${hash.toString(16).padStart(8, '0')}`;
 }
+
+/**
+ * 文档内相对链接 → 绝对路径（宿主侧）。只处理相对引用：
+ * 拒绝 scheme / 协议相对 / 绝对路径 / 反斜杠；`..` 可在根内回溯，越界由调用方
+ * 用 `isWithinWorkspace` 再判（这里不知道根）。
+ */
+export function resolveFileHref(baseFile: string, href: string): string | null {
+  const rawHref = String(href ?? '');
+  if (!rawHref || rawHref.startsWith('#')) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rawHref) || rawHref.startsWith('//')) return null;
+  const rawPath = rawHref.split(/[?#]/)[0];
+  if (!rawPath) return null;
+  let decoded = rawPath;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    // 非法 percent 编码按原样处理
+  }
+  if (decoded.startsWith('/') || decoded.includes('\\')) return null;
+  const base = toPosixPath(baseFile);
+  const slash = base.lastIndexOf('/');
+  const dir = slash >= 0 ? base.slice(0, slash) : '';
+  const joined = dir ? `${dir}/${decoded}` : decoded;
+  let prefix = '';
+  let rest = joined;
+  if (joined.startsWith('//')) {
+    prefix = '//';
+    rest = joined.slice(2);
+  } else if (joined.startsWith('/')) {
+    prefix = '/';
+    rest = joined.slice(1);
+  } else if (/^[A-Za-z]:\//.test(joined)) {
+    prefix = joined.slice(0, 3);
+    rest = joined.slice(3);
+  }
+  const stack: string[] = [];
+  for (const segment of rest.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (stack.length === 0) return null;
+      stack.pop();
+      continue;
+    }
+    stack.push(segment);
+  }
+  if (!prefix && stack.length === 0) return null;
+  return `${prefix}${stack.join('/')}`;
+}
+
+/** 资产 MIME（相对图片/PDF 预览用；未知回八位流，由窗按不可预览处理）。 */
+export function mimeOfPath(path: string): string {
+  const ext = String(path ?? '')
+    .toLowerCase()
+    .replace(/^.*\./, '');
+  const map: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    avif: 'image/avif',
+    bmp: 'image/bmp',
+    pdf: 'application/pdf',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}

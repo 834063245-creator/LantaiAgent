@@ -1007,7 +1007,8 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // 二期面扩展改名 steps-service（2026-10-13：ctx.preStep → ctx.steps + turn-stopping；计数不变）
     // composition-domain 新增（2026-10 创作者模式最小闭环：composition 工具行，defaultOff）：58 → 59
     // shelf-domain 新增（2026-11-21 v66：架阁出纸壳成应用级浮层 + panels 通道唯一入口）：59 → 60
-    expect(ALL_PLUGINS.length).toBe(60);
+    // md-editor 新增（2026-11-23 P1a：文卷第一方软件型产物）：60 → 61
+    expect(ALL_PLUGINS.length).toBe(61);
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);

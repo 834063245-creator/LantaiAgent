@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 77;
+export const OPEN_SURFACE_CONTRACT_VERSION = 78;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v78（2026-11-23）**工作区文件面收尾（P1c）：`ws.search` + `doc.follow` + `doc.asset`**：
+ *  `ws.search` 只收根令牌 + query/mode/limit（name 递归过滤 / content 走 `search_cap`），
+ *  命中只回根内相对路径；`doc.follow` / `doc.asset` 按**当前文档目录**解析相对引用
+ *  （禁 scheme/绝对路径/反斜杠），根外一律拒；`doc.asset` 回 data URL（8 MiB 源上限）。
+ *  同版 `workspace-open` 载荷增可选 `sessionFiles`（本卷引用的根内相对路径，来自
+ *  用户附件/正文链接与行内码/工具参数——可见事实，不是扫盘）。
+ *  纯增量，不声明 `app.workspace` / `app.documents` 仍分别 kill switch。
+ *  守护 `tests/plugin-workspace.test.ts` + `tests/plugin-workspace-path.test.ts`。
  *  v77（2026-11-23）**工作区授权（P1）：`manifest.app.workspace` + 桥 `ws.list` / `ws.read`**：
  *  声明 `app.workspace: true` 的软件型插件开窗即获**工作区根只读**根令牌（用户
  *  2026-11-23 拍板：根只读默认，不做「仅此文件」保守档）；桥面只收

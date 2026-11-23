@@ -970,6 +970,44 @@ export async function kernelListDirectory(path: string, filterIgnored?: boolean)
   return parsed.data;
 }
 
+/** search_cap 统一原始命中集（R2-d(2) 收窄后的形状；编排归 TS）。 */
+export interface SearchCapRaw {
+  pattern?: string;
+  scanned_files?: number;
+  budget_truncated?: boolean;
+  files?: Array<{
+    file: string;
+    match_count?: number;
+    matches?: Array<{ line: number; content: string; context?: Array<{ line: number; content: string }> }>;
+  }>;
+}
+
+/** search_cap 直呼（用户通道；全文扫描，忽略规则由 Rust 侧负责）。
+ *  `search_cap` 是 Text 形态命令，返回 JSON 字符串——这里解析成结构化命中集。 */
+export async function kernelSearchContent(params: {
+  directory: string;
+  pattern: string;
+  maxMatches?: number;
+  maxFiles?: number;
+  collectLines?: boolean;
+  contextLines?: number;
+  fileTypes?: string;
+  globFilter?: string;
+}): Promise<SearchCapRaw> {
+  const raw = await typedRpc('search_cap', {
+    directory: params.directory,
+    pattern: params.pattern,
+    max_matches: params.maxMatches,
+    max_files: params.maxFiles,
+    collect_lines: params.collectLines ?? true,
+    context_lines: params.contextLines ?? 0,
+    ...(params.fileTypes ? { file_types: params.fileTypes } : {}),
+    ...(params.globFilter ? { glob_filter: params.globFilter } : {}),
+    is_agent: false,
+  });
+  return parseJson<SearchCapRaw>(raw);
+}
+
 /** list_directory_flat 的 JSON 形状版（非递归单层）。兼容双形状同 list。 */
 export async function kernelListDirectoryFlat(path: string): Promise<DirEntry[]> {
   const raw = await fsCapCall({ action: 'list_flat', path, is_agent: false });

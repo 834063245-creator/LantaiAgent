@@ -41,7 +41,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from '../src-ui/node_modules/esbuild/lib/main.js';
@@ -239,8 +239,7 @@ async function buildPlugin(spec) {
   }
 
   const result = await build({
-    entryPoints: [join(srcDir, spec.entry)],
-    outfile: join(outDir, 'entry.js'),
+    entryPoints: [join(srcDir, spec.entry)],    outfile: join(outDir, 'entry.js'),
     bundle: true,
     format: 'esm',
     platform: 'browser',
@@ -264,17 +263,35 @@ async function buildPlugin(spec) {
     logLevel: 'warning',
   });
 
+  // 软件型产物（文卷 0.4 / P1a）：窗口面是自包含静态 HTML/JS/CSS，原样复制到
+  // 产物 app/；manifest 里的 app/dataDir/tools 由名册 software 段生成。
+  if (spec.software?.appSource) {
+    const appSrc = join(repoRoot, spec.software.appSource);
+    if (!existsSync(join(appSrc, 'index.html'))) {
+      console.error(`[build-builtin-plugins] ${spec.dir} 软件面缺 index.html: ${appSrc}`);
+      process.exit(1);
+    }
+    cpSync(appSrc, join(outDir, 'app'), { recursive: true });
+  }
+
   // 产物 manifest 从名册生成（2026-09-06 起不再 cp 源目录 manifest——源目录
   // manifest.json 已退役，名册是唯一真源）。字段：name（派生）、version（随包
   // 统一 1.0.0）、description（名册文案）、entry（产物入口 entry.js）、inject
   // （名册——与源码插件对象对拍由 builtin-roster.test.ts 守护）。displace 死
-  // 字段（S5 已退役位移）不再生成。
+  // 字段（S5 已退役位移）不再生成。软件型产物另带 app/dataDir/tools。
   const outManifest = {
     name: spec.name,
     version: '1.0.0',
     description: spec.description,
     entry: 'entry.js',
     inject: spec.inject ?? [],
+    ...(spec.software
+      ? {
+          app: spec.software.app,
+          dataDir: spec.software.dataDir ?? true,
+          tools: spec.software.tools ?? [],
+        }
+      : {}),
   };
   await (await import('node:fs/promises')).writeFile(
     join(outDir, 'manifest.json'),

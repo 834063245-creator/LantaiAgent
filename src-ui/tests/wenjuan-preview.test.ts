@@ -31,9 +31,11 @@ describe('文卷预览渲染', () => {
     expect(html).toContain('安全');
   });
 
-  it('相对图片不伪装成可加载资源', () => {
+  it('相对图片交给宿主 doc.asset：只发 data-doc-src，不发相对 src', () => {
     const html = renderMarkdown('![图](images/a.png)\n');
-    expect(html).toContain('md-img-missing');
-    expect(html).not.toContain('<img');
+    expect(html).toContain('<img');
+    expect(html).toContain('data-doc-src="images/a.png"');
+    expect(html).toContain('class="md-img-pending"');
+    expect(html).not.toMatch(/\ssrc="images\/a\.png"/);
   });
 });

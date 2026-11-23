@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：77
+当前版本：78
 
-<!-- contract-fingerprint: 54a6518e5538cb683e4ae119612f4fcd91383bb3e9b9e6f6b192333782881987 -->
+<!-- contract-fingerprint: 1713722c396d7861263da5227e8ea73360d2bbe2e934ec249ce6d9aebdc08215 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 78 | 2026-11-23 | **工作区文件面收尾（P1c，纯增量）**：桥面加 `ws.search`（name/content，命中只回根内相对路径）、`doc.follow`（按当前文档目录解析相对链接）、`doc.asset`（相对图片/PDF → data URL，8 MiB 源上限）。`workspace-open` 载荷增可选 `sessionFiles`（本卷引用的根内相对路径，来自可见消息事实）。相对引用禁 scheme/绝对路径/反斜杠，根外一律拒；不声明 `app.workspace` / `app.documents` 仍分别 kill switch。 | 施工单 `docs/plans/wenjuan-editor-plan.md`；守护 `tests/plugin-workspace.test.ts` + `tests/plugin-workspace-path.test.ts` + `tests/plugin-session-refs.test.ts` |
 | 77 | 2026-11-23 | **工作区授权（P1，纯增量）**：`manifest.app.workspace: true` + 桥 `ws.list` / `ws.read`。声明后开窗即签发**工作区根只读**根令牌（用户 2026-11-23 拍板：根只读默认，不做「仅此文件」档）；桥面只收 `{ rootToken, relPath }`，绝对路径拼接 / `..` 围栏 / 忽略规则全在宿主；`ws.read` 顺带签发文档令牌，保存仍走 `doc.save` 改稿单。同版 `doc.read` 回执补 `rev`、`doc-saved` 补 `rev`（冲突检测/外部变更；尾键，旧消费者忽略）。不声明 `app.workspace` ⇒ 桥里没有 `ws.*`、不发根令牌。 | 施工单 `docs/plans/wenjuan-editor-plan.md`；守护 `tests/plugin-workspace.test.ts` + `tests/plugin-workspace-path.test.ts` + `tests/plugin-window-document.test.ts`（rev） |
 | 76 | 2026-11-23 | **v75 收尾：契约面只有「文件位置 / 注释」变更，形状零变更**：`app.size` 的尺寸围栏（`APP_WINDOW_SIZE_MIN/MAX`）仍在 `plugins/types.ts`；消费它的宿主几何算式模块从 `plugins/window-metrics.ts` 迁到 `state/window-metrics.ts`（`tests/privileged-zone-freeze` 要求 `plugins/` 顶层只减不增——UI 几何件归 state），types.ts 注释路径同步更正。指纹重算；**对外零可感知差异**。 | 守卫 `tests/privileged-zone-freeze.test.ts`；无形状变更，无需迁移 |
 | 75 | 2026-11-23 | **`manifest.app` 增可选 `size: { w, h }`（首选窗尺寸，纯增量）**：软件级插件可声明自己的起手窗尺寸——float 窗缺省 460×360 的缝合线终于能按软件形态分开（编辑器要宽、便签要小）。围栏 320–2400 × 240–1600 px、整数；**只对 `floating` 生效**（`dock` 的宽度属停靠栏、`fullscreen` 即视口——给它们声明 = 具名拒绝）。**用户优先于声明**：用户拖过右下角握把后，宿主记住用户的几何（localStorage，v75 同批落地；窗口位置/尺寸跨重启，壳面板宽度同样记住），声明值只在「第一次开」时生效。**对外可感知**：不声明 = 行为逐字不变；旧宿主（v74 及以前）读 `app.size` 会整份拒载（`app` 是 strictObject）——用新字段的样例需同时声明 `engines` 最低版本。 | 守护 `tests/plugin-window-store.test.ts`（上下界 / 非整数 / 未知键 / 非 floating）+ `tests/plugin-surface-budget.test.ts`（形状白名单）+ `tests/plugin-window-geometry.test.ts`（落盘优先） |

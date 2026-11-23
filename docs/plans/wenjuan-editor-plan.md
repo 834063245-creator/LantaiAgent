@@ -2,11 +2,15 @@
 
 > **状态**：**P0 已落地（2026-11-23）**——`md-editor` 0.3.0：阅读/编辑双模、CodeMirror 6、
 > GFM 预览、大纲、草稿自动保存/恢复、外部变更检测、夜读、单文档多标签（自家卷库）。
-> **P1b 宿主契约 + P1c 工作区树/多文档已落地（2026-11-23，契约 v77，md-editor 0.4.0）**：`app.workspace` +
-> `ws.list`/`ws.read` + 根只读令牌 + 多文档标签；余 P1c：内容搜索、相对链接/图片；
-> P1a：随包产物通道（当前仍需手动装插件）。
-> **部署**：P1 的 `app.workspace` 是契约 v77 新字段——旧宿主（v76 及以前）会整份拒载
-> 这个 manifest；要用 P1 必须重建/重启宿主。P0 的 0.3.0 已装本机，可继续用。
+> **P1a/P1b/P1c 主体已落地（2026-11-23，契约 v78，文卷 0.4.0）**：
+> 第一方软件型产物 `hologram/md-editor` 随包（`builtin-roster.json` 的 `software` 段生成
+> manifest，构建脚本复制 `app/`）；`app.workspace` + `ws.list`/`ws.read`/`ws.search` +
+> `doc.follow`/`doc.asset` + 根只读令牌 + 多文档标签 + 树/快速打开/内容搜索/相对链接/图片 +
+> 本卷引用（会话消息里的可见引用推窗）。
+> **余 P1c 尾项**：`ws.stat`/树变更事件（非阻塞）；写仍每次过审（租约 = P2）。
+> **部署**：P1 需宿主 v78（重建 exe；先关掉运行中的兰台，否则 `target/release/lantai.exe`
+> 被占用会报 os error 32）；随包版默认在架阁，旧的手装 `md-editor` 需移走以免
+> 同时出现两扇文卷窗（随包工具名 `wenjuan_open`，旧手装 `md_open`）。
 > **定位（2026-11-23 用户拍板 A）**：**第一方旗舰编辑器**——随包、默认装、开箱即用，
 > 但仍以软件型插件形态存在（可替换、可禁用；不把编辑器焊进宿主）。
 > **前置**：插件文档通道三批已落地（[`plugin-document-channel-plan.md`](plugin-document-channel-plan.md)，
@@ -46,11 +50,11 @@ openPluginWindow(name, { workspace?: { root?: string } }) // root 缺省 = 工�
 // 桥方法（全部以 rootToken 为根，窗只报工作区相对路径）
 ws.list({ rootToken, relPath })                    → { entries: [{ name, is_dir, size, relPath }] }
 ws.read({ rootToken, relPath })                    → { text, rev, docToken, relPath }
-// 以下为 P1c 余项（尚未实现）：
-ws.stat({ rootToken, relPath })                    → { size, mtime, rev }
 ws.search({ rootToken, query, mode: 'name' | 'content', limit? }) → { hits: [{ relPath, line?, preview? }], truncated }
 doc.follow({ docToken, href })                     → { docToken, relPath }   // 相对链接按当前文档目录解析
 doc.asset({ docToken, href })                      → { dataUrl, mime }       // 相对图片，8MiB 闸
+// 以下为 P1c 尾项（尚未实现）：
+ws.stat({ rootToken, relPath })                    → { size, mtime, rev }
 // 保存仍走既有 doc.save（ws.read 顺带签发 docToken，可选 baseRev）；不另开 ws.write。
 ```
 
@@ -106,9 +110,9 @@ kill switch：`app.workspace` 不声明 ⇒ 无 `ws.*`，行为退回 0.3.0。
 | 批 | 内容 | 验收 |
 |---|---|---|
 | **P0（已落地）** | CM6 + 阅读/编辑/分栏 + GFM 预览 + 大纲 + 查找替换 + 草稿自动保存/恢复 + 外部变更检测 + 夜读 + 最近/多标签（自家卷库） | 500KB md 不卡；中文输入法不丢字；关窗不丢草稿；宿主改稿单回推三态正确 |
-| **P1a 打包**（A 定位的随包） | 新增软件型第一方产物通道：`software-roster.json` + `scripts/build-software-plugins.mjs`（复制 app/，不跑 TS 编译）→ `dist-plugins/builtin/hologram/md-editor/`；内置索引合并即被发现 | 删掉 `~/.lantai/plugins/md-editor` 后重启，架阁仍见「文卷」；禁用/启用以产物为准 |
+| **P1a 打包**（A 定位的随包） | 第一方软件型产物：`builtin-roster.json` 的 `software` 段（app/appSource/dataDir/tools）+ 构建脚本复制 `app/` → `dist-plugins/builtin/hologram/md-editor/`；装载器按名册装载 | **已落地 2026-11-23**：42 个出厂产物；随包默认在架阁、可禁用；手装 `md-editor` 调试形态仍可独立用 |
 | **P1b 契约** | `app.workspace` + `ws.*` + 多令牌/根授权 + `rev` 冲突 + 事件；四类拒绝测试；契约升版 + convergence 双轨 | **已落地 2026-11-23 · v77**：根只读令牌、`ws.list`/`ws.read`、`ws.read` 顺带 docToken、多文档保存、`baseRev` conflict；`tests/plugin-workspace.test.ts` / `plugin-workspace-path.test.ts` |
-| **P1c 文件面** | 树 + 快速打开 + 内容搜索 + 多文档 + 链接/图片 + 本卷引用 | **树/多文档已落地 2026-11-23**；余内容搜索（`ws.search`）、`doc.follow`、`doc.asset`、本卷引用 |
+| **P1c 文件面** | 树 + 快速打开 + 内容搜索 + 多文档 + 链接/图片 + 本卷引用 | **主体已落地 2026-11-23 · v78**：树/多文档/`ws.search`/`doc.follow`/`doc.asset`/本卷引用；余 `ws.stat` + 树变更事件（非阻塞） |
 | **P2 会话原生** | Agent hunk 审阅（gutter 接受/拒绝）、选段→问 Agent/夹签/批注、版本历史、文档与卡片的互引 | Agent 改稿在编辑器内逐条裁决；选段一键进创作坞；批注随文件走 |
 | **P3 打磨** | PDF/图片预览、打印/导出、停靠/多窗、拖放导入、字号/版心偏好 | — |
 

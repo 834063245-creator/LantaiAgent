@@ -124,13 +124,24 @@ const state = {
     rootPath: '',
     nodes: new Map(),
     expanded: new Set(['']),
+    sessionFiles: [],
     error: '',
   },
   outline: [],
   outlineActiveLine: 0,
   filter: '',
   banner: null,
-  palette: { open: false, mode: 'files', query: '', index: 0, items: [] },
+  palette: {
+    open: false,
+    mode: 'files',
+    query: '',
+    index: 0,
+    items: [],
+    searchHits: [],
+    searching: false,
+    searchSeq: 0,
+    searchTimer: null,
+  },
   modal: null,
   pendingHostOpen: null,
   persistedTabs: [],
@@ -395,6 +406,9 @@ async function onWorkspaceOpen(payload) {
   const changed = state.workspace.rootToken !== rootToken;
   state.workspace.rootToken = rootToken;
   state.workspace.rootPath = rootPath;
+  state.workspace.sessionFiles = Array.isArray(payload?.sessionFiles)
+    ? payload.sessionFiles.filter((rel) => typeof rel === 'string')
+    : [];
   if (changed) {
     state.workspace.nodes.clear();
     state.workspace.expanded = new Set(['']);
@@ -520,7 +534,7 @@ function workspaceRows(relPath, depth, out, filter) {
   }
 }
 
-async function openWorkspaceFile(relPath) {
+async function openWorkspaceFile(relPath, { line = 0 } = {}) {
   if (!state.workspace.rootToken) {
     showToast('宿主还没有签发工作区根授权', 'err', 3600);
     return;
@@ -532,6 +546,7 @@ async function openWorkspaceFile(relPath) {
   const existing = state.tabs.find((tab) => tab.kind === 'host' && tab.workspace && tab.path === relPath);
   if (existing) {
     activateTab(existing.id, { focus: true });
+    if (line > 0) jumpToDocLine(existing, line);
     return;
   }
   try {
@@ -542,18 +557,36 @@ async function openWorkspaceFile(relPath) {
       path: relPath,
       name: basename(relPath),
       text,
-      view: 'read',
+      view: line > 0 ? 'edit' : 'read',
       docToken: typeof raw?.docToken === 'string' ? raw.docToken : null,
     });
     tab.workspace = true;
     tab.rootToken = state.workspace.rootToken;
     tab.rev = typeof raw?.rev === 'string' ? raw.rev : null;
+    if (line > 0) tab.cursor = { line: Math.max(0, line - 1), col: 0 };
     applyDraft(tab);
     addTab(tab, { activate: true });
     touchRecent({ kind: 'workspace', path: relPath, name: tab.name });
+    if (line > 0) jumpToDocLine(tab, line);
   } catch (error) {
     showToast(`打开失败：${error.message}`, 'err', 4200);
   }
+}
+
+function jumpToDocLine(tab, line) {
+  if (!editor) return;
+  if (!viewHasEditor(tab)) {
+    tab.view = 'edit';
+    renderAll();
+    schedulePreview(0);
+  }
+  requestAnimationFrame(() => {
+    if (activeTab()?.id !== tab.id) return;
+    editor.setCursor(Math.max(0, line - 1), 0);
+    editor.scrollToLine(line);
+    editor.focus();
+    editor.requestMeasure();
+  });
 }
 
 
@@ -950,9 +983,36 @@ function renderPreview() {
   body.innerHTML = bodyHtml || '<p class="side-empty">（空文档）</p>';
   frag.append(body);
   el.previewHost.replaceChildren(frag);
+  hydrateDocAssets(body, tab);
   requestAnimationFrame(() => {
     el.previewHost.scrollTop = scrollRatio * el.previewHost.scrollHeight;
   });
+}
+
+/** 相对图片：宿主 `doc.asset` 按当前文档目录解析，回 data URL；本地卷库暂不预览。 */
+function hydrateDocAssets(root, tab) {
+  for (const img of root.querySelectorAll('img')) {
+    const src = img.getAttribute('data-doc-src') || img.getAttribute('src') || '';
+    if (!src || /^(data:|https?:|blob:)/i.test(src)) continue;
+    img.removeAttribute('data-doc-src');
+    img.removeAttribute('src');
+    img.classList.add('md-img-pending');
+    img.title = tab.kind === 'host' ? '正在读取工作区图片…' : '本地卷库图片暂不预览';
+    if (tab.kind !== 'host' || !tab.docToken) continue;
+    void (async () => {
+      try {
+        const res = await bridge.call('doc.asset', { docToken: tab.docToken, href: src });
+        if (!img.isConnected) return;
+        img.src = res.dataUrl;
+        img.classList.remove('md-img-pending');
+        img.title = '';
+      } catch (error) {
+        img.classList.remove('md-img-pending');
+        img.classList.add('md-img-error');
+        img.title = `图片读取失败：${error.message}`;
+      }
+    })();
+  }
 }
 
 function bodyForPreview(body, lineOffset = 0) {
@@ -977,6 +1037,31 @@ function onPreviewClick(event) {
     if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
     return;
   }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) {
+    void copyText(href).then((ok) => {
+      showToast(ok ? '外部链接已复制（窗口沙箱不直接开浏览器）' : `外部链接：${href}`, 'info', 4200);
+    });
+    return;
+  }
+  if (tab.kind === 'host') {
+    if (!tab.docToken) {
+      showToast('这份宿主文档的令牌已失效，无法跟随相对链接', 'info', 3200);
+      return;
+    }
+    void (async () => {
+      try {
+        const followed = await bridge.call('doc.follow', { docToken: tab.docToken, href });
+        if (!isDocumentName(followed.relPath)) {
+          showToast(`相对链接指向非文档文件：${followed.relPath}`, 'info', 3600);
+          return;
+        }
+        await openWorkspaceFile(followed.relPath, { line: 0 });
+      } catch (error) {
+        showToast(`链接打开失败：${error.message}`, 'err', 4200);
+      }
+    })();
+    return;
+  }
   const resolved = resolveLocalHref(href, tab.path);
   if (!resolved) {
     showToast('这个链接不在当前文档的数据地盘内', 'info', 3200);
@@ -986,10 +1071,6 @@ function onPreviewClick(event) {
     void copyText(href).then((ok) => {
       showToast(ok ? '外部链接已复制（窗口沙箱不直接开浏览器）' : `外部链接：${href}`, 'info', 4200);
     });
-    return;
-  }
-  if (tab.kind !== 'local') {
-    showToast('宿主文档里的相对链接需要「工作区授权」（下一批）', 'info', 3600);
     return;
   }
   if (isDocumentName(resolved.path)) {
@@ -1097,6 +1178,31 @@ function renderSidebar() {
         frag.append(empty);
       } else {
         const query = state.filter.trim();
+        const refs = state.workspace.sessionFiles.filter((rel) => isDocumentName(rel)).slice(0, 12);
+        if (refs.length) {
+          const title = document.createElement('div');
+          title.className = 'side-section';
+          title.textContent = '本卷引用';
+          frag.append(title);
+          for (const rel of refs) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tree-row';
+            button.dataset.rel = rel;
+            button.dataset.dir = '0';
+            button.style.setProperty('--depth', '0');
+            if (state.activeId === `host:${rel}` && activeTab()?.workspace) button.classList.add('on');
+            const caret = document.createElement('span');
+            caret.className = 'tree-caret';
+            caret.textContent = '·';
+            const name = document.createElement('span');
+            name.className = 'tree-name';
+            name.textContent = rel;
+            button.append(caret, name);
+            button.title = `本卷引用 · ${rel}`;
+            frag.append(button);
+          }
+        }
         const rows = [];
         workspaceRows('', 0, rows, query);
         if (!rows.length) {
@@ -1486,6 +1592,8 @@ function bindResizer(resizer, { getValue, setValue, min, max, reverse = false })
 function commandItems() {
   return [
     { label: '新建文档', hint: '卷库', keywords: 'new create 新建', run: () => void createDocument() },
+    { label: '搜索工作区内容', hint: '⌘⇧F', keywords: 'search content 搜索 内容', run: () => openPalette('search') },
+    { label: '快速打开工作区文件', hint: '⌘P', keywords: 'quick open 快速 打开 工作区', run: () => openPalette('files') },
     { label: '保存当前文档', hint: '⌘S', keywords: 'save 保存', run: () => void saveActive() },
     { label: '切换阅读 / 编辑', hint: '⌘E', keywords: 'mode read edit 阅读 编辑', run: toggleMode },
     { label: '切换分栏预览', hint: '', keywords: 'split 分栏 预览', run: toggleSplit },
@@ -1499,8 +1607,8 @@ function commandItems() {
 }
 
 function paletteItems() {
+  const query = state.palette.query.trim();
   if (state.palette.mode === 'files') {
-    const query = state.palette.query.trim();
     const local = state.localFiles.map((doc) => ({
       type: 'file',
       kind: 'local',
@@ -1522,13 +1630,36 @@ function paletteItems() {
       });
       seen.add(entry.path);
     }
-    return local
+    const workspace = state.palette.searchHits
+      .filter((hit) => typeof hit?.relPath === 'string' && !seen.has(hit.relPath))
+      .map((hit) => ({
+        type: 'file',
+        kind: 'workspace',
+        name: basename(hit.relPath).replace(/\.(md|markdown|txt)$/i, ''),
+        path: hit.relPath,
+        dir: dirname(hit.relPath) || '工作区',
+        hint: '工作区',
+      }));
+    const merged = [...local, ...workspace];
+    return merged
       .map((item) => ({ ...item, score: fuzzyScore(query, `${item.path} ${item.name}`) }))
       .filter((item) => item.score >= 0)
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'zh-Hans-CN'))
       .slice(0, 60);
   }
-  const query = state.palette.query.trim();
+  if (state.palette.mode === 'search') {
+    if (!query) return [];
+    return state.palette.searchHits
+      .filter((hit) => typeof hit?.relPath === 'string')
+      .slice(0, 80)
+      .map((hit) => ({
+        type: 'hit',
+        relPath: hit.relPath,
+        line: Number(hit.line) || 0,
+        preview: String(hit.preview || ''),
+        label: `${hit.relPath}${hit.line ? `:${hit.line}` : ''}`,
+      }));
+  }
   return commandItems()
     .map((item) => ({ ...item, type: 'command', score: fuzzyScore(query, `${item.label} ${item.keywords}`) }))
     .filter((item) => item.score >= 0)
@@ -1537,20 +1668,81 @@ function paletteItems() {
 }
 
 function openPalette(mode) {
-  state.palette = { open: true, mode, query: '', index: 0, items: [] };
+  const searchSeq = state.palette.searchSeq;
+  state.palette = {
+    open: true,
+    mode,
+    query: '',
+    index: 0,
+    items: [],
+    searchHits: [],
+    searching: false,
+    searchSeq,
+    searchTimer: null,
+  };
   el.palette.hidden = false;
-  el.paletteMark.textContent = mode === 'files' ? '文' : '令';
+  el.paletteMark.textContent = mode === 'files' ? '文' : mode === 'search' ? '搜' : '令';
   el.paletteInput.value = '';
-  el.paletteInput.placeholder = mode === 'files' ? '输入文件名…' : '输入命令…';
+  el.paletteInput.placeholder =
+    mode === 'files' ? '输入文件名，或直接搜索工作区…' : mode === 'search' ? '搜索工作区内容…' : '输入命令…';
   el.paletteFoot.textContent =
-    mode === 'files' ? '↑↓ 选择 · Enter 打开 · Esc 关闭' : '↑↓ 选择 · Enter 执行 · Esc 关闭';
+    mode === 'commands' ? '↑↓ 选择 · Enter 执行 · Esc 关闭' : '↑↓ 选择 · Enter 打开 · Esc 关闭';
   renderPalette();
   el.paletteInput.focus();
+  if (mode !== 'commands') scheduleWorkspaceSearch('');
 }
 
 function closePalette() {
+  if (state.palette.searchTimer) clearTimeout(state.palette.searchTimer);
+  state.palette.searchSeq += 1;
   state.palette.open = false;
   el.palette.hidden = true;
+}
+
+/** 快速打开 / 内容搜索：防抖调宿主 ws.search（只回根内相对路径）。 */
+function scheduleWorkspaceSearch(query) {
+  const mode = state.palette.mode;
+  if (mode === 'commands') return;
+  if (state.palette.searchTimer) clearTimeout(state.palette.searchTimer);
+  const seq = ++state.palette.searchSeq;
+  if (!state.workspace.rootToken) {
+    state.palette.searchHits = [];
+    state.palette.searching = false;
+    renderPalette();
+    return;
+  }
+  const trimmed = query.trim();
+  if (mode === 'search' && !trimmed) {
+    state.palette.searchHits = [];
+    state.palette.searching = false;
+    renderPalette();
+    return;
+  }
+  state.palette.searching = true;
+  renderPalette();
+  state.palette.searchTimer = setTimeout(() => {
+    void (async () => {
+      try {
+        const res = await bridge.call('ws.search', {
+          rootToken: state.workspace.rootToken,
+          query: trimmed,
+          mode: mode === 'search' ? 'content' : 'name',
+          limit: mode === 'search' ? 60 : 80,
+        });
+        if (seq !== state.palette.searchSeq || !state.palette.open) return;
+        state.palette.searchHits = Array.isArray(res?.hits) ? res.hits : [];
+      } catch (error) {
+        if (seq !== state.palette.searchSeq || !state.palette.open) return;
+        state.palette.searchHits = [];
+        showToast(`搜索失败：${error.message}`, 'err', 3600);
+      } finally {
+        if (seq === state.palette.searchSeq && state.palette.open) {
+          state.palette.searching = false;
+          renderPalette();
+        }
+      }
+    })();
+  }, 140);
 }
 
 function renderPalette() {
@@ -1561,7 +1753,13 @@ function renderPalette() {
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'palette-empty';
-    empty.textContent = state.palette.mode === 'files' ? '没有匹配的文档' : '没有匹配的命令';
+    empty.textContent = state.palette.searching
+      ? '搜索中…'
+      : state.palette.mode === 'files'
+        ? '没有匹配的文档'
+        : state.palette.mode === 'search'
+          ? '没有匹配的内容'
+          : '没有匹配的命令';
     frag.append(empty);
   } else {
     items.forEach((item, index) => {
@@ -1572,10 +1770,11 @@ function renderPalette() {
       button.dataset.index = String(index);
       const name = document.createElement('span');
       name.className = 'p-name';
-      name.textContent = item.type === 'file' ? item.name : item.label;
+      name.textContent = item.type === 'file' ? item.name : item.type === 'hit' ? item.label : item.label;
       const hint = document.createElement('span');
       hint.className = 'p-hint';
-      hint.textContent = item.type === 'file' ? item.dir : item.hint || '';
+      hint.textContent =
+        item.type === 'file' ? item.dir : item.type === 'hit' ? item.preview || '工作区' : item.hint || '';
       button.append(name, hint);
       frag.append(button);
     });
@@ -1590,7 +1789,10 @@ function runPaletteIndex(index) {
   if (!item) return;
   closePalette();
   if (item.type === 'file') {
-    void openLocal(item.path);
+    if (item.kind === 'workspace') void openWorkspaceFile(item.path);
+    else void openLocal(item.path);
+  } else if (item.type === 'hit') {
+    void openWorkspaceFile(item.relPath, { line: item.line });
   } else {
     item.run?.();
   }
@@ -1896,6 +2098,7 @@ function bindUi() {
     state.palette.query = el.paletteInput.value;
     state.palette.index = 0;
     renderPalette();
+    scheduleWorkspaceSearch(el.paletteInput.value);
   });
   el.paletteInput.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown') {
@@ -2010,6 +2213,11 @@ function onGlobalKeydown(event) {
   if (key === 'p' && !event.shiftKey) {
     event.preventDefault();
     openPalette('files');
+    return;
+  }
+  if (key === 'f' && event.shiftKey) {
+    event.preventDefault();
+    openPalette('search');
     return;
   }
   if ((key === 'k' && !event.shiftKey) || (key === 'p' && event.shiftKey)) {

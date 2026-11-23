@@ -35,6 +35,7 @@ import { composeDockPlugin } from './builtin/compose-dock';
 import { builtinFsPlugin } from './builtin/fs-builtin';
 import { goalModePlugin } from './builtin/goal-mode';
 import { llmAdaptersPlugin } from './builtin/llm-adapters';
+import mdEditorPlugin from './builtin/md-editor';
 import { paperMinimapPlugin } from './builtin/paper-minimap';
 import { paperRenderersPlugin } from './builtin/paper-renderers';
 import { paperPlugin } from './builtin/paper-shell';
@@ -84,6 +85,9 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     paperMinimapPlugin,
     agentLoopServicePlugin,
     goalModePlugin,
+    // 文卷（P1a 2026-11-23）：第一方软件型产物，窗口面静态随包；
+    // 可禁用（关窗 + 摘定义），保留“旗舰编辑器仍是插件”的定位。
+    mdEditorPlugin,
     // 批 10 部件三（2026-09-26）：随包图谱引擎接线产物（可禁用——引擎天然 kill switch；
     // 探测/开关仍在内核 `plugins/bundled-engine-prefs.ts`）
     bundledEnginePlugin,

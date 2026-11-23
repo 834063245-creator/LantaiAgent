@@ -15,7 +15,7 @@
 | `permissions` | 声明要用到的权限类（`read`/`edit`/`bash`/`git`/`web`）；声明了但未授权 = 不装载（`blocked`，设置页可见缺哪几类） |
 | `tools` | 声明式工具（`name`/`description`/`parameters` JSON Schema/`readOnly`），执行体在 entry 的 `toolHandlers` |
 | `mcpServers` | 挂外部 MCP server（stdio/http）；条目加 `governed: true` = 受治进程（就绪握手带时限 / 空闲回收 / 可在崩溃时按 `restart: 'on-crash'` 退避自愈） |
-| `app` | 一扇窗：`entry`（自包含 HTML）**或** `url`（环回 http(s) 页）二选一；`title`/`mode`；`size: { w, h }` = 首选窗尺寸（320–2400 × 240–1600，仅 floating；用户拖过的几何优先）；`documents: true` 才可读宿主文档（读 `doc.read`、写走**改稿单**：用户点头才落盘）；`workspace: true` 才签发工作区根只读令牌（`ws.list` / `ws.read`，窗只报根内相对路径） |
+| `app` | 一扇窗：`entry`（自包含 HTML）**或** `url`（环回 http(s) 页）二选一；`title`/`mode`；`size: { w, h }` = 首选窗尺寸（320–2400 × 240–1600，仅 floating；用户拖过的几何优先）；`documents: true` 才可读宿主文档（读 `doc.read`、写走**改稿单**：用户点头才落盘）；`workspace: true` 才签发工作区根只读令牌（`ws.list` / `ws.read` / `ws.search`，窗只报根内相对路径；相对链接/图片走 `doc.follow` / `doc.asset`） |
 | `dataDir` | 声明 `true` = 装载即分配 `<数据根>/<插件名>/`（经宿主桥 fs 读写，卸载随插件挪 `.trash`） |
 | `activation` | 登记 ≠ 激活：`{ lazy?, resources?, exclusive? }`，副作用挪到组合装配期按引用计数启停 |
 | `engines` | 宿主兼容声明：`{ lantai: ">=1.0.0" }`（semver range）。**声明了就必须满足**——不满足 = 具名拒载；宿主版本未知（开发/测试）只记 warning |

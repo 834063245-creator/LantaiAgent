@@ -47,6 +47,7 @@ import { clampWindowPosition, clampWindowSize, type ViewportSize, type WindowSiz
 import { useDragGesture } from '../interaction/use-drag-gesture';
 import { PluginBoundary } from '../PluginBoundary';
 import { isTopbarInteractiveTarget } from '../window-drag';
+import { collectActiveSessionFileRefs } from './session-refs';
 
 interface FrameProps {
   instance: PluginWindowInstance;
@@ -105,6 +106,7 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
       postBridgeEvent(cw, 'workspace-open', instance.windowId, {
         rootToken: workspaceGrant.rootToken,
         rootPath: workspaceGrant.rootPath,
+        sessionFiles: collectActiveSessionFileRefs(workspaceGrant.rootPath),
       });
     }
     const grant = def.documents ? pendingDocumentGrant(instance.windowId) : null;

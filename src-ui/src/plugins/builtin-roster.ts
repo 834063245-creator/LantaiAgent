@@ -58,6 +58,28 @@ export interface BuiltinRosterEntry {
   required?: boolean;
   /** esbuild define 注入（renderers 的 ROW_PREFIX；paper-renderers 的 ROW_PREFIX）。 */
   define?: Record<string, string>;
+  /** **软件型产物**（2026-11-23 文卷 P1a）：窗口 app 声明与静态面来源。
+   *  有本字段 ⇒ 构建脚本把 `appSource` 目录原样复制到产物 `app/`，并在产物
+   *  manifest 生成 app/dataDir/tools（其余产物仍只有 name/version/description/
+   *  entry/inject）。窗口面是自包含 HTML/JS，不经 esbuild。 */
+  software?: {
+    appSource: string;
+    app: {
+      entry: string;
+      mode?: 'floating' | 'dock' | 'fullscreen';
+      title?: string;
+      size?: { w: number; h: number };
+      documents?: boolean;
+      workspace?: boolean;
+    };
+    dataDir?: boolean;
+    tools?: Array<{
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+      readOnly?: boolean;
+    }>;
+  };
 }
 
 /** 名册条目数组（buildOrder 升序——装载/构建/清单共用的唯一序）。

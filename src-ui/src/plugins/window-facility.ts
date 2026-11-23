@@ -12,6 +12,7 @@
 // lazy 档窗开阻塞空闲回收。窗口管理 UI 面（启动器/任务栏）形态待用户设计
 // 定稿后另批施工（走 canvas-nav 同款第一方产物通道），不阻塞本设施。
 
+import { collectActiveSessionFileRefs } from '../app/plugin-windows/session-refs';
 import { useShellStore } from '../app/shell-store';
 import type { Context } from '../cordis';
 import { resolveFileReference } from '../paper/file-ref';
@@ -131,6 +132,7 @@ export function openPluginWindow(
       postBridgeEventToWindow(result.windowId, 'workspace-open', {
         rootToken: workspaceGrant.rootToken,
         rootPath: workspaceGrant.rootPath,
+        sessionFiles: collectActiveSessionFileRefs(workspaceGrant.rootPath),
       });
     }
   }

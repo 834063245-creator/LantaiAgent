@@ -8,9 +8,11 @@ import {
   contentRevision,
   isWithinWorkspace,
   joinWorkspacePath,
+  mimeOfPath,
   normalizeRelPath,
   normalizeWorkspaceRoot,
   relativeWorkspacePath,
+  resolveFileHref,
 } from '../src/state/plugin-workspace-path';
 
 describe('工作区根围栏', () => {
@@ -64,5 +66,26 @@ describe('工作区根围栏', () => {
     expect(contentRevision('abc')).toBe(contentRevision('abc'));
     expect(contentRevision('abc')).not.toBe(contentRevision('abd'));
     expect(contentRevision('')).toMatch(/^0\./);
+  });
+
+  it('文档内相对链接：按文档目录解析，Windows/POSIX/UNC 都认', () => {
+    expect(resolveFileHref('D:/proj/docs/a.md', '../b.md')).toBe('D:/proj/b.md');
+    expect(resolveFileHref('D:/proj/docs/a.md', 'sub/c.md#x')).toBe('D:/proj/docs/sub/c.md');
+    expect(resolveFileHref('/work/docs/a.md', './img/x.png')).toBe('/work/docs/img/x.png');
+    expect(resolveFileHref('//srv/share/docs/a.md', '../b.md')).toBe('//srv/share/b.md');
+    expect(resolveFileHref('D:/proj/docs/a.md', 'https://example.com')).toBeNull();
+    expect(resolveFileHref('D:/proj/docs/a.md', '/etc/passwd')).toBeNull();
+    expect(resolveFileHref('D:/proj/docs/a.md', 'a\\b.md')).toBeNull();
+    // 解析器只做路径归一，根围栏由宿主（isWithinWorkspace）再判；
+    // 越过文档目录但在文件系统根内是合法绝对路径。
+    expect(resolveFileHref('/work/a.md', '../b.md')).toBe('/b.md');
+  });
+
+  it('资产 MIME 按后缀', () => {
+    expect(mimeOfPath('a.PNG')).toBe('image/png');
+    expect(mimeOfPath('a.jpeg')).toBe('image/jpeg');
+    expect(mimeOfPath('a.svg')).toBe('image/svg+xml');
+    expect(mimeOfPath('a.pdf')).toBe('application/pdf');
+    expect(mimeOfPath('a.bin')).toBe('application/octet-stream');
   });
 });

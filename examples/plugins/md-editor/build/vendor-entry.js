@@ -350,7 +350,8 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const src = token.attrGet('src') || '';
   if (/^(https?:|data:)/i.test(src)) return defaultImage(tokens, idx, options, env, self);
   const alt = token.content || src;
-  return `<span class="md-img-missing" title="${escapeAttr(src)}">🖼 ${escapeHtml(alt)}<span class="md-img-note">相对图片需工作区授权（下一批）</span></span>`;
+  // 相对图片交给窗内 hydrateDocAssets 调宿主 doc.asset；不直接发相对 src（iframe 会 404）。
+  return `<img class="md-img-pending" data-doc-src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" title="相对图片：加载中">`;
 };
 
 /**
@@ -363,7 +364,7 @@ export function renderMarkdown(text, lineOffset = 0) {
   const source = String(text ?? '');
   const html = md.render(source, { lineOffset: Number(lineOffset) || 0 });
   return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['target', 'data-href', 'data-line', 'id'],
+    ADD_ATTR: ['target', 'data-href', 'data-line', 'data-doc-src', 'id'],
     FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form', 'textarea', 'select'],
     FORBID_ATTR: ['formaction', 'xlink:href'],
   });

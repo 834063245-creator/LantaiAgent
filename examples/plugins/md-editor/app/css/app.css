@@ -493,6 +493,13 @@ kbd {
   line-height: 1.8;
 }
 
+.side-section {
+  padding: 9px 8px 4px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
 .side-empty button {
   margin-top: 8px;
 }
@@ -1093,6 +1100,22 @@ kbd {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
+}
+
+.md-body img.md-img-pending,
+.md-body img.md-img-error {
+  min-width: 120px;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px dashed var(--line);
+  color: var(--ink-faint);
+  font-family: var(--ui);
+  font-size: 11.5px;
+  background: var(--paper-deep, rgba(0, 0, 0, 0.02));
+}
+
+.md-body img.md-img-error {
+  border-color: var(--err, #a33);
 }
 
 .md-body .md-img-missing {

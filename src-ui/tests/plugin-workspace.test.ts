@@ -54,6 +54,11 @@ function makeDeps() {
   const readWorkspaceFile = vi.fn(async (path: string) => `TEXT:${path}`);
   const readDocument = vi.fn(async (path: string) => `TEXT:${path}`);
   const writeDocument = vi.fn(async () => undefined);
+  const searchWorkspace = vi.fn(async () => ({
+    hits: [{ relPath: 'docs/a.md' }],
+    truncated: false,
+  }));
+  const readWorkspaceAsset = vi.fn(async () => 'aGVsbG8=');
   const deps: WindowBridgeDeps = {
     fs: {
       list: vi.fn(async () => ({ entries: [] })),
@@ -66,8 +71,18 @@ function makeDeps() {
     writeDocument,
     listDirectory,
     readWorkspaceFile,
+    searchWorkspace,
+    readWorkspaceAsset,
   };
-  return { deps, listDirectory, readWorkspaceFile, readDocument, writeDocument };
+  return {
+    deps,
+    listDirectory,
+    readWorkspaceFile,
+    readDocument,
+    writeDocument,
+    searchWorkspace,
+    readWorkspaceAsset,
+  };
 }
 
 beforeEach(() => {
@@ -138,6 +153,67 @@ describe('工作区授权（P1）：根令牌 + 相对路径', () => {
     await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(1));
     expect((lastResult(cw).result as { status: string }).status).toBe('conflict');
     expect(writeDocument).not.toHaveBeenCalled();
+  });
+
+  it('ws.search：根内 name/content 搜索，命中只回相对路径', async () => {
+    const cw = fakeContentWindow();
+    const { deps, searchWorkspace } = makeDeps();
+    bindBridgeWindow(cw as unknown as Window, 'acme/md', 'acme/md#1', deps, {
+      documents: true,
+      workspace: true,
+    });
+    const root = issueWorkspaceGrant('acme/md#1', 'acme/md', '/work');
+    call(cw, 1, 'ws.search', { rootToken: root.rootToken, query: 'a', mode: 'name', limit: 20 });
+    await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(1));
+    expect(lastResult(cw).ok).toBe(true);
+    expect(searchWorkspace).toHaveBeenCalledWith('/work', 'a', 'name', 20);
+    expect((lastResult(cw).result as { hits: unknown[] }).hits).toEqual([{ relPath: 'docs/a.md' }]);
+
+    call(cw, 2, 'ws.search', { rootToken: root.rootToken, query: 'hello', mode: 'content' });
+    await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(2));
+    expect(searchWorkspace).toHaveBeenLastCalledWith('/work', 'hello', 'content', 100);
+  });
+
+  it('doc.follow：相对链接按当前文档目录解析；越出根拒绝', async () => {
+    const cw = fakeContentWindow();
+    const { deps } = makeDeps();
+    bindBridgeWindow(cw as unknown as Window, 'acme/md', 'acme/md#1', deps, {
+      documents: true,
+      workspace: true,
+    });
+    const root = issueWorkspaceGrant('acme/md#1', 'acme/md', '/work');
+    const doc = issueDocumentGrant('acme/md#1', 'acme/md', '/work/docs/a.md', {
+      rootToken: root.rootToken,
+    });
+    call(cw, 1, 'doc.follow', { docToken: doc.docToken, href: '../b.md#x' });
+    await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(1));
+    expect(lastResult(cw).ok).toBe(true);
+    const followed = lastResult(cw).result as { docToken: string; relPath: string };
+    expect(followed.relPath).toBe('b.md');
+    expect(resolveDocumentGrant('acme/md#1', 'acme/md', followed.docToken)?.path).toBe('/work/b.md');
+
+    call(cw, 2, 'doc.follow', { docToken: doc.docToken, href: '../../etc/passwd' });
+    await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(2));
+    expect(lastResult(cw).ok).toBe(false);
+    expect(String(lastResult(cw).error)).toContain('越出工作区根');
+  });
+
+  it('doc.asset：相对图片按文档目录解析，回 data URL', async () => {
+    const cw = fakeContentWindow();
+    const { deps, readWorkspaceAsset } = makeDeps();
+    bindBridgeWindow(cw as unknown as Window, 'acme/md', 'acme/md#1', deps, {
+      documents: true,
+      workspace: true,
+    });
+    const root = issueWorkspaceGrant('acme/md#1', 'acme/md', '/work');
+    const doc = issueDocumentGrant('acme/md#1', 'acme/md', '/work/docs/a.md', {
+      rootToken: root.rootToken,
+    });
+    call(cw, 1, 'doc.asset', { docToken: doc.docToken, href: 'img/p.png' });
+    await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(1));
+    expect(lastResult(cw).ok).toBe(true);
+    expect(readWorkspaceAsset).toHaveBeenCalledWith('/work/docs/img/p.png');
+    expect((lastResult(cw).result as { dataUrl: string }).dataUrl).toBe('data:image/png;base64,aGVsbG8=');
   });
 
   it('未声明 app.workspace → ws.* 拒绝且零读盘', async () => {

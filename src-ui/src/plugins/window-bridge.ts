@@ -21,11 +21,26 @@
 // （名字 + rel 双围栏 + canonicalize 前缀），本桥只做形状校验。
 
 import { useShellStore } from '../app/shell-store';
-import { kernelListDirectoryFlat, kernelReadFile, kernelWriteFile } from '../rpc-contract';
+import {
+  kernelListDirectory,
+  kernelListDirectoryFlat,
+  kernelReadFile,
+  kernelReadFileBase64,
+  kernelSearchContent,
+  kernelWriteFile,
+} from '../rpc-contract';
 import { summarizeDocumentDiff } from '../state/plugin-document-diff';
 import { hasPendingReviewForWindow, requestDocumentReview } from '../state/plugin-document-review';
 import { issueDocumentGrant, resolveDocumentGrant, resolveWorkspaceGrant } from '../state/plugin-document-store';
-import { contentRevision, joinWorkspacePath, normalizeRelPath } from '../state/plugin-workspace-path';
+import {
+  contentRevision,
+  isWithinWorkspace,
+  joinWorkspacePath,
+  mimeOfPath,
+  normalizeRelPath,
+  relativeWorkspacePath,
+  resolveFileHref,
+} from '../state/plugin-workspace-path';
 import type { PluginDataFs } from './data-fs';
 import { pluginDataFs } from './data-fs';
 
@@ -35,7 +50,10 @@ export const WINDOW_BRIDGE_PROTOCOL = 'lantai-plugin-bridge';
 /** 宿主→窗广播事件（§4-3：以加载完成/卸载告警为限）。
  *  - bridge-ready：宿主桥已就绪（窗内从此发 call 不会丢）；
  *  - window-closing：即将关窗（尽力而为告警——iframe 移除与投递同拍，
- *    收到与否无保证；需要可靠持久化的插件应改动即存）。 */
+ *    收到与否无保证；需要可靠持久化的插件应改动即存）。
+ *  - workspace-open：`{ rootToken, rootPath, sessionFiles? }`（P1；sessionFiles = 本卷引用的
+ *    工作区相对路径，可见事实，不是扫盘结果）。
+ *  - doc-open：`{ docToken, path, rootToken? }`；doc-saved / doc-rejected 见下。 */
 export type WindowBridgeEvent =
   | 'bridge-ready'
   | 'window-closing'
@@ -58,7 +76,24 @@ export type WindowBridgeMethod =
   | 'doc.save'
   /** 工作区授权（P1）：根令牌 + 相对路径；`ws.read` 顺带签发文档令牌。 */
   | 'ws.list'
-  | 'ws.read';
+  | 'ws.read'
+  /** 工作区搜索（P1c）：name = 路径名，content = 全文；只回根内相对路径。 */
+  | 'ws.search'
+  /** 文档内相对链接 / 相对图片（P1c）：按当前文档目录解析，根外拒绝。 */
+  | 'doc.follow'
+  | 'doc.asset';
+
+/** 工作区搜索命中（相对根路径；content 模式带行号与预览）。 */
+export interface WorkspaceSearchHit {
+  relPath: string;
+  line?: number;
+  preview?: string;
+}
+
+export interface WorkspaceSearchResult {
+  hits: WorkspaceSearchHit[];
+  truncated?: boolean;
+}
 
 /** 每窗依赖（fs/notify 可注入——测试隔离 RPC 通道；缺省真源）。 */
 export interface WindowBridgeDeps {
@@ -72,6 +107,78 @@ export interface WindowBridgeDeps {
   listDirectory?: (path: string) => Promise<Array<{ name: string; is_dir: boolean; size?: number }>>;
   /** 读工作区文件（P1；缺省 = kernelReadFile——与 readDocument 同源）。 */
   readWorkspaceFile?: (path: string) => Promise<string>;
+  /** 工作区搜索（P1c；缺省 = 递归列目录 / search_cap）。 */
+  searchWorkspace?: (
+    rootPath: string,
+    query: string,
+    mode: 'name' | 'content',
+    limit: number,
+  ) => Promise<WorkspaceSearchResult>;
+  /** 读工作区资产（图片/PDF，base64；缺省 = kernelReadFileBase64）。 */
+  readWorkspaceAsset?: (path: string) => Promise<string>;
+}
+
+/** 递归把目录树摊平为相对路径（name 搜索用；忽略项由 kernelListDirectory 过滤）。 */
+function flattenWorkspaceFiles(
+  entries: Array<{ name: string; is_dir: boolean; children?: Array<{ name: string; is_dir: boolean }> | null }>,
+  prefix = '',
+  out: string[] = [],
+): string[] {
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.is_dir) {
+      if (entry.children) flattenWorkspaceFiles(entry.children, rel, out);
+      continue;
+    }
+    out.push(rel);
+  }
+  return out;
+}
+
+/** 缺省工作区搜索：name = 递归列目录后在宿主过滤；content = search_cap 全文。 */
+async function defaultSearchWorkspace(
+  rootPath: string,
+  query: string,
+  mode: 'name' | 'content',
+  limit: number,
+): Promise<WorkspaceSearchResult> {
+  const needle = query.trim().toLowerCase();
+  const safeLimit = Math.max(1, Math.min(limit, 500));
+  if (mode === 'name') {
+    const tree = await kernelListDirectory(rootPath, true);
+    const files = flattenWorkspaceFiles(tree);
+    const hits = files
+      .filter((rel) => !needle || rel.toLowerCase().includes(needle))
+      .slice(0, safeLimit)
+      .map((relPath) => ({ relPath }));
+    return { hits, truncated: files.length > safeLimit };
+  }
+  const raw = await kernelSearchContent({
+    directory: rootPath,
+    pattern: query,
+    maxMatches: safeLimit,
+    maxFiles: safeLimit,
+    collectLines: true,
+    contextLines: 0,
+  });
+  const hits: WorkspaceSearchHit[] = [];
+  for (const file of raw.files ?? []) {
+    const relPath = relativeWorkspacePath(rootPath, file.file);
+    if (relPath == null) continue;
+    for (const match of file.matches ?? []) {
+      hits.push({
+        relPath,
+        line: match.line,
+        preview: String(match.content ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160),
+      });
+      if (hits.length >= safeLimit) break;
+    }
+    if (hits.length >= safeLimit) break;
+  }
+  return { hits, truncated: raw.budget_truncated === true || hits.length >= safeLimit };
 }
 
 export function defaultWindowBridgeDeps(): WindowBridgeDeps {
@@ -84,6 +191,8 @@ export function defaultWindowBridgeDeps(): WindowBridgeDeps {
     },
     listDirectory: (path) => kernelListDirectoryFlat(path),
     readWorkspaceFile: (path) => kernelReadFile(path),
+    searchWorkspace: defaultSearchWorkspace,
+    readWorkspaceAsset: (path) => kernelReadFileBase64(path),
   };
 }
 
@@ -122,6 +231,25 @@ function errText(e: unknown): string {
 function reqStr(value: unknown, what: string): string {
   if (typeof value !== 'string') throw new Error(`参数 ${what} 必须是字符串`);
   return value;
+}
+
+/** 文档内相对引用 → 根内绝对路径（follow/asset 共用；根外/无根一律拒）。 */
+function resolveDocumentHref(
+  binding: BridgeBinding,
+  docToken: string,
+  href: string,
+): { target: string; relPath: string; rootToken: string } {
+  const grant = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
+  if (grant == null) throw new Error('文档令牌无效或已过期');
+  if (grant.rootToken == null) throw new Error('该文档没有工作区根，无法解析相对引用');
+  const root = resolveWorkspaceGrant(binding.windowId, binding.pluginName, grant.rootToken);
+  if (root == null) throw new Error('工作区根令牌无效或已过期');
+  const target = resolveFileHref(grant.path, href);
+  if (target == null) throw new Error('相对引用非法（只收相对路径，禁 scheme/绝对路径/反斜杠）');
+  if (!isWithinWorkspace(root.rootPath, target)) throw new Error('相对引用越出工作区根');
+  const relPath = relativeWorkspacePath(root.rootPath, target);
+  if (relPath == null || relPath === '') throw new Error('相对引用越出工作区根');
+  return { target, relPath, rootToken: grant.rootToken };
 }
 
 /** 宿主 → 窗：回执（ok=true 带 result——undefined 归一为 null；ok=false 带 error）。 */
@@ -233,6 +361,54 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
         origin: 'workspace',
       });
       return { text, rev: contentRevision(text), docToken: doc.docToken, relPath: relNorm };
+    }
+    case 'ws.search': {
+      if (!binding.workspace) {
+        throw new Error('ws.search 拒绝：插件未声明 app.workspace（工作区授权未开启）');
+      }
+      const rootToken = reqStr(p.rootToken, 'rootToken');
+      const grant = resolveWorkspaceGrant(binding.windowId, binding.pluginName, rootToken);
+      if (grant == null) throw new Error('ws.search 拒绝：工作区根令牌无效或已过期');
+      const query = typeof p.query === 'string' ? p.query : '';
+      const mode = p.mode === 'content' ? 'content' : 'name';
+      if (mode === 'content' && !query.trim()) {
+        throw new Error('ws.search 拒绝：内容搜索需要非空 query');
+      }
+      const requested = typeof p.limit === 'number' ? Math.floor(p.limit) : 100;
+      const limit = Math.max(1, Math.min(Number.isFinite(requested) ? requested : 100, 200));
+      const search = binding.deps.searchWorkspace ?? defaultSearchWorkspace;
+      const result = await search(grant.rootPath, query, mode, limit);
+      return {
+        hits: result.hits.slice(0, limit),
+        truncated: result.truncated === true,
+      };
+    }
+    case 'doc.follow': {
+      if (!binding.documents) {
+        throw new Error('doc.follow 拒绝：插件未声明 app.documents（文档通道未开启）');
+      }
+      const docToken = reqStr(p.docToken, 'docToken');
+      const href = reqStr(p.href, 'href');
+      const { target, relPath, rootToken } = resolveDocumentHref(binding, docToken, href);
+      const doc = issueDocumentGrant(binding.windowId, binding.pluginName, target, {
+        rootToken,
+        origin: 'workspace',
+      });
+      return { docToken: doc.docToken, relPath };
+    }
+    case 'doc.asset': {
+      if (!binding.documents) {
+        throw new Error('doc.asset 拒绝：插件未声明 app.documents（文档通道未开启）');
+      }
+      const docToken = reqStr(p.docToken, 'docToken');
+      const href = reqStr(p.href, 'href');
+      const { target, relPath } = resolveDocumentHref(binding, docToken, href);
+      const mime = mimeOfPath(target);
+      const readAsset = binding.deps.readWorkspaceAsset ?? kernelReadFileBase64;
+      const base64 = await readAsset(target);
+      // 8 MiB 源文件上限（base64 膨胀约 4/3）；超限不把大 payload 推给窗。
+      if (base64.length > 12_000_000) throw new Error('doc.asset 拒绝：资产超过 8 MiB');
+      return { dataUrl: `data:${mime};base64,${base64}`, mime, relPath };
     }
     // 文档通道（批 2 写回）：门口与 doc.read 同三道（能力 / 令牌 / 绑窗），再多一道
     // 「一窗一笔待审」——同一扇窗不许同时挂两张改稿单（会在用户面前互相打架）。

@@ -4,28 +4,44 @@
 [`../notes-app/`](../notes-app/)，本插件取「窗 + 数据地盘 + 宿主文档通道 + 工作区授权」四件，
 把编辑器本身做成产品。
 
-> **0.4.0 的边界**：卷库 = 插件自己的数据地盘；工作区 = **只读根 + 树 + 多文档标签**
-> （内容搜索 / 相对链接跳转 / 相对图片 / Agent hunk 仍在后续批）。
-> **宿主要求**：`app.workspace` 是开放面契约 v77 的新字段；旧宿主（v76 及以前）
-> 读这个 manifest 会整份拒载——先升级/重建兰台，再安装本版。
+> **0.4.0 的边界**：卷库 = 插件自己的数据地盘；工作区 = **只读根 + 树 + 多文档标签 +
+> 快速打开 + 内容搜索 + 相对链接/图片**（本卷引用、Agent hunk 仍在后续批）。
+> **宿主要求**：`app.workspace` 是开放面契约 v77 的新字段、`ws.search`/`doc.follow`/
+> `doc.asset` 是 v78；旧宿主（v77 及以前）读这个 manifest 会整份拒载——先升级/重建兰台。
+>
+> **随包形态（P1a）**：正式分发走第一方软件型产物 `hologram/md-editor`（构建脚本把
+> `app/` 原样复制进 `dist-plugins/builtin/hologram/md-editor`，manifest 由
+> `builtin-roster.json` 生成）——**默认就有，不用手动装**。`examples/plugins/md-editor`
+> 仍是可独立安装的源码/开发形态（用户插件名 `md-editor`）。
 
 ## 装上看一眼
+
+随包版：重建/重启兰台 → 顶部「架阁」→ **软件型**页 → 「文卷」（无需拷贝）。
+从会话里点开一份宿主文档时，宿主会同时签发**工作区根只读令牌**，左侧「工作区」页
+直接出现当前工作区的树。
+
+开发形态（仅调试插件本身时用）：
 
 ```
 cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 ```
 
-然后重启兰台 → 顶部「架阁」→ **软件型**页 → 「文卷」。
-（装载面 = `~/.lantai/plugins/<name>/`；数据地盘 = `~/.lantai/plugins-data/md-editor/`。）
-从会话里点开一份宿主文档时，宿主会同时签发**工作区根只读令牌**，左侧「工作区」页
-直接出现当前工作区的树。
+> ⚠ 随包版（`hologram/md-editor` / `wenjuan_open`）与开发形态（`md-editor` / `md_open`）
+> 会各注册一扇文卷窗；调试前先把旧的 `~/.lantai/plugins/md-editor` 移走（数据目录
+> `~/.lantai/plugins-data/md-editor/` 可保留）。
 
 ## 0.4.0 能做什么
 
 **读**
 - 从会话里引用到的文件点一下，窗内以**阅读模式**打开；排版按纸面（宋体正文、版心、行宽）。
 - **工作区树**：左侧「工作区」页懒加载当前工作区目录（点目录展开、点文件开标签）。
+- **快速打开 / 内容搜索**：`Ctrl/Cmd+P` 文件名（含工作区），`Ctrl/Cmd+Shift+F` 全文；
+  命中直接跳到编辑模式对应行。
 - **多文档标签**：工作区文件 + 宿主文档可同时开多份；每份独立令牌，互不顶掉。
+- **本卷引用**：左侧工作区页顶部列出当前会话里出现过的文件（用户附件 / 正文链接与
+  行内码 / 工具参数），点一下直接开。
+- **相对链接/图片**：Markdown 里的 `[x](../a.md)` 按当前文档目录跳转；`![](img/p.png)`
+  经宿主 `doc.asset` 读成 data URL（8 MiB 闸）。
 - Markdown 预览：GFM 表格、任务列表、脚注、删除线、代码高亮（highlight.js）、frontmatter 卡片。
 - 左侧大纲（ATX + Setext 标题，跳过代码块），点击跳行；光标/滚动时高亮当前段。
 - 夜读 / 纸白双主题；卷库宽度、大纲宽度、打开的文档、滚动位置跨重启恢复。
@@ -34,7 +50,7 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 - CodeMirror 6：Markdown 语法、行号、自动换行、撤销历史、查找替换（`Ctrl/Cmd+F`）、多光标。
 - 阅读 / 编辑 / 分栏三态；`Ctrl/Cmd+E` 切换。
 - 快捷键：`Ctrl/Cmd+S` 保存、`Ctrl/Cmd+W` 关标签、`Ctrl/Cmd+P` 快速打开、
-  `Ctrl/Cmd+K` 命令面板、`Ctrl/Cmd+B` 卷库、`Ctrl/Cmd+1..9` 切标签。
+  `Ctrl/Cmd+Shift+F` 内容搜索、`Ctrl/Cmd+K` 命令面板、`Ctrl/Cmd+B` 卷库、`Ctrl/Cmd+1..9` 切标签。
 - 关闭不丢正文。
 
 **存**
@@ -55,8 +71,6 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 
 | 不做 | 为什么 | 留给哪批 |
 |---|---|---|
-| 工作区内容搜索 / 快速打开全工作区 | 需要宿主 `ws.search`（内容搜索走 `search_cap`） | P1c 余项 |
-| Markdown 里的相对图片 / 相对链接跳宿主文档 | 需要 `doc.asset` / `doc.follow`（根内解析仍归宿主） | P1c 余项 |
 | PDF / Office / Excel 预览 | DSH 同款能力是几 MB 级分块；兰台先「用系统程序打开」，不追这个性价比 | P3 |
 | 批注 / Agent 改稿 hunk / 选段问 Agent | 需要宿主 `doc-proposed` 与创作坞插入通道 | P2 |
 

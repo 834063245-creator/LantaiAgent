@@ -81,7 +81,8 @@ describe('builtin-roster（名册单一真源守卫）', () => {
     // sessions-home 新增（2026-09-26 批 9e：案卷首页归产物，required 不可禁用——应用唯一入口页）：36 → 37
     // ask-cards 新增（2026-09-26 批 9e-3：ask/权限卡架归产物，required 不可禁用——唯一承接面）：37 → 38
     // shelf-domain 新增（2026-11-21 v66：架阁出纸壳成应用级浮层 + panels 通道唯一入口）：40 → 41
-    expect(roster.size).toBe(41);
+    // md-editor 新增（2026-11-23 P1a：文卷第一方软件型产物，窗口面静态随包）：41 → 42
+    expect(roster.size).toBe(42);
   });
 
   it('名册 buildOrder 连续 0..N-1 无重复（防序号断裂/误插）', () => {
