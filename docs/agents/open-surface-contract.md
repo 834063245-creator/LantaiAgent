@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：75
+当前版本：76
 
-<!-- contract-fingerprint: e462db0102b50a9826b96493cd4b734136256b2b4f589152d64b6298405d6631 -->
+<!-- contract-fingerprint: d7cd4615ed2459cf9534b773fc619a801e3613a0a2cd9f8773a78c3f3c29b5d6 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 76 | 2026-11-23 | **v75 收尾：契约面只有「文件位置 / 注释」变更，形状零变更**：`app.size` 的尺寸围栏（`APP_WINDOW_SIZE_MIN/MAX`）仍在 `plugins/types.ts`；消费它的宿主几何算式模块从 `plugins/window-metrics.ts` 迁到 `state/window-metrics.ts`（`tests/privileged-zone-freeze` 要求 `plugins/` 顶层只减不增——UI 几何件归 state），types.ts 注释路径同步更正。指纹重算；**对外零可感知差异**。 | 守卫 `tests/privileged-zone-freeze.test.ts`；无形状变更，无需迁移 |
 | 75 | 2026-11-23 | **`manifest.app` 增可选 `size: { w, h }`（首选窗尺寸，纯增量）**：软件级插件可声明自己的起手窗尺寸——float 窗缺省 460×360 的缝合线终于能按软件形态分开（编辑器要宽、便签要小）。围栏 320–2400 × 240–1600 px、整数；**只对 `floating` 生效**（`dock` 的宽度属停靠栏、`fullscreen` 即视口——给它们声明 = 具名拒绝）。**用户优先于声明**：用户拖过右下角握把后，宿主记住用户的几何（localStorage，v75 同批落地；窗口位置/尺寸跨重启，壳面板宽度同样记住），声明值只在「第一次开」时生效。**对外可感知**：不声明 = 行为逐字不变；旧宿主（v74 及以前）读 `app.size` 会整份拒载（`app` 是 strictObject）——用新字段的样例需同时声明 `engines` 最低版本。 | 守护 `tests/plugin-window-store.test.ts`（上下界 / 非整数 / 未知键 / 非 floating）+ `tests/plugin-surface-budget.test.ts`（形状白名单）+ `tests/plugin-window-geometry.test.ts`（落盘优先） |
 | 74 | 2026-11-23 | **manifest 增 `engines` 兼容声明 + 未知顶层字段转 `warnings`（纯增量）**：`engines?: { lantai?: string }`（semver range）——声明了就必须满足，装载期不满足 ⇒ 具名拒载（原因带「需要兰台 X，当前宿主 Y」），range 非法同样拒载；**宿主版本未知**（开发/测试/产物域，构建锚 `__LANTAI_BUILD__.v` 缺席或非 semver）⇒ 跳过检查 + 记 warning，不阻断（未知 ≠ 不兼容）。同版 `validateManifest` 返回 `warnings: string[]`：schema 不认识的**顶层**字段不再被静默剥掉（`z.object` 会 strip），改为可见警告且装载照常；`PluginRecord` 增可选 `warnings`，设置页「诊断」原样陈列。新运行时依赖 `semver`。**对外可感知**：不声明 `engines` 的插件行为逐字节不变；声明了区间过窄的插件从此被拒载而不是「装上了但行为不对」。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 4；测试 `tests/plugin-loader.test.ts`（满足/不满足/未知版本/非法区间 + 未知字段警告） |
 | 73 | 2026-11-23 | **工具口异步退役：`tools[].async` 删除 + 宿主桥 `deferred` 键删除（破坏性）**：两张门（决策 8）收成一张——工具口异步仓内 0 消费者，而「插件后台任务」的正解本就是它的后端进程（纯 JS 插件没有后台；有后台的插件已经有 MCP server）。删除面：`manifest.tools[].async`、`window.__lantai_plugin_host__.deferred.complete`（宿主桥类型面同步）、`plugins/deferred.ts` 的工具口账（task 表 / `nextPluginTaskId` / `bindPluginTask` / `completePluginTask`）。保留面：MCP 路 `callTokens` / `bindMcpDeferredToken` / `completeMcpDeferred` + 唤醒体 `formatDeferredWakeNote`（minimal 定位键形状零变更）。**对外可感知**：长任务只剩 `mcpServers` + `lantai/deferred` 一条路；旧 manifest 写 `tools[].async` = 装载期具名拒绝（错误点名改法），不静默剥掉。 | 施工单 `docs/plans/plugin-surface-slimming-plan.md` 批 1B；测试 `tests/plugin-deferred.test.ts`（MCP 路保留）· `tests/plugin-loader.test.ts`（具名拒绝） |

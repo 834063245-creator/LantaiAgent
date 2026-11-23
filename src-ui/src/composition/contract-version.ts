@@ -22,9 +22,15 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 75;
+export const OPEN_SURFACE_CONTRACT_VERSION = 76;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v76（2026-11-23）**v75 收尾：契约面只有「文件位置 / 注释」变更，形状零变更**——
+ *  `manifest.app.size` 的尺寸围栏（`APP_WINDOW_SIZE_MIN/MAX`）仍在 `plugins/types.ts`，
+ *  消费它的宿主几何算式模块从 `plugins/window-metrics.ts` 迁到 `state/window-metrics.ts`
+ *  （`tests/privileged-zone-freeze` 要求 `plugins/` 顶层只减不增：UI 几何件归 state），
+ *  types.ts 注释里的路径同步更正。指纹因原文变更重算；**对外零可感知差异**（manifest
+ *  形状、装载语义、桥面逐字节不变）。
  *  v75（2026-11-23）**`manifest.app` 增可选 `size: { w, h }`（首选窗尺寸）**：
  *  软件级插件可声明自己的起手窗尺寸（320–2400 × 240–1600 px），**只对 floating
  *  生效**（dock 的宽度属停靠栏、fullscreen 即视口——给它们声明 size 是具名拒绝，

@@ -40,9 +40,10 @@ import {
 } from 'react';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
-import { clampWindowPosition, clampWindowSize, type ViewportSize, type WindowSize } from '../../plugins/window-metrics';
 import { pendingDocumentGrant } from '../../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
+import { saveWindowGeometry } from '../../state/window-geometry';
+import { clampWindowPosition, clampWindowSize, type ViewportSize, type WindowSize } from '../../state/window-metrics';
 import { useDragGesture } from '../interaction/use-drag-gesture';
 import { PluginBoundary } from '../PluginBoundary';
 import { isTopbarInteractiveTarget } from '../window-drag';
@@ -60,7 +61,7 @@ function viewportSize(): ViewportSize | undefined {
   return typeof window === 'undefined' ? undefined : { w: window.innerWidth, h: window.innerHeight };
 }
 
-/** 尺寸夹持（单一算式在 plugins/window-metrics）。 */
+/** 尺寸夹持（单一算式在 state/window-metrics）。 */
 function clampSize(w: number, h: number): WindowSize {
   return clampWindowSize(w, h, viewportSize());
 }
@@ -105,6 +106,14 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
 
   const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
 
+  /** 几何落盘：读 store 的最新值（拖动/调尺寸逐帧写 store，实例 prop 可能滞后
+   *  一帧）。**只在手势结束/键盘松开时落一次**——不在每帧写 localStorage。 */
+  const persistGeometry = () => {
+    const live = usePluginWindowStore.getState().windows.find((w) => w.windowId === instance.windowId);
+    if (!live) return;
+    saveWindowGeometry(live.pluginName, { x: live.x, y: live.y, w: live.w, h: live.h });
+  };
+
   /** 拖动期夹持：书眉恒可达（窗口最多缩到 120×48 露在屏上）。 */
   const winDrag = useDragGesture({
     onMove: (_e, d) => {
@@ -115,9 +124,12 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     },
     onEnd: () => {
       dragRef.current = null;
+      persistGeometry();
     },
+    /* 取消也落盘：位置已在拖动期逐帧写进 store（取消不回滚），落盘保持与眼前一致。 */
     onCancel: () => {
       dragRef.current = null;
+      persistGeometry();
     },
   });
 
@@ -131,6 +143,8 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
       const next = clampSize(sizeAtStartRef.current.w + d.dx, sizeAtStartRef.current.h + d.dy);
       usePluginWindowStore.getState().resizeWindow(instance.windowId, next.w, next.h);
     },
+    onEnd: () => persistGeometry(),
+    onCancel: () => persistGeometry(),
   });
 
   const onResizePointerDown = (e: ReactPointerEvent) => {
@@ -149,6 +163,11 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     e.preventDefault();
     const next = clampSize(instance.w + dw, instance.h + dh);
     usePluginWindowStore.getState().resizeWindow(instance.windowId, next.w, next.h);
+  };
+
+  /** 键盘微调后落盘（keyup 一次；按住方向键中途不写）。 */
+  const onResizeKeyUp = (e: ReactKeyboardEvent) => {
+    if (e.key.startsWith('Arrow')) persistGeometry();
   };
 
   const onTitlePointerDown = (e: ReactPointerEvent) => {
@@ -233,6 +252,7 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
               aria-label="拖拽调整窗口大小（聚焦后方向键微调）"
               onPointerDown={onResizePointerDown}
               onKeyDown={onResizeKeyDown}
+              onKeyUp={onResizeKeyUp}
             />
           ) : null}
         </div>

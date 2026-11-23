@@ -11,7 +11,7 @@
 // 夹持是纯函数（不读 window）：视口由调用点传进来——store 层保持可测，
 // 组件/设施层在浏览器里量内联尺寸。
 
-import { APP_WINDOW_SIZE_MAX, APP_WINDOW_SIZE_MIN } from './types';
+import { APP_WINDOW_SIZE_MAX, APP_WINDOW_SIZE_MIN } from '../plugins/types';
 
 /** 缺省尺寸（px）：manifest.app.size 未声明时的起手值（一张「便签」量）。 */
 export const PLUGIN_WINDOW_DEFAULT_W = 460;

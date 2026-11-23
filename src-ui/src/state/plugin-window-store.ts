@@ -25,7 +25,7 @@ import {
   PLUGIN_WINDOW_DEFAULT_W,
   type WindowGeometry,
   type WindowSize,
-} from '../plugins/window-metrics';
+} from './window-metrics';
 
 /** 窗口定义（manifest.app 折算——装载期登记；kind/mode/title 已归一）。 */
 export interface PluginWindowDef {

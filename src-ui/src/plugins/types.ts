@@ -174,7 +174,7 @@ export function isLoopbackAppUrl(value: string): boolean {
 const APP_WINDOW_MODE = z.enum(['floating', 'dock', 'fullscreen']);
 
 /** 窗首选尺寸的上下界（px）——`manifest.app.size` 的围栏，也是宿主窗口夹持的
- *  同一把尺子（`plugins/window-metrics.ts` 从这里取值，宿主算式不另抄数字）。
+ *  同一把尺子（`state/window-metrics.ts` 从这里取值，宿主算式不另抄数字）。
  *  下限 = 书眉 + 可读内容的底（320×240）；上限按桌面屏给（2400×1600），实际
  *  开窗还会夹进当前视口（视口减 24）。 */
 export const APP_WINDOW_SIZE_MIN = { w: 320, h: 240 } as const;

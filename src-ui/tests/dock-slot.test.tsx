@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DockPanel } from '../src/app/panels/DockPanel';
 import { compositionServicesPlugin, type PanelContribution } from '../src/composition/services';
 import { Context } from '../src/cordis';
+import { loadPanelWidths, resetPanelWidthsForTests } from '../src/state/dock-panel-widths';
 import { useDockStore } from '../src/state/dock-store';
 
 /** 一个**没有任何 CSS** 的面板——正是第三方作者的默认写法。 */
@@ -69,6 +70,7 @@ describe('DockSlot 宿主壳（v66）', () => {
     container = null;
     for (const p of PROBES) useDockStore.getState().closePanel(p.id);
     useDockStore.setState({ panelWidths: {} });
+    resetPanelWidthsForTests();
   });
 
   it('内侧缘调宽柄：拖拽写回 panelWidths（右缘面板往左拖 = 变宽）', async () => {
@@ -93,11 +95,21 @@ describe('DockSlot 宿主壳（v66）', () => {
     act(() => {
       pointer(handle as HTMLElement, 'pointerup', 540, 200);
     });
-    // 键盘 ←：右侧面板的柄在内侧，往左 = 变宽（+16）
+    // 松手即落盘（不是每帧写）；「重启」= store 清空 → 从 localStorage 灌回
+    expect(loadPanelWidths()['t-shell-right']).toBe(320);
+    act(() => useDockStore.setState({ panelWidths: {} }));
+    expect(slot!.style.width).toBe(''); // 清空后回到 CSS 兜底带
+    act(() => useDockStore.setState({ panelWidths: loadPanelWidths() }));
+    expect(slot!.style.width).toBe('320px');
+    // 键盘 ←：右侧面板的柄在内侧，往左 = 变宽（+16）；keyup 落盘
     act(() => {
       handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
     });
     expect(useDockStore.getState().panelWidths['t-shell-right']).toBe(336);
+    act(() => {
+      handle?.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    });
+    expect(loadPanelWidths()['t-shell-right']).toBe(336);
   });
 
   it('不写任何 CSS 的面板被壳包进 .dock-slot[data-side]（本 issue 的正面解决）', async () => {

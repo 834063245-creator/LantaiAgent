@@ -41,9 +41,9 @@ import {
   openPluginWindow,
   setPluginWindowMode,
 } from '../src/plugins/window-facility';
-import { PLUGIN_WINDOW_DEFAULT_H, PLUGIN_WINDOW_DEFAULT_W } from '../src/plugins/window-metrics';
 import { usePluginStore } from '../src/state/plugin-store';
 import { usePluginWindowStore } from '../src/state/plugin-window-store';
+import { PLUGIN_WINDOW_DEFAULT_H, PLUGIN_WINDOW_DEFAULT_W } from '../src/state/window-metrics';
 
 const HELLO = { name: 'hello', version: '1.0.0', entry: 'entry.js' };
 const ORIGIN = 'http://127.0.0.1:14570/plugins';

@@ -24,6 +24,8 @@
 // 宽度（2026-11-23 批）：**不是定数**——内侧缘一条拖拽柄（`useDragGesture`），
 // 拖动写回 dock-store 的 panelWidths，←→ 聚焦后微调。`PanelDef.width` 降级为
 // 「作者建议的起手宽度」，盖不过用户的手。
+// 记忆（同批）：手势结束/键盘松开时落 localStorage（state/dock-panel-widths.ts），
+// 启动由 dock-store 灌回——拖过的宽度重启还在。
 
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -31,6 +33,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useRef,
 } from 'react';
+import { savePanelWidth } from '../../state/dock-panel-widths';
 import { useDockStore } from '../../state/dock-store';
 import { Icon } from '../Icon';
 import { useDragGesture } from '../interaction/use-drag-gesture';
@@ -50,10 +53,15 @@ export function DockSlot({ def, children }: { def: PanelDef; children: ReactNode
   // side 非 null 是调用方的分流前提；兜底 right 只为类型收敛（不该走到）。
   const side = def.side ?? 'right';
   const runtimeWidth = useDockStore((s) => s.panelWidths[def.id]);
-  const width = runtimeWidth ?? def.width;
   const slotRef = useRef<HTMLElement | null>(null);
   /** 起手宽度（按下那一刻的量）。 */
   const startWidthRef = useRef(PANEL_MIN_WIDTH);
+
+  const clampWidth = (w: number): number => Math.round(Math.min(maxPanelWidth(), Math.max(PANEL_MIN_WIDTH, w)));
+
+  /** 渲染宽度：用户拖过的先夹进当前视口（换屏后落盘的宽度可能超出可用区），
+   *  没拖过才轮到作者声明的起手宽度。 */
+  const width = runtimeWidth === undefined ? def.width : clampWidth(runtimeWidth);
 
   /** 量眼前实际宽度：fit-content 时 PanelDef.width 未必是实际值；量不到
    *  （未布局 / 测试环境返回 0）退回 store → 声明 → 兜底下限。 */
@@ -63,7 +71,11 @@ export function DockSlot({ def, children }: { def: PanelDef; children: ReactNode
     return useDockStore.getState().panelWidths[def.id] ?? def.width ?? PANEL_MIN_WIDTH;
   };
 
-  const clampWidth = (w: number): number => Math.round(Math.min(maxPanelWidth(), Math.max(PANEL_MIN_WIDTH, w)));
+  /** 宽度落盘：读 store 的最新值（拖动逐帧写 store，闭包里的 width 可能滞后）。 */
+  const persistWidth = () => {
+    const live = useDockStore.getState().panelWidths[def.id];
+    if (live !== undefined) savePanelWidth(def.id, live);
+  };
 
   /** 拖内侧缘的方向：右侧面板贴右缘，往左拖 = 变宽；左侧面板反之。 */
   const widenSign = side === 'right' ? -1 : 1;
@@ -75,6 +87,9 @@ export function DockSlot({ def, children }: { def: PanelDef; children: ReactNode
     onMove: (_e, d) => {
       useDockStore.getState().setPanelWidth(def.id, clampWidth(startWidthRef.current + d.dx * widenSign));
     },
+    onEnd: () => persistWidth(),
+    /* 取消也落盘：宽度已在拖动期逐帧写进 store（取消不回滚），落盘保持与眼前一致。 */
+    onCancel: () => persistWidth(),
   });
 
   const onResizePointerDown = (e: ReactPointerEvent) => {
@@ -89,6 +104,11 @@ export function DockSlot({ def, children }: { def: PanelDef; children: ReactNode
     if (dir === 0) return;
     e.preventDefault();
     useDockStore.getState().setPanelWidth(def.id, clampWidth(measureWidth() + dir * PANEL_RESIZE_STEP * widenSign));
+  };
+
+  /** 键盘微调后落盘（keyup 一次；按住方向键中途不写）。 */
+  const onResizeKeyUp = (e: ReactKeyboardEvent) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') persistWidth();
   };
 
   return (
@@ -124,6 +144,7 @@ export function DockSlot({ def, children }: { def: PanelDef; children: ReactNode
         aria-label={'拖拽调整面板宽度：' + def.title + '（聚焦后 ← → 微调）'}
         onPointerDown={onResizePointerDown}
         onKeyDown={onResizeKeyDown}
+        onKeyUp={onResizeKeyUp}
       />
     </section>
   );

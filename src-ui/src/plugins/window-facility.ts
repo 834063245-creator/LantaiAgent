@@ -17,6 +17,8 @@ import type { Context } from '../cordis';
 import { cancelDocumentReviewsForWindow } from '../state/plugin-document-review';
 import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../state/plugin-window-store';
+import { loadWindowGeometry } from '../state/window-geometry';
+import { clampWindowSize, PLUGIN_WINDOW_DEFAULT_H, PLUGIN_WINDOW_DEFAULT_W } from '../state/window-metrics';
 import { notifyPluginWindowClosed, notifyPluginWindowOpened } from './mcp-bridge';
 import type { AppDecl, PluginWindowMode } from './types';
 import { postBridgeEventToWindow } from './window-bridge';
@@ -77,7 +79,15 @@ export function openPluginWindow(pluginName: string, opts?: { document?: { path:
     console.warn(`[plugin-window] ${pluginName} 未声明 app.documents——文档载荷被忽略`);
   }
   const doc = def?.documents === true ? requested : undefined;
-  const result = state.openWindow(pluginName);
+  /* 起手几何（优先级从高到低）：用户拖过的落盘几何 > manifest.app.size > 缺省
+     460×360。两个来源都夹进当前视口——上次关机时的分辨率/显示器未必还是现在这台。
+     store 只收夹好的种子（它保持纯状态层：不读 window、不读 localStorage）。 */
+  const viewport = typeof window === 'undefined' ? undefined : { w: window.innerWidth, h: window.innerHeight };
+  const restored = loadWindowGeometry(pluginName, viewport);
+  const seed = restored ?? {
+    ...clampWindowSize(def?.size?.w ?? PLUGIN_WINDOW_DEFAULT_W, def?.size?.h ?? PLUGIN_WINDOW_DEFAULT_H, viewport),
+  };
+  const result = state.openWindow(pluginName, seed);
   if (!result) return null;
   if (result.opened) notifyPluginWindowOpened(pluginName);
   if (doc) {

@@ -13,6 +13,7 @@
 //  图数据面，无生产写入方与消费面。）
 
 import { create } from 'zustand';
+import { loadPanelWidths } from './dock-panel-widths';
 
 /** 面板 id——S1-5 起从闭集 union 迁移为 string（composition 架构：外部插件
  *  可贡献面板）；合法 id 清单的运行时校验在 app/panels/panel-def（装载期
@@ -25,7 +26,8 @@ interface DockState {
    *  校验 + 消费面字面量纪律守住，store 不做调用点校验。 */
   open: Record<string, boolean>;
 
-  /** 壳面板（`frame: 'shell'`）的运行时宽度（px）——用户拖内侧缘调宽后写在这里。
+  /** 壳面板（`frame: 'shell'`）的运行时宽度（px）——用户拖内侧缘调宽后写在这里，
+   *  手势结束落 localStorage（`state/dock-panel-widths.ts`），启动灌回。
    *  未拖过 = 缺省：取 `PanelDef.width`，再缺省由 CSS 的内容撑开兜底带接管。
    *  **宽度归用户**（与插件窗 w/h 同一条理由）：注册期声明的 width 只是作者建议，
    *  不是用户改不了的定数。 */
@@ -53,7 +55,8 @@ export const useDockStore = create<DockState>((set, get) => ({
     paper: false,
   },
   closeGuards: {},
-  panelWidths: {},
+  // 启动灌回用户拖过的宽度（localStorage；坏数据 = 空表，见 dock-panel-widths）。
+  panelWidths: loadPanelWidths(),
 
   registerCloseGuard: (id, guard) => set((st) => ({ closeGuards: { ...st.closeGuards, [id]: guard } })),
   unregisterCloseGuard: (id) =>

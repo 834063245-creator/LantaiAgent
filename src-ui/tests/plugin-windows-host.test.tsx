@@ -21,8 +21,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginWindowsHost } from '../src/app/plugin-windows/PluginWindowsHost';
 import { resetMcpGovernorForTests } from '../src/plugins/mcp-bridge';
 import { closePluginWindow, openPluginWindow } from '../src/plugins/window-facility';
-import { PLUGIN_WINDOW_MIN_H, PLUGIN_WINDOW_MIN_W } from '../src/plugins/window-metrics';
 import { usePluginWindowStore } from '../src/state/plugin-window-store';
+import { loadWindowGeometry, resetWindowGeometryForTests } from '../src/state/window-geometry';
+import { PLUGIN_WINDOW_MIN_H, PLUGIN_WINDOW_MIN_W } from '../src/state/window-metrics';
 
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
 
@@ -63,6 +64,7 @@ let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
   usePluginWindowStore.getState().resetPluginWindowsForTests();
+  resetWindowGeometryForTests();
   resetMcpGovernorForTests();
   for (const def of Object.values(DEFS)) {
     usePluginWindowStore.getState().registerAppDef(def);
@@ -253,6 +255,44 @@ describe('S3 视口层：d) 不抢画布 pan（帧内指针事件不冒泡）+ f
       handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
     });
     expect(usePluginWindowStore.getState().windows[0].w).toBe(PLUGIN_WINDOW_MIN_W + 16);
+  });
+
+  it('几何落盘：拖完 / 调完尺寸即记住，关窗重开按上次位置与大小恢复', () => {
+    mountHost();
+    act(() => {
+      openPluginWindow('acme/notes');
+    });
+    const before = usePluginWindowStore.getState().windows[0];
+    // 拖书眉 → 位置落盘（不是每帧写：松手一次）
+    const titlebar = document.body.querySelector<HTMLElement>('.pw-titlebar');
+    act(() => {
+      pointer(titlebar as HTMLElement, 'pointerdown', before.x + 40, before.y + 12);
+      pointer(window, 'pointermove', 400, 300);
+      pointer(window, 'pointerup', 400, 300);
+    });
+    expect(loadWindowGeometry('acme/notes')).toMatchObject({ x: 360, y: 288 });
+    // 调右下角 → 尺寸落盘
+    const handle = document.body.querySelector<HTMLElement>('.pw-resize');
+    act(() => {
+      pointer(handle as HTMLElement, 'pointerdown', 500, 400);
+      pointer(window, 'pointermove', 590, 460);
+      pointer(window, 'pointerup', 590, 460);
+    });
+    expect(loadWindowGeometry('acme/notes')).toMatchObject({ w: before.w + 90, h: before.h + 60 });
+    // 关窗重开（store 清空、localStorage 还在 = 重启语义）
+    const windowId = usePluginWindowStore.getState().windows[0].windowId;
+    act(() => {
+      closePluginWindow(windowId);
+    });
+    act(() => {
+      openPluginWindow('acme/notes');
+    });
+    expect(usePluginWindowStore.getState().windows[0]).toMatchObject({
+      x: 360,
+      y: 288,
+      w: before.w + 90,
+      h: before.h + 60,
+    });
   });
 
   /** 书眉上的交互件（关窗钮）**不得被拖拽捕获吞掉**（2026-11-18 实机事故）：
