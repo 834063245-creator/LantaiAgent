@@ -212,7 +212,7 @@ describe('MCP 机器桥：scope ctx 的服务可见性（实机「without inject
       command: 'D:/x/hologram-engine.exe',
       args: ['serve', '--project-root', 'D:/proj'],
       restart: 'on-crash',
-      lifecycle: 'lazy',
+      governed: true,
     };
     const face = await scope.ctx.plugin({
       name: 'hologram/bundled-engine-mcp',
@@ -302,7 +302,7 @@ describe('MCP 机器桥（S4-4 乙）：折算与解析域', () => {
     it('正常形态（裸绝对路径）原样拼进 arg（分隔符不归一）', async () => {
       const { io, spawns } = ioWithDir('C:\\Users\\Administrator\\.lantai\\plugins\\notes-app');
       const { root, fiber } = await bootBridge(
-        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' }],
+        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], governed: true }],
         io,
       );
       await first(pluginToolRows()).factory({} as never);
@@ -317,7 +317,7 @@ describe('MCP 机器桥（S4-4 乙）：折算与解析域', () => {
       const quoted = JSON.stringify('C:\\Users\\Administrator\\.lantai\\plugins\\notes-app');
       const { io, spawns } = ioWithDir(quoted);
       const { root, fiber } = await bootBridge(
-        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' }],
+        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], governed: true }],
         io,
       );
       expect(await first(pluginToolRows()).factory({} as never)).toEqual([]);
@@ -329,7 +329,7 @@ describe('MCP 机器桥（S4-4 乙）：折算与解析域', () => {
     it('锚点不是路径形状 ⇒ 不拿坏路径去 spawn（受治面 = 该行空集 + 可见原因）', async () => {
       const { io, spawns } = ioWithDir('notes-app');
       const { root, fiber } = await bootBridge(
-        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' }],
+        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], governed: true }],
         io,
       );
       // 受治面的装配口吞异常（空集 = 不缓存，下次装配重试）——但**绝不 spawn**。

@@ -235,6 +235,7 @@ const APP: AppDecl = { entry: './app/index.html', title: '便签' };
 
 async function bootGovernedWithWindow(
   io: McpBridgeIO,
+  timing: Record<string, number> = TIMING,
 ): Promise<{ root: Context; fiber: Awaited<ReturnType<Context['plugin']>> }> {
   const root = new Context();
   await root.plugin(compositionServicesPlugin);
@@ -245,9 +246,9 @@ async function bootGovernedWithWindow(
       await registerMcpServerTools(
         ctx,
         'acme/notes',
-        [{ name: 'engine', transport: 'stdio', command: './bin/engine', lifecycle: 'with-window' }],
+        [{ name: 'engine', transport: 'stdio', command: './bin/engine', governed: true }],
         io,
-        { timing: TIMING },
+        { timing },
       );
       mountPluginApp(ctx, 'acme/notes', APP, ORIGIN);
     },
@@ -266,24 +267,31 @@ async function pollUntil(cond: () => boolean, timeoutMs = 2000, stepMs = 15): Pr
   return cond();
 }
 
-describe('S3 窗口原语：设施 API × 受治进程（with-window 真实开合接线）', () => {
+describe('S3 窗口原语：设施 API × 受治进程（开合通知的真实接线）', () => {
   beforeEach(() => {
     usePluginWindowStore.getState().resetPluginWindowsForTests();
     resetMcpGovernorForTests();
   });
 
-  it('openPluginWindow → 治理器拉起；closePluginWindow → 计数归零杀（决策 4）', async () => {
+  it('openPluginWindow → 治理器拉起；closePluginWindow → 重新起算空闲回收（不立即杀）', async () => {
+    // 2026-11-23 减形：with-window 档退役 ⇒「关窗即杀」消失，窗只剩两个用途：
+    // 首开窗拉起、窗开期间不空闲回收。破测：给 onWindowClosed 补回 stop →
+    // 「关窗不立即杀」断言红。
     const { io, spawns, killed } = makeFakeIO();
-    const { root, fiber } = await bootGovernedWithWindow(io);
-    expect(spawns).toHaveLength(0); // with-window 装配不拉起
+    const { root, fiber } = await bootGovernedWithWindow(io, { ...TIMING, idleTimeoutMs: 60 });
+    expect(spawns).toHaveLength(0); // 装载/装配都不拉起（窗才是首拉起的触发面）
     expect(openPluginWindow('acme/notes')).toBe('acme/notes#1');
     expect(await pollUntil(() => spawns.length === 1)).toBe(true); // 开窗拉起
     // 再开（已开聚焦）不重复拉起
     expect(openPluginWindow('acme/notes')).toBe('acme/notes#1');
     await sleep(80);
     expect(spawns).toHaveLength(1);
+    expect(killed[0]).toBe(false); // 窗开着：不空闲回收
     expect(closePluginWindow('acme/notes#1')).toBe(true);
-    expect(await pollUntil(() => killed[0] === true)).toBe(true); // 关窗即杀
+    // 关窗只是重新起算空闲回收（不立即杀）
+    await sleep(20);
+    expect(killed[0]).toBe(false);
+    expect(await pollUntil(() => killed[0] === true)).toBe(true);
     // 再开再拉（换代 windowId #2）
     expect(openPluginWindow('acme/notes')).toBe('acme/notes#2');
     expect(await pollUntil(() => spawns.length === 2)).toBe(true);

@@ -10,8 +10,9 @@
 //      protocol_bridge cargo test 钉——Windows taskkill /T）；
 //   d) 未就绪报错不阻塞 + lazy 首调报错时已触发拉起、重试可成（决策 7
 //      fail-fast 钉死：service_not_ready 带 starting / not-running 状态）；
-//   e) 三档启动策略各自回收出口（lazy 空闲回收 × 窗口闸 / eager 卸载回收 /
-//      with-window 随窗开合——合成开合事件，S3 接真实窗口）；
+//   e) 回收出口（空闲回收 × 窗口闸 / 卸载回收——合成开合事件，S3 接真实窗口）；
+//      2026-11-23 减形：三档 `lifecycle` 收成 `governed: true` 一档，eager /
+//      with-window 两档的用例随形状退役删除；
 //   附加：数据目录 spawn 注入（LANTAI_PLUGIN_DATA_DIR——S1 × S2 衔接）。
 //
 // ProcIO 注入 fake（行协议是真的；时序参数经 opts.timing 注入小值——生产
@@ -207,7 +208,7 @@ describe('受治进程治理（S2）：a) 握手就绪 / 就绪超时', () => {
 
   it('受治 lazy：装配期有界等待就绪，工具面**当场**可用（不再空集等下轮）', async () => {
     const { io, spawns } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, { timing: TIMING });
     const rows = pluginToolRows();
     expect(rows.map((r) => r.id)).toEqual(['plugin/acme/tools/mcp/my-engine']);
     const row = first(rows);
@@ -225,7 +226,7 @@ describe('受治进程治理（S2）：a) 握手就绪 / 就绪超时', () => {
   it('就绪超时：到点判启动失败（杀挂壁进程 + warn），无自动重拉；再装配再触发', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { io, spawns, procs } = makeFakeIO({ silent: true });
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
       timing: { startupDeadlineMs: 80, restartBackoffMs: 30 },
     });
     const row = first(pluginToolRows());
@@ -254,7 +255,7 @@ describe('受治进程治理（S2）：b) 崩溃重启策略（含退避）', ()
 
   it('on-crash：意外退出 → 退避后自动重启，就绪后工具恢复', async () => {
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy', restart: 'on-crash' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true, restart: 'on-crash' }], io, {
       timing: TIMING,
     });
     const tools = await waitForTools();
@@ -286,7 +287,7 @@ describe('受治进程治理（S2）：b) 崩溃重启策略（含退避）', ()
 
   it('无 on-crash（restart 缺省 off）：崩溃不自动重启——下次调用兜底拉起', async () => {
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, { timing: TIMING });
     const tools = await waitForTools();
     const echo = first(tools);
     procs[0].crash();
@@ -316,7 +317,7 @@ describe('受治进程治理（S2）：c) 卸载回收 + d) fail-fast 未就绪�
 
   it('空闲回收后调用：立即报 service_not_ready(not-running) + 已触发拉起，重试可成', async () => {
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
       timing: { startupDeadlineMs: 2000, idleTimeoutMs: 70, restartBackoffMs: 500 },
     });
     const tools = await waitForTools();
@@ -345,7 +346,7 @@ describe('受治进程治理（S2）：c) 卸载回收 + d) fail-fast 未就绪�
 
   it('新一轮握手途中调用：报 starting 且不重复 spawn；就绪后可成', async () => {
     const { io, spawns, procs } = makeFakeIO({ initializeDelayMs: 150 });
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
       timing: { startupDeadlineMs: 3000, idleTimeoutMs: 70, restartBackoffMs: 500 },
     });
     const tools = await waitForTools();
@@ -372,7 +373,7 @@ describe('受治进程治理（S2）：c) 卸载回收 + d) fail-fast 未就绪�
 
   it('卸载回收：fiber dispose → 进程杀 + 治理器出注册表（窗口事件不再复活）', async () => {
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, { timing: TIMING });
     await waitForTools();
     notifyPluginWindowOpened('acme/tools'); // 留开窗态——dispose 后事件不得复活
     await fiber.dispose();
@@ -398,7 +399,7 @@ describe('受治进程治理：#1 在途调用保护 / #2 停止留痕带因', (
 
   it('#1 在途调用跨过空闲预算不被回收；调用 settle 后才重新起算', async () => {
     const { io, procs } = makeFakeIO({ callDelayMs: 260 });
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
       timing: { startupDeadlineMs: 2000, idleTimeoutMs: 60, restartBackoffMs: 40 },
     });
     const tools = await waitForTools();
@@ -417,7 +418,7 @@ describe('受治进程治理：#1 在途调用保护 / #2 停止留痕带因', (
   it('#2 空闲回收：日志带原因 + 原因透传到 ProcIO（→ Rust bridge.log）', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { io, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
       timing: { startupDeadlineMs: 2000, idleTimeoutMs: 60, restartBackoffMs: 40 },
     });
     await waitForTools();
@@ -431,7 +432,7 @@ describe('受治进程治理：#1 在途调用保护 / #2 停止留痕带因', (
   it('#2 卸载回收：原因=plugin-unloaded（切工作区/卸载同一路径）', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { io, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, { timing: TIMING });
     await waitForTools();
     await fiber.dispose();
     expect(procs[0].killReasons[0]).toBe('plugin-unloaded');
@@ -441,14 +442,14 @@ describe('受治进程治理：#1 在途调用保护 / #2 停止留痕带因', (
   });
 });
 
-describe('受治进程治理（S2）：e) 三档生命周期各自回收出口', () => {
+describe('受治进程治理（S2）：e) 回收出口（空闲计时 × 窗口闸）', () => {
   beforeEach(() => {
     resetMcpGovernorForTests();
   });
 
   it('lazy × 窗口：首开窗拉起；窗开不空闲回收；关窗重新起算后回收', async () => {
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
       timing: { startupDeadlineMs: 2000, idleTimeoutMs: 80, restartBackoffMs: 500 },
     });
     // 冷启动：首开窗拉起（lazy 首开窗语义）
@@ -466,11 +467,15 @@ describe('受治进程治理（S2）：e) 三档生命周期各自回收出口',
     await cleanup(root, fiber);
   });
 
-  it('eager：装载即拉起（注册期 spawn），卸载才停；崩溃无 on-crash 由装配兜底拉起', async () => {
+  it('装载期零 spawn（启动路径零阻塞）：装配期才拉起；崩溃无 on-crash 由装配兜底拉起', async () => {
+    // eager 档退役后的唯一语义：装载不拉起（此前只有 eager 档会装载即拉起，
+    // 而它零消费者）。破测：把 registerGovernedServer 里补回「装载期 await start」
+    // → 首个断言红；把装配期等待删掉 → 工具面空集断言红。
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'eager' }], io, { timing: TIMING });
-    expect(spawns).toHaveLength(1); // 装载即拉起
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, { timing: TIMING });
+    expect(spawns).toHaveLength(0);
     const tools = await waitForTools();
+    expect(spawns).toHaveLength(1); // 装配期有界等待即拉起
     const echo = first(tools);
     expect(await echo.execute({ text: 'a' })).toBe('[echo] ok');
     // 崩溃（restart 缺省 off）：不自动重启；下次装配兜底拉起
@@ -497,62 +502,28 @@ describe('受治进程治理（S2）：e) 三档生命周期各自回收出口',
     await root[Symbol.asyncDispose]?.();
   });
 
-  it('eager 装载失败（就绪时限内未握上）：registerMcpServerTools 抛出（插件 error 路径）', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { io } = makeFakeIO({ silent: true });
-    await expect(
-      bootGoverned([{ ...STDIO_BASE, lifecycle: 'eager' }], io, { timing: { startupDeadlineMs: 80 } }),
-    ).rejects.toThrow('就绪超时');
-    warnSpy.mockRestore();
-  });
-
-  it('with-window：装配不拉起；开窗拉起，多窗计数，全关即杀，再开再拉', async () => {
+  it('多窗计数：第二扇开不重复拉起；关一扇不清空闲闸；全关后重新起算', async () => {
+    // with-window 档已随 2026-11-23 减形退役（关窗即杀那一条随之消失）——窗计数
+    // 只剩一个用途：**开窗期间不空闲回收**（闸），全关才重新起算。
     const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'with-window' }], io, { timing: TIMING });
-    expect(spawns).toHaveLength(0); // 装载不拉起（窗是生命周期主）
-    const row = first(pluginToolRows());
-    expect(await row.factory({} as never)).toEqual([]); // 装配也不拉起
-    expect(spawns).toHaveLength(0);
-    // 开窗 → 拉起
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, {
+      timing: { startupDeadlineMs: 2000, idleTimeoutMs: 80, restartBackoffMs: 500 },
+    });
+    // 两扇窗都开着：拉起一次（计数 2，不重复 spawn）
+    notifyPluginWindowOpened('acme/tools');
     notifyPluginWindowOpened('acme/tools');
     expect(await pollUntil(() => spawns.length === 1)).toBe(true);
     await waitForTools();
-    // 多窗：第二扇开不重复拉起
-    notifyPluginWindowOpened('acme/tools');
-    await sleep(100);
-    expect(spawns).toHaveLength(1);
-    // 关一扇（仍剩一扇）→ 不杀
-    notifyPluginWindowClosed('acme/tools');
-    await sleep(100);
+    await sleep(200); // 跨过两轮空闲预算：窗是闸，不回收
     expect(procs[0].killed).toBe(false);
-    // 全关 → 即杀（决策 4：关窗默认杀）
+    // 关一扇（仍有一扇）→ 仍不回收
+    notifyPluginWindowClosed('acme/tools');
+    await sleep(200);
+    expect(procs[0].killed).toBe(false);
+    // 全关 → 重新起算空闲回收（不是立即杀——窗关不等于没人再调工具）
     notifyPluginWindowClosed('acme/tools');
     expect(await pollUntil(() => procs[0].killed === true, 1000)).toBe(true);
-    expect(spawns).toHaveLength(1);
-    // 再开 → 再拉
-    notifyPluginWindowOpened('acme/tools');
-    expect(await pollUntil(() => spawns.length === 2)).toBe(true);
-    notifyPluginWindowClosed('acme/tools');
-    await cleanup(root, fiber);
-  });
-
-  it('with-window 崩溃（窗开）：on-crash 退避重启继续随窗；无窗崩溃不重启', async () => {
-    const { io, spawns, procs } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'with-window', restart: 'on-crash' }], io, {
-      timing: TIMING,
-    });
-    notifyPluginWindowOpened('acme/tools');
-    expect(await pollUntil(() => spawns.length === 1)).toBe(true);
-    await waitForTools();
-    // 窗开崩溃 → 退避重启（仍应随窗在跑）
-    procs[0].crash();
-    expect(await pollUntil(() => spawns.length === 2)).toBe(true);
-    // 关窗（计数归零）→ 退避计时被取消，不再有重启；活代进程被杀
-    notifyPluginWindowClosed('acme/tools');
-    const countAfterClose = spawns.length;
-    await sleep(150);
-    expect(spawns).toHaveLength(countAfterClose);
-    expect(procs[1].killed).toBe(true);
+    expect(procs[0].killReasons[0]).toBe('idle-timeout');
     await cleanup(root, fiber);
   });
 });
@@ -566,7 +537,7 @@ describe('受治进程治理（S2）：数据目录 spawn 注入（S1 × S2 衔�
     const { io, spawns } = makeFakeIO();
     const servers: McpServerDecl[] = [
       { name: 'legacy-srv', transport: 'stdio', command: 'node' },
-      { name: 'gov-srv', transport: 'stdio', command: 'node', lifecycle: 'lazy' },
+      { name: 'gov-srv', transport: 'stdio', command: 'node', governed: true },
     ];
     const dataDir = 'C:/users/x/.lantai/plugins-data/acme/tools';
     const { root, fiber } = await bootGoverned(servers, io, { dataDirPath: dataDir, timing: TIMING });
@@ -591,7 +562,7 @@ describe('受治进程治理（S2）：数据目录 spawn 注入（S1 × S2 衔�
 
   it('dataDirPath 缺席（未声明 dataDir 的插件）→ 不注入（行为与 S2 前一致）', async () => {
     const { io, spawns } = makeFakeIO();
-    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, governed: true }], io, { timing: TIMING });
     const row = first(pluginToolRows());
     await row.factory({} as never);
     expect(await pollUntil(() => spawns.length === 1)).toBe(true);

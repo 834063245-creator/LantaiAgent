@@ -44,11 +44,13 @@ function isSafeAppEntry(value: string): boolean {
  *  相对插件目录解析）| http（url 直连）二选一；failurePolicy 缺省 lazy——瞬态
  *  机器不是装载失败的合格理由（进程挂了工具报错/空集，不炸装载）。
  *
- *  治理字段（app shell 件 C · S2，受治进程生命周期治理）：restart / lifecycle
- *  任一在场 = 该条目进入受治面（mcp-bridge 治理器接管：就绪 = initialize 握手
- *  完成带时限、崩溃退避重启、三档生命周期、空闲回收——failurePolicy 对该条目
- *  退役）。两字段皆缺席 = 旧形态，现行为逐字节不变（兼容钉死）。治理字段只对
- *  stdio 进程有意义——http 条目无受治进程面，声明即拒。 */
+ *  受治进程（app shell 件 C · S2 治理面；2026-11-23 减形后只剩一种语义）：
+ *  `governed: true` = 该条目进入受治面（mcp-bridge 治理器接管：就绪 = initialize
+ *  握手完成带时限、崩溃退避重启、空闲回收、未就绪调用 fail-fast——failurePolicy
+ *  对该条目退役）。`governed` 缺席 = 旧形态，现行为逐字节不变（兼容钉死）。
+ *  `restart` 是受治面的**策略旋钮**，不是另一条入场路径：写它必须同时写
+ *  `governed: true`（受治面会改变失败语义，不能被一个策略字段隐式打开）。
+ *  受治字段只对 stdio 进程有意义——http 条目无受治进程面，声明即拒。 */
 const McpServerDeclSchema = z
   .strictObject({
     /** server 名——工具名前缀 `mcp__<name>__*` + 行 id 尾段。 */
@@ -76,20 +78,26 @@ const McpServerDeclSchema = z
      *  显式通道）——声明前务必核对 server 侧真实行为。
      *  判定真源 = agent/mcp/registry.resolveMcpToolReadOnly（单一真源）。 */
     readOnly: z.boolean().optional(),
-    /** 崩溃重启策略（S2 治理字段）：off（缺省）= 不自动重启（下次装配/调用
-     *  兜底拉起）；on-crash = 进程意外退出后指数退避自动重启。 */
+    /** 受治进程开关（S2 治理字段，2026-11-23 减形）：声明 true = 本条目进受治面
+     *  （就绪握手带时限 / 崩溃退避重启 / 空闲回收 / 未就绪调用 fail-fast）。
+     *  缺省 = 旧形态。三档 `lifecycle`（lazy / eager / with-window）已退役：
+     *  真实消费者只有「懒起」一种语义，另两档除测试外零消费者。 */
+    governed: z.boolean().optional(),
+    /** 崩溃重启策略（S2 治理字段，**只对受治进程有意义**——与 governed: true
+     *  同时出现，见下方 refine）：off（缺省）= 不自动重启（下次装配/调用兜底
+     *  拉起）；on-crash = 进程意外退出后指数退避自动重启。 */
     restart: z.enum(['off', 'on-crash']).optional(),
-    /** 生命周期三档（S2 治理字段，决策 1/4）：lazy（缺省）= 首次装配/调用/开窗
-     *  拉起，无窗且空闲超时回收，再调用再拉起；eager = 装载即拉起，卸载才停
-     *  （装配/调用发现未就绪时兜底拉起）；with-window = 随窗开合（开窗拉起，
-     *  关窗即杀——keep-alive 属 S3 窗口面扩展位）。 */
-    lifecycle: z.enum(['lazy', 'eager', 'with-window']).optional(),
   })
   .refine((v) => (v.transport === 'stdio' ? !!v.command && !v.url : !!v.url && !v.command), {
     message: 'mcpServers 条目：stdio 必须 command（禁 url）；http 必须 url（禁 command）',
   })
-  .refine((v) => !(v.transport === 'http' && (v.restart !== undefined || v.lifecycle !== undefined)), {
-    message: 'mcpServers 条目：治理字段（restart/lifecycle）只对 stdio 受治进程有意义——http 无进程面',
+  .refine((v) => !(v.transport === 'http' && (v.governed !== undefined || v.restart !== undefined)), {
+    message: 'mcpServers 条目：受治字段（governed/restart）只对 stdio 受治进程有意义——http 无进程面',
+  })
+  .refine((v) => v.restart === undefined || v.governed === true, {
+    message:
+      'mcpServers 条目：restart 只对受治进程有意义——同时声明 governed: true' +
+      '（受治面会改变失败语义〔未就绪调用 fail-fast〕，不能被一个策略字段隐式打开）',
   });
 
 /** manifest.tools 条目 schema（C11-1 工具声明可序列化）：模型面三字段与
@@ -206,73 +214,69 @@ const AppDeclSchema = z
  *  同一时刻只允许一个组合持有；冲突在装配期 fail loud（消费面 = P3b 的
  *  冲突检测；与「走 realm 隔离」正交，realm 逃生门见设计件 §7.4）。
  *
- *  与 mcpServers 的互斥由 manifest 级 refine 钉死：`lazy: true` 的插件不得声明
- *  `lifecycle: "eager"` 的 server（那正是「apply 期起进程」，P3 要封的口）。 */
+ *  与 mcpServers 的关系（2026-11-23 减形）：原先「`lazy: true` 与
+ *  `mcpServers[].lifecycle: "eager"` 互斥」的 manifest 级 refine 随 `lifecycle`
+ *  退役一并删除——受治进程只剩懒起一档（`governed: true`），「apply 期起进程」
+ *  这个口子已不存在，无需互斥规则。 */
 const ActivationDeclSchema = z.strictObject({
   lazy: z.boolean().optional(),
   resources: z.array(z.enum(ACTIVATION_RESOURCE_KINDS)).optional(),
   exclusive: z.array(z.string().min(1)).optional(),
 });
 
-export const PluginManifestSchema = z
-  .object({
-    name: z.string().regex(PLUGIN_NAME_RE, 'name 必须是 npm scope 风格 id（如 hologram/settings）'),
-    version: z.string().regex(SEMVER_RE, 'version 必须是 semver（如 1.0.0）'),
-    description: z.string().optional(),
-    entry: z
-      .string()
-      .regex(ENTRY_CHARS_RE, 'entry 含非法字符')
-      .refine(isSafeEntry, 'entry 必须是相对 ESM 路径（如 entry.js），禁止绝对路径/回溯段/非 js 后缀'),
-    /** 依赖的 ctx service 名——装载期校验存在性，缺 → error 状态（WO-S0B）。 */
-    inject: z.array(z.string().min(1)).optional(),
-    /** 权限声明（C11-2 permissions.json 接插件声明，2026-08-24）：插件声明
-     *  需要的权限类（read/edit/bash/git/web——Rust 权限咽喉的五个域）。
-     *  装载期一票否决：plugins.json 的 granted 段未覆盖全部声明类 → 插件
-     *  不装载（blocked 状态，设置面板可见缺哪些授权）。声明是安装期信任面
-     *  ——逐调用强制仍在 Rust 命令层（声明与否，权限规则与模式照常生效）。 */
-    permissions: z.array(PLUGIN_PERMISSION_CLASS).optional(),
-    /** 位移式装载（增补四施工，first-party-hot-reload-plan）：声明 true 的
-     *  内置产物与 bundle 同名行贡献 id 共享（面板/工具行 id 不分立），装载
-     *  前 dispose bundle fiber（贡献面单活互换）；产物失败/停用 → bundle
-     *  兜底行恢复。缺省 false（渲染器双行走查语义：行 id 分立、后注册胜，
-     *  bundle 行恒在）。第三方同名产物声明 true 可覆盖同名内置插件（用户
-     *  目录权威语义与 Rust 资产通道回退一致）。 */
-    displace: z.boolean().optional(),
-    /** 数据地盘（app shell 四件套 · 件 B，S1）：声明 true 的插件装载即分配
-     *  专属数据目录 `<dataRoot>/<名>/`（幂等 ensure——wrapper apply 先于插件
-     *  代码调用，失败 = 装载失败记录）；宿主桥 fs 面（ensure/list/read/
-     *  write/delete）读写列删，路径锁死在插件根（Rust plugin_data 双围栏 +
-     *  canonicalize 前缀）；卸载随 plugin_uninstall 整体挪 `.trash` 回收
-     *  （备份一个目录全家走——决策 2）。缺省/false 不分配不侵入。 */
-    dataDir: z.boolean().optional(),
-    /** 应用窗声明（app shell 四件套 · 件 A，S3）：声明 = 插件以软件形态住进
-     *  兰台——装载只登记窗口定义（数据），开窗才实例化视口。窗内容 = 插件
-     *  自包含 HTML 经 iframe 载体渲染（真隔离）；窗内向宿主要能力走
-     *  postMessage 白名单桥（默认最小集 fs 数据目录 + notify）。卸载随插件
-     *  收口：定义注销 + 开着窗口全关（受治进程 with-window 档随关窗杀）。 */
-    app: AppDeclSchema.optional(),
-    /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
-     *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
-     *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`
-     *  命名导出映射（name → execute）。装载器折算为工具贡献（行 id
-     *  `plugin/<插件名>/<工具名>`，patch/preset 可寻址禁用）；声明与实现
-     *  一一对应（缺/多均插件 error，失败隔离）。 */
-    tools: z.array(ToolManifestDeclSchema).optional(),
-    /** 声明式挂接外部 MCP server（S4-4 乙机器桥，设计件 S4 §2.7）：装载期逐个
-     *  折算为工具行贡献（行 id `plugin/<插件名>/mcp/<server名>`）——patch/preset
-     *  可寻址禁用某插件的某个 MCP server，组合均匀性不破。进程 kill 归插件
-     *  fiber disposer。条目声明治理字段（restart/lifecycle，app shell 件 C · S2）
-     *  = 受治进程：就绪 = initialize 握手完成（带时限）、崩溃退避重启、三档
-     *  生命周期、空闲回收（见 mcp-bridge.ts 治理器）。 */
-    mcpServers: z.array(McpServerDeclSchema).optional(),
-    /** 激活声明（S6 P3a）——见 ActivationDeclSchema 头注；整块缺席 = kill switch。 */
-    activation: ActivationDeclSchema.optional(),
-  })
-  .refine((v) => !(v.activation?.lazy === true && (v.mcpServers ?? []).some((s) => s.lifecycle === 'eager')), {
-    message:
-      'activation.lazy 与 mcpServers[].lifecycle="eager" 互斥：声明懒激活的插件不得在 apply 期起进程' +
-      '（S6 P3——资源型插件的副作用只能在装配期激活时启动）',
-  });
+export const PluginManifestSchema = z.object({
+  name: z.string().regex(PLUGIN_NAME_RE, 'name 必须是 npm scope 风格 id（如 hologram/settings）'),
+  version: z.string().regex(SEMVER_RE, 'version 必须是 semver（如 1.0.0）'),
+  description: z.string().optional(),
+  entry: z
+    .string()
+    .regex(ENTRY_CHARS_RE, 'entry 含非法字符')
+    .refine(isSafeEntry, 'entry 必须是相对 ESM 路径（如 entry.js），禁止绝对路径/回溯段/非 js 后缀'),
+  /** 依赖的 ctx service 名——装载期校验存在性，缺 → error 状态（WO-S0B）。 */
+  inject: z.array(z.string().min(1)).optional(),
+  /** 权限声明（C11-2 permissions.json 接插件声明，2026-08-24）：插件声明
+   *  需要的权限类（read/edit/bash/git/web——Rust 权限咽喉的五个域）。
+   *  装载期一票否决：plugins.json 的 granted 段未覆盖全部声明类 → 插件
+   *  不装载（blocked 状态，设置面板可见缺哪些授权）。声明是安装期信任面
+   *  ——逐调用强制仍在 Rust 命令层（声明与否，权限规则与模式照常生效）。 */
+  permissions: z.array(PLUGIN_PERMISSION_CLASS).optional(),
+  /** 位移式装载（增补四施工，first-party-hot-reload-plan）：声明 true 的
+   *  内置产物与 bundle 同名行贡献 id 共享（面板/工具行 id 不分立），装载
+   *  前 dispose bundle fiber（贡献面单活互换）；产物失败/停用 → bundle
+   *  兜底行恢复。缺省 false（渲染器双行走查语义：行 id 分立、后注册胜，
+   *  bundle 行恒在）。第三方同名产物声明 true 可覆盖同名内置插件（用户
+   *  目录权威语义与 Rust 资产通道回退一致）。 */
+  displace: z.boolean().optional(),
+  /** 数据地盘（app shell 四件套 · 件 B，S1）：声明 true 的插件装载即分配
+   *  专属数据目录 `<dataRoot>/<名>/`（幂等 ensure——wrapper apply 先于插件
+   *  代码调用，失败 = 装载失败记录）；宿主桥 fs 面（ensure/list/read/
+   *  write/delete）读写列删，路径锁死在插件根（Rust plugin_data 双围栏 +
+   *  canonicalize 前缀）；卸载随 plugin_uninstall 整体挪 `.trash` 回收
+   *  （备份一个目录全家走——决策 2）。缺省/false 不分配不侵入。 */
+  dataDir: z.boolean().optional(),
+  /** 应用窗声明（app shell 四件套 · 件 A，S3）：声明 = 插件以软件形态住进
+   *  兰台——装载只登记窗口定义（数据），开窗才实例化视口。窗内容 = 插件
+   *  自包含 HTML 经 iframe 载体渲染（真隔离）；窗内向宿主要能力走
+   *  postMessage 白名单桥（默认最小集 fs 数据目录 + notify）。卸载随插件
+   *  收口：定义注销 + 开着窗口全关（受治进程走离职清理）。 */
+  app: AppDeclSchema.optional(),
+  /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
+   *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
+   *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`
+   *  命名导出映射（name → execute）。装载器折算为工具贡献（行 id
+   *  `plugin/<插件名>/<工具名>`，patch/preset 可寻址禁用）；声明与实现
+   *  一一对应（缺/多均插件 error，失败隔离）。 */
+  tools: z.array(ToolManifestDeclSchema).optional(),
+  /** 声明式挂接外部 MCP server（S4-4 乙机器桥，设计件 S4 §2.7）：装载期逐个
+   *  折算为工具行贡献（行 id `plugin/<插件名>/mcp/<server名>`）——patch/preset
+   *  可寻址禁用某插件的某个 MCP server，组合均匀性不破。进程 kill 归插件
+   *  fiber disposer。条目声明 `governed: true`（app shell 件 C · S2）= 受治进程：
+   *  就绪 = initialize 握手完成（带时限）、崩溃退避重启、空闲回收、未就绪调用
+   *  fail-fast（见 mcp-bridge.ts 治理器）。 */
+  mcpServers: z.array(McpServerDeclSchema).optional(),
+  /** 激活声明（S6 P3a）——见 ActivationDeclSchema 头注；整块缺席 = kill switch。 */
+  activation: ActivationDeclSchema.optional(),
+});
 
 export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
@@ -303,8 +307,45 @@ export interface LantaiPlugin {
 
 export type ManifestValidation = { ok: true; manifest: PluginManifest } | { ok: false; error: string };
 
+/** 退役形状的具名拒绝（2026-11-23 减形）：schema 删掉的字段若仍出现在 manifest 里，
+ *  `strictObject` 只会回「Unrecognized key」——读者不知道该改成什么。这里在语义
+ *  校验之前逐条点名：**退场 = 具名拒绝**，不静默剥掉（剥掉 = 让作者以为声明生效了）。
+ *  新退役一个字段 = 本表加一行，`plugin-surface-budget.test` 钉住它不许回到 schema。 */
+const RETIRED_MANIFEST_SHAPES: ReadonlyArray<{
+  /** 字段路径（错误前缀——作者照它定位）。 */
+  at: string;
+  /** 命中判据（形状守卫：非数组/非对象条目交给 zod 判，这里不算）。 */
+  pick: (manifest: Record<string, unknown>) => boolean;
+  /** 迁移指引（一句话说清改成什么）。 */
+  reason: string;
+}> = [
+  {
+    at: 'mcpServers[].lifecycle',
+    pick: (manifest) => listHasKey(manifest.mcpServers, 'lifecycle'),
+    reason: '已退役——改写成 `governed: true`（受治进程只剩「装配/调用/开窗拉起 + 空闲回收」一种语义）',
+  },
+];
+
+/** 数组条目里是否出现某键（只认对象条目；非数组 / 非对象条目不是本表的活）。 */
+function listHasKey(value: unknown, key: string): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.some((item) => item !== null && typeof item === 'object' && !Array.isArray(item) && key in item);
+}
+
+/** 退役字段具名拒绝（见 RETIRED_MANIFEST_SHAPES）；无命中 = null。 */
+function retiredShapeError(raw: unknown): string | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const manifest = raw as Record<string, unknown>;
+  for (const shape of RETIRED_MANIFEST_SHAPES) {
+    if (shape.pick(manifest)) return shape.at + ': ' + shape.reason;
+  }
+  return null;
+}
+
 /** manifest 校验单一入口（loader 与测试共用；错误显式返回，不做静默兜底）。 */
 export function validateManifest(raw: unknown): ManifestValidation {
+  const retired = retiredShapeError(raw);
+  if (retired) return { ok: false, error: retired };
   const result = PluginManifestSchema.safeParse(raw);
   if (result.success) return { ok: true, manifest: result.data };
   const error = result.error.issues

@@ -223,19 +223,19 @@ describe('第三方 MCP → Agent 工具面（两条装载路都要到手）', (
     // 立此存照：它是「第三方默认可用的那条路」的判据）。
   }, 60_000);
 
-  it('受治形态（声明 restart: on-crash）：工具同样必须在册', async () => {
+  it('受治形态（governed + restart: on-crash）：工具同样必须在册', async () => {
     // 破测：把 registerGovernedServer 的行工厂改回「未就绪立即返回空集」→ 本用例红
     // （2026-09-24 实测缺陷：受治档第三方 server 工具**永久**进不了模型工具面——
     //  工具面在装配时点冻结，而共享注册表路径没有「下次装配」）。
     const names = await assembleWith(
-      { name: 'probe', transport: 'stdio', command: 'x', restart: 'on-crash' },
+      { name: 'probe', transport: 'stdio', command: 'x', governed: true, restart: 'on-crash' },
       'governed',
     );
     expect(names).toEqual(['mcp__probe__echo', 'mcp__probe__ping']);
   }, 60_000);
 
-  it('受治形态 × lifecycle: lazy（引擎同档）：工具同样必须在册', async () => {
-    const names = await assembleWith({ name: 'probe', transport: 'stdio', command: 'x', lifecycle: 'lazy' }, 'lazy');
+  it('受治形态 × governed: true（引擎同档）：工具同样必须在册', async () => {
+    const names = await assembleWith({ name: 'probe', transport: 'stdio', command: 'x', governed: true }, 'governed');
     expect(names).toEqual(['mcp__probe__echo', 'mcp__probe__ping']);
   }, 60_000);
 });

@@ -47,7 +47,7 @@ const SERVER: McpServerDecl = {
   transport: 'stdio',
   command: BIN,
   args: ['mcp'],
-  lifecycle: 'lazy',
+  governed: true,
   restart: 'on-crash',
 };
 

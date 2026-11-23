@@ -15,7 +15,7 @@
       "transport": "stdio",
       "command": "node",
       "args": ["./server.cjs"],
-      "lifecycle": "lazy"
+      "governed": true
     }
   ],
   "tools": [

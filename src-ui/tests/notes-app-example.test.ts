@@ -148,7 +148,7 @@ describe('notes-app 范本：manifest 与文件形状', () => {
     expect(MANIFEST.app).toEqual({ entry: './app/index.html', mode: 'floating', title: '便签' });
     expect(MANIFEST.dataDir).toBe(true);
     expect(MANIFEST.mcpServers).toEqual([
-      { name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' },
+      { name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], governed: true },
     ]);
     expect(MANIFEST.tools?.map((t) => t.name)).toEqual(['notes_open']);
   });

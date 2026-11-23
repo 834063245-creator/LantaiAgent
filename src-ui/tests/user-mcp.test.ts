@@ -77,7 +77,7 @@ describe('parseUserMcpJson', () => {
     expect(parseUserMcpJson('', [])).toEqual([]);
   });
 
-  it('治理字段（restart/lifecycle）对 http 条目拒绝', () => {
+  it('受治字段（governed/restart）对 http 条目拒绝', () => {
     const skipped: Array<{ name: string; reason: string }> = [];
     const out = parseUserMcpJson(
       JSON.stringify({

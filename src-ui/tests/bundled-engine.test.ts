@@ -71,15 +71,15 @@ describe('① 默认关（方案乙的构造性零漂移）', () => {
 });
 
 describe('② 声明形状（引擎契约：一进程一根，root 进 args）', () => {
-  it('decl 含 serve + --project-root <根>，生命周期 lazy + 崩溃重启', () => {
+  it('decl 含 serve + --project-root <根>，受治进程 + 崩溃重启', () => {
     const decl = bundledEngineDecl('D:/proj', EXE);
     expect(decl.transport).toBe('stdio');
     expect(decl.command).toBe(EXE);
     expect(decl.args).toEqual(['serve', '--project-root', 'D:/proj']);
-    expect(decl.lifecycle).toBe('lazy'); // 启动路径零阻塞
+    expect(decl.governed).toBe(true); // 受治进程（启动路径零阻塞：装载期不拉起）
     expect(decl.restart).toBe('on-crash'); // 崩溃自愈
-    // 破测：改 args 或去掉 lifecycle → 本用例红（lazy 缺省虽是 lazy，
-    // 但显式声明是契约——治理字段在场才进受治面）
+    // 破测：改 args 或去掉 governed → 本用例红（不声明 governed 就走旧形态，
+    // 引擎会失去装配期就绪等待与治理器的 fail-fast / 空闲回收）
   });
 
   it('readOnly 不声明（按远端 hint 判——引擎有写工具，fail-closed）', () => {

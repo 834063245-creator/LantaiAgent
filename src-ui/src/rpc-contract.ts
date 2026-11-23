@@ -644,7 +644,7 @@ export interface RpcContract {
   protocol_bridge_kill: {
     params: {
       id: string;
-      /** 停止原因（#2 可观测性）：宿主侧具名原因（idle-timeout / window-closed /
+      /** 停止原因（#2 可观测性）：宿主侧具名原因（idle-timeout /
        *  plugin-unloaded / activation-released / startup-failed）——Rust 落
        *  `.lantai/logs/bridge.log`，让「进程为什么没的」有持久证据。 */
       reason?: string;

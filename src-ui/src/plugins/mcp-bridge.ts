@@ -11,22 +11,19 @@
 // 可以禁用某插件的某个 MCP server（S4-4 甲起贡献行全量可寻址——组合均匀性
 // 不破）。
 //
-// 治理分岔（S2）：manifest 条目声明治理字段（restart / lifecycle 任一在场）=
-// 受治面——ServerGovernor 接管：
+// 治理分岔（S2；2026-11-23 减形：`lifecycle` 三档 → `governed: true` 一档）：
+// manifest 条目声明 `governed: true` = 受治面——ServerGovernor 接管：
 //   - 就绪 = initialize 握手 + tools/list 完成，带就绪时限（缺省 60s）——
 //     到点未握上 = 启动失败报错（免 stdout 探测，决策 8）；
 //   - 崩溃重启（restart: on-crash）：意外退出 → 指数退避自动重启，就绪即清零；
-//   - 三档生命周期（lifecycle，决策 1/4）：lazy（缺省——首次装配/调用/开窗
-//     拉起，无窗且空闲超时回收，再调用再拉起）/ eager（装载即拉起，卸载才停，
-//     装配/调用发现未就绪时兜底拉起）/ with-window（随窗开合——开窗拉起、
-//     关窗即杀；S2 经 notifyPluginWindow* 合成事件接线，S3 窗口原语接真实
-//     开合）；
+//   - 生命周期（唯一一档）：首次装配/调用/开窗拉起，无窗且空闲超时回收，再
+//     调用再拉起（窗开期间不回收——notifyPluginWindow* 是真实开合的唯一接线）；
 //   - 未就绪调用（决策 7 fail-fast）：立即抛结构化错 service_not_ready（带
 //     starting / not-running 状态）+ 触发拉起——宿主永不阻塞等待受治进程
 //     就绪，「等待」由调用方（模型）按需重试承担；
 //   - 进程回收：插件 fiber disposer（卸载/停用链式停），Rust 侧
 //     protocol_bridge_kill 连进程树终止（含孙进程）。
-// 旧形态（治理字段皆缺席）：failurePolicy 语义原样（startup-error 装载期急
+// 旧形态（无 `governed`）：failurePolicy 语义原样（startup-error 装载期急
 // 连接 / lazy 首装配连接 + 空集 warn 重试），client 实例闭包缓存——现行为逐
 // 字节不变（兼容钉死；mcp-bridge.test.ts 既有套件即兼容面守护）。
 //
@@ -120,8 +117,8 @@ const RESTART_BACKOFF_CAP_MS = 30_000;
  *  ToolRegistry 就不再重取）。空集是「不缓存，下次装配重试」——但工作区共享注册表
  *  路径**没有下次装配**（组合身份不变 ⇒ 每卷都复用同一份注册表）。于是「装配这一刻
  *  还没握手完」= 该 server 的工具**永久**进不了模型工具面，且除一行 console.warn 外
- *  无任何用户可见痕迹（2026-09-24 实测：随包引擎、以及任何声明了 restart/lifecycle
- *  的第三方 server 全部命中；旧形态条目走装配期连接，故不受影响）。
+ *  无任何用户可见痕迹（2026-09-24 实测：随包引擎、以及任何声明了受治字段的第三方
+ *  server 全部命中；旧形态条目走装配期连接，故不受影响）。
  *
  *  有界而非无限：健康 server 很快（实测随包引擎 本项目根 2.0s / 空项目 32ms，
  *  其中 2s 是 SQLite 载图）；坏 server 封顶在「开工作区卡一下」。多条 server 的
@@ -268,8 +265,8 @@ type GovernorState = 'not-running' | 'starting' | 'ready';
 
 /** 插件名 → 治理器集合（受治进程注册表——窗口事件寻址面）。 */
 const governedByPlugin = new Map<string, Set<ServerGovernor>>();
-/** 插件名 → 开窗计数（>0 = 有窗开着——with-window 生命周期锚点、lazy 空闲
- *  回收闸；S3 窗口注册表在真实开合处调 notifyPluginWindow*）。 */
+/** 插件名 → 开窗计数（>0 = 有窗开着——空闲回收闸：窗开着不回收；S3 窗口
+ *  注册表在真实开合处调 notifyPluginWindow*）。 */
 const windowOpenCounts = new Map<string, number>();
 
 function addGovernor(governor: ServerGovernor): void {
@@ -295,16 +292,14 @@ function windowOpenCount(pluginName: string): number {
 }
 
 /** 插件窗口开（S2 合成事件面；S3 窗口原语在真实开窗处调用）。
- *  语义（决策 1/4）：lazy / with-window 首开窗拉起；窗开期间 lazy 不空闲回收；
- *  多窗计数——全关才触发 with-window 回收。 */
+ *  语义：首开窗即拉起受治进程；窗开期间不空闲回收；多窗按计数。 */
 export function notifyPluginWindowOpened(pluginName: string): void {
   windowOpenCounts.set(pluginName, (windowOpenCounts.get(pluginName) ?? 0) + 1);
   for (const g of governedByPlugin.get(pluginName) ?? []) g.onWindowOpened();
 }
 
-/** 插件窗口关（S2 合成事件面；S3 接真实关窗）。
- *  with-window：计数归零即回收（默认杀，决策 4——keep-alive 是 S3 窗口面
- *  的显式声明扩展位）；lazy：重新起算空闲回收。 */
+/** 插件窗口关（S2 合成事件面；S3 接真实关窗）。计数归零 = 重新起算空闲回收
+ *  （窗关不等于没人再调工具；`with-window` 那一档已随 2026-11-23 减形退役）。 */
 export function notifyPluginWindowClosed(pluginName: string): void {
   const next = (windowOpenCounts.get(pluginName) ?? 1) - 1;
   if (next <= 0) windowOpenCounts.delete(pluginName);
@@ -318,28 +313,20 @@ export function notifyPluginWindowClosed(pluginName: string): void {
  *  跑到一半时消失，`stop()` 里一行日志都没有（不 warn、不 emit、不落盘），
  *  排查只能靠「最后一条 MCP 调用 + 5 分钟」反推 + 「没有 shutdown 告别」推断是
  *  硬杀。把原因做成类型面 ⇒ 新增停止路径时不填原因编译不过（错误不静默）。 */
-export type GovernorStopReason =
-  | 'idle-timeout'
-  | 'window-closed'
-  | 'activation-released'
-  | 'plugin-unloaded'
-  | 'startup-failed';
+export type GovernorStopReason = 'idle-timeout' | 'activation-released' | 'plugin-unloaded' | 'startup-failed';
 
 /** 受治进程的**激活面**（S6 P3d）——把「装配期拉起 / 引用归零停止」交给激活账
  *  （`ctx.activation`），只对 manifest 声明了 `activation` 的插件接线。
  *
- *  **只覆盖 lazy 档**（含缺省）：它的拉起语义本就是「装配/调用/开窗拉起 + 空闲
- *  回收」，把它接到组合引用计数上只是换了个释放触发源。另两档**不经手**（如实
- *  声明，WO-S6P3 §2.7）：
- *    - `eager`：装载即拉起、卸载才停（生命周期 = 插件装载期，不是组合）；
- *    - `with-window`：开窗拉起、关窗即杀（生命周期 = 窗口，组合无权替它决定）。
- *  ⇒ 接线的净效果 = 「所有持有它的卷都关了 ⇒ 进程停」（不再等空闲回收）。 */
+ *  受治面只剩一档（2026-11-23 减形）：拉起语义本就是「装配/调用/开窗拉起 + 空闲
+ *  回收」，接到组合引用计数上只是换了个释放触发源 ⇒ 净效果 = 「所有持有它的卷都
+ *  关了 ⇒ 进程停」（不再等空闲回收）。 */
 export interface GovernedActivationFace {
-  /** 拉起全部 lazy 档受治进程到就绪（幂等：已在就绪/在途 ⇒ 复用）。失败抛出
+  /** 拉起全部受治进程到就绪（幂等：已在就绪/在途 ⇒ 复用）。失败抛出
    *  （由激活账记 failure——诊断第四栏「被跳过」可见，装配本身不因此失败）。 */
-  startLazy(): Promise<void>;
-  /** 停止全部 lazy 档受治进程（组合引用归零）。 */
-  stopLazy(): void;
+  start(): Promise<void>;
+  /** 停止全部受治进程（组合引用归零）。 */
+  stop(): void;
   /** 本面治理的 server **当前**远端工具数（toolFace 快照大小之和）。
    *
    *  消费方 = 需要「就绪 ⟹ 工具面非空」这条因果做回执/诊断的接线方
@@ -348,18 +335,17 @@ export interface GovernedActivationFace {
   toolCount(): number;
 }
 
-/** 由受治进程集合产出激活面（无 lazy 档 ⇒ null = 不接线）。 */
+/** 由受治进程集合产出激活面（无受治条目 ⇒ null = 不接线）。 */
 function governedActivationFace(governors: readonly ServerGovernor[]): GovernedActivationFace | null {
-  const lazy = governors.filter((g) => g.lifecycle === 'lazy');
-  if (lazy.length === 0) return null;
+  if (governors.length === 0) return null;
   return {
-    startLazy: async () => {
-      for (const g of lazy) await g.start();
+    start: async () => {
+      for (const g of governors) await g.start();
     },
-    stopLazy: () => {
-      for (const g of lazy) g.stop('activation-released');
+    stop: () => {
+      for (const g of governors) g.stop('activation-released');
     },
-    toolCount: () => lazy.reduce((n, g) => n + g.toolFace().length, 0),
+    toolCount: () => governors.reduce((n, g) => n + g.toolFace().length, 0),
   };
 }
 
@@ -414,16 +400,7 @@ class ServerGovernor {
     return this.state;
   }
 
-  get lifecycle(): 'lazy' | 'eager' | 'with-window' {
-    return this.server.lifecycle ?? 'lazy';
-  }
-
-  /** 受治进程是否应当常在（with-window 无窗 = 不该在跑——崩溃不自动重启）。 */
-  private shouldBeRunning(): boolean {
-    return this.lifecycle !== 'with-window' || windowOpenCount(this.pluginName) > 0;
-  }
-
-  /** 拉起（到就绪 settle；失败抛出——eager 装载期 / 测试 await 消费）。
+  /** 拉起（到就绪 settle；失败抛出——激活账 / 装配期等待 / 测试 await 消费）。
    *  就绪 = initialize 握手 + tools/list 在时限内完成。已卸载的治理器不可
    *  再拉起（终态——进程回收出口不得被绕过）。 */
   async start(): Promise<void> {
@@ -540,9 +517,9 @@ class ServerGovernor {
     }
   }
 
-  /** 调用期触发（决策 7——lazy 失败调用本身已触发拉起）：with-window 不拉起。 */
+  /** 调用期触发（决策 7——失败调用本身已触发拉起）。 */
   requestFromCall(): void {
-    if (this.disposed || this.state === 'ready' || this.lifecycle === 'with-window') return;
+    if (this.disposed || this.state === 'ready') return;
     this.ensureStarted();
   }
 
@@ -597,7 +574,6 @@ class ServerGovernor {
       this.failStart?.(new Error(`受治进程 "${this.server.name}"（${this.pluginName}）启动途中退出`));
     }
     if (this.server.restart !== 'on-crash') return;
-    if (!this.shouldBeRunning()) return;
     this.crashAttempts += 1;
     const delay = Math.min(this.timing.restartBackoffMs * 2 ** (this.crashAttempts - 1), RESTART_BACKOFF_CAP_MS);
     this.backoffTimer = setTimeout(() => {
@@ -610,10 +586,10 @@ class ServerGovernor {
     }, delay);
   }
 
-  /** lazy 空闲回收布防：ready、无窗、**无在途调用**才计时；窗开/停机即撤。 */
+  /** 空闲回收布防：ready、无窗、**无在途调用**才计时；窗开/停机即撤。 */
   private armIdle(): void {
     this.clearIdle();
-    if (this.disposed || this.lifecycle !== 'lazy' || this.state !== 'ready') return;
+    if (this.disposed || this.state !== 'ready') return;
     if (windowOpenCount(this.pluginName) > 0) return;
     // 在途调用未归零 ⇒ 不布防（#1 病灶：任务跑到一半被自家空闲回收砍掉）。
     // 归零时由 releaseCall 重新布防——「空闲」的判据是**真的没人用**。
@@ -624,21 +600,17 @@ class ServerGovernor {
     }, this.timing.idleTimeoutMs);
   }
 
-  /** 开窗：lazy / with-window 首开窗拉起；窗开期间不空闲回收。 */
+  /** 开窗：首开窗拉起受治进程；窗开期间不空闲回收。 */
   onWindowOpened(): void {
     this.clearIdle();
     if (this.disposed || this.state === 'ready') return;
     this.ensureStarted();
   }
 
-  /** 关窗：with-window 计数归零即杀（默认杀，决策 4）；lazy 重新起算空闲。 */
+  /** 关窗：计数归零后重新起算空闲回收（不立即杀——窗关不等于没人再调工具）。 */
   onWindowClosed(): void {
     if (this.disposed) return;
-    if (this.lifecycle === 'with-window' && windowOpenCount(this.pluginName) <= 0) {
-      this.stop('window-closed');
-    } else if (this.state === 'ready') {
-      this.armIdle();
-    }
+    if (this.state === 'ready') this.armIdle();
   }
 
   /** 意图停止（空闲回收 / 关窗 / 激活账归零 / 卸载）：杀进程，状态回落
@@ -751,29 +723,19 @@ function governedTool(governor: ServerGovernor, schema: McpToolSchema): Tool {
   };
 }
 
-/** 受治面注册（治理字段在场的条目）：一条 ctx.tools 贡献（行 id 同 legacy）+
- *  治理器挂插件 fiber（dispose → 杀进程）。eager 装载期拉起（到就绪时限
- *  settle；失败抛出 → 插件 error 记录）；lazy/with-window 不在装载期拉起。 */
-async function registerGovernedServer(
+/** 受治面注册（`governed: true` 的条目）：一条 ctx.tools 贡献（行 id 同 legacy）+
+ *  治理器挂插件 fiber（dispose → 杀进程）。**装载期不拉起**——首次装配/调用/
+ *  开窗才起（启动路径零阻塞；拉起失败由装配期 warn / 调用期 fail-fast 暴露）。 */
+function registerGovernedServer(
   ctx: Context,
   pluginName: string,
   server: McpServerDecl,
   io: McpBridgeIO,
   env: Record<string, string> | undefined,
   timing: Required<McpGovernorTiming>,
-): Promise<ServerGovernor> {
+): ServerGovernor {
   const governor = new ServerGovernor(pluginName, server, io, env, timing);
   addGovernor(governor);
-  if (governor.lifecycle === 'eager') {
-    // 装载即拉起：就绪时限内未握上 = 启动失败报错（registerMcpServerTools
-    // 抛出 → loader 记插件 error；治理器出注册表防幽灵进程）
-    try {
-      await governor.start();
-    } catch (e) {
-      removeGovernor(governor);
-      throw e;
-    }
-  }
   const contribId = `${pluginName}/mcp/${server.name}`;
   const dispose = ctx.tools.register({
     id: contribId,
@@ -784,10 +746,9 @@ async function registerGovernedServer(
     noCache: true,
     factory: async () => {
       // 装配期取工具面 = 这一步必须拿到就绪态（长注释见 ASSEMBLY_READY_WAIT_MS）。
-      // with-window 档不经手：窗才是它的生命周期主，装配既不替它拉起也不为它等。
-      // 等待本身即拉起触发（awaitReadyWithin → start）；失败者按 lazy 语义留待
-      // 下次装配/调用，不在这里补第二次触发（挂壁 server 会双 spawn）。
-      if (governor.lifecycle !== 'with-window' && governor.status !== 'ready') {
+      // 等待本身即拉起触发（awaitReadyWithin → start）；失败者留待下次装配/调用，
+      // 不在这里补第二次触发（挂壁 server 会双 spawn）。
+      if (governor.status !== 'ready') {
         const outcome = await governor.awaitReadyWithin(ASSEMBLY_READY_WAIT_MS);
         if (!outcome.ready) {
           // 空集不缓存 = 下次装配重试；但用户侧没有回执面，故至少留一行可见 warn
@@ -817,15 +778,15 @@ async function registerGovernedServer(
  *
  * 返回值 = **受治进程的激活面**（S6 P3d）：调用方（loader）在 manifest 声明
  * `activation` 时把它交给 `ctx.activation`，于是「装配期拉起 / 组合引用归零停止」
- * 由激活账驱动（只覆盖 lazy 档，见 `GovernedActivationFace` 头注）；无受治条目
- * 或受治条目都不是 lazy 档 ⇒ null（不接线，行为逐字节不变）。
+ * 由激活账驱动（见 `GovernedActivationFace` 头注）；无受治条目 ⇒ null
+ * （不接线，行为逐字节不变）。
  *
  * 每个 server：一条 ctx.tools 贡献（id `<插件名>/mcp/<server名>`——折算行
  * id `plugin/<插件名>/mcp/<server名>`）；贡献注销 + 进程 kill 挂该 server
  * 自己的 ctx.effect（插件 fiber dispose → 进程链式停）。
  *
- * 治理分岔（S2）：声明治理字段（restart/lifecycle）的条目走 ServerGovernor
- * （受治面）；皆缺席的条目走旧形态（startup-error 装载期急连接失败抛出 →
+ * 治理分岔（S2）：声明 `governed: true` 的条目走 ServerGovernor（受治面）；
+ * 缺席的条目走旧形态（startup-error 装载期急连接失败抛出 →
  * 插件 error；lazy 缺省首装配连接失败 = 空集 + warn，pluginToolRows 的
  * 「空集不缓存」保证下次装配重试——服务器恢复后新会话即得工具面）。
  * 断线后的自动重连监督是旧形态的未决项（v1 以装配期重试承担）；受治面
@@ -845,9 +806,9 @@ export async function registerMcpServerTools(
   const env = opts.dataDirPath ? { [PLUGIN_DATA_DIR_ENV]: opts.dataDirPath } : undefined;
   const governed: ServerGovernor[] = [];
   for (const server of servers) {
-    // 治理分岔：任一治理字段在场 = 受治面；皆缺席 = 旧形态逐字节不变
-    if (server.restart !== undefined || server.lifecycle !== undefined) {
-      governed.push(await registerGovernedServer(ctx, pluginName, server, io, env, resolveTiming(opts)));
+    // 治理分岔：声明 governed: true = 受治面；缺席 = 旧形态逐字节不变
+    if (server.governed === true) {
+      governed.push(registerGovernedServer(ctx, pluginName, server, io, env, resolveTiming(opts)));
       continue;
     }
     // 急连接（startup-error）：装载期验证机器起得来；失败即抛（→ 插件 error）

@@ -63,7 +63,7 @@ function McpServerCard({
           <span className="lang-name">{server.name}</span>
           <span className="lang-status" style={{ color: 'var(--ink-2)' }}>
             {isStdio ? 'stdio' : 'http'}
-            {server.lifecycle ? ` · ${server.lifecycle}` : ''}
+            {server.governed ? ' · 受治' : ''}
           </span>
         </div>
         <div className="sp-lsp-card-meta">

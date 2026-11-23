@@ -291,7 +291,7 @@ describe('S4 唤醒回调：e) MCP 完成通知（lantai/deferred）→ 桥翻�
         await registerMcpServerTools(
           ctx,
           'acme/notes',
-          [{ name: 'engine', transport: 'stdio', command: './bin/engine', lifecycle: 'lazy' }],
+          [{ name: 'engine', transport: 'stdio', command: './bin/engine', governed: true }],
           io,
           { timing: { startupDeadlineMs: 2000, idleTimeoutMs: 5000, restartBackoffMs: 40 } },
         );
@@ -341,7 +341,7 @@ describe('S4 唤醒回调：e) MCP 完成通知（lantai/deferred）→ 桥翻�
         await registerMcpServerTools(
           ctx,
           'acme/notes',
-          [{ name: 'engine', transport: 'stdio', command: './bin/engine', lifecycle: 'lazy' }],
+          [{ name: 'engine', transport: 'stdio', command: './bin/engine', governed: true }],
           io,
           { timing: { startupDeadlineMs: 2000, idleTimeoutMs: 5000, restartBackoffMs: 40 } },
         );

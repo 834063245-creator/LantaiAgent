@@ -8,7 +8,7 @@
 // 现状（2026-09-16 立项 `engine-bundled-mcp-distribution`；2026-09-24 一天连修四个实机缺陷）：
 //   - 工具行 id = `plugin/hologram-engine/mcp/hologram`（与插件贡献同寻址域 ⇒ patch/preset 可禁用）；
 //   - 引擎契约「一进程一工作区根」（ensure_ready 异根拒绝）：root 进 `args --project-root`；
-//   - `lifecycle: 'lazy'` + `restart: 'on-crash'`（启动路径零阻塞、崩了指数退避自愈）；
+//   - `governed: true` + `restart: 'on-crash'`（启动路径零阻塞、崩了指数退避自愈）；
 //   - **判据 = 工具面真的在册**（wired ⟺ toolCount > 0），不是「行注册成功」。
 //
 // 与内核的取用面：经包内宿主桥 `./host`（dev/测试域 = 内核真身；产物域 = faceDeps 真实例）
@@ -37,7 +37,7 @@ export const OWNER = 'hologram-engine';
 
 /** 工作区根 → MCP server 声明（引擎契约：一进程一根，root 进 args）。
  *
- *  `lifecycle: 'lazy'`——首次装配/调用才拉起进程，**启动路径零阻塞**
+ *  `governed: true`——首次装配/调用才拉起进程，**启动路径零阻塞**
  *  （引擎首次全量分析可达分钟级，不能挡开工作区）。
  *  `restart: 'on-crash'`——引擎崩了指数退避自愈（治理器自带）。
  *  `readOnly` 不声明——按远端 `annotations.readOnlyHint` 判（引擎 36 工具中
@@ -48,8 +48,8 @@ export function bundledEngineDecl(root: string, exePath: string): McpServerDecl 
     transport: 'stdio',
     command: exePath,
     args: ['serve', '--project-root', root],
+    governed: true,
     restart: 'on-crash',
-    lifecycle: 'lazy',
   };
 }
 
@@ -69,7 +69,7 @@ export interface BundledEngineWiring {
 }
 
 /** 装配前等待引擎就绪的预算（ms）——**共享常量**：受治进程的装配期就绪等待
- *  由 `mcp-bridge` 统一定义（随包引擎与任何声明 restart/lifecycle 的第三方
+ *  由 `mcp-bridge` 统一定义（随包引擎与任何声明 governed 的第三方
  *  server 同一语义、同一上限）。此处只做别名，防两处数字各自漂移。 */
 const PREHEAT_BUDGET_MS = ASSEMBLY_READY_WAIT_MS;
 
@@ -158,8 +158,8 @@ export async function registerBundledEngineTools(
         if (activation && !activation.has(OWNER)) {
           const disposeDeclaration = activation.declare(OWNER, {
             resources: ['stdio'],
-            start: () => registered.startLazy(),
-            stop: () => registered.stopLazy(),
+            start: () => registered.start(),
+            stop: () => registered.stop(),
           });
           // 声明生命周期 = 本子 fiber（工作区 fiber 的子）：fiber dispose ⇒ 撤销声明。
           // 不挂这里的实机后果（2026-11-22）：declarations 是**模块级**表（键 = 插件名），
@@ -194,7 +194,7 @@ export async function registerBundledEngineTools(
   // **永久**没有工具（共享注册表路径没有下次装配）。故：等待有界（见
   // PREHEAT_BUDGET_MS 的实测依据），超时/失败即降级为具名原因上报。
   try {
-    const ready = await waitWithin(governed.startLazy(), PREHEAT_BUDGET_MS);
+    const ready = await waitWithin(governed.start(), PREHEAT_BUDGET_MS);
     if (!ready) {
       return {
         wired: false,

@@ -1001,8 +1001,8 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
                 const disposeDeclaration = activation.declare(manifest.name, {
                   resources: manifest.activation.resources,
                   exclusive: manifest.activation.exclusive,
-                  start: () => face.startLazy(),
-                  stop: () => face.stopLazy(),
+                  start: () => face.start(),
+                  stop: () => face.stop(),
                 });
                 // 声明生命周期 = 插件 fiber（卸载 ⇒ 撤销声明）。不挂的后果：declarations
                 //（模块级表，键 = 插件名）残留旧 face 的 start 闭包，而治理器已随 fiber

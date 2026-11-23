@@ -22,9 +22,22 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 71;
+export const OPEN_SURFACE_CONTRACT_VERSION = 72;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v72（2026-11-23）**受治进程减形：`mcpServers[].lifecycle` 三档 → `governed: true` 一档（破坏性）**：
+ *  `lifecycle: 'lazy' | 'eager' | 'with-window'` 删除——仓内真实消费者只有「懒起」一种语义，
+ *  `eager` / `with-window` 除测试外零消费者；`eager` 的「装载即拉起」是启动路径上唯一的
+ *  阻塞源，一并消失。新增可选 `governed: boolean`（true = 本条进受治面）；`restart` 保留但
+ *  **必须与 `governed: true` 同时出现**（受治面改变失败语义〔未就绪调用 fail-fast〕，不能被
+ *  策略字段隐式打开——单独写 `restart` 报具名错误）。「受治 ⇒ 关窗即杀」随 `with-window`
+ *  一起退役：窗只剩两个用途（首开窗拉起、窗开期间不空闲回收）。旧 manifest 写 `lifecycle`
+ *  = 装载期**具名拒绝**（「已退役，改用 governed: true」），不静默剥掉。
+ *  **同版连带**：`activation.lazy` × `lifecycle:"eager"` 互斥 refine 删除（该口子已不存在）；
+ *  `GovernedActivationFace` 的 `startLazy`/`stopLazy` 更名 `start`/`stop`；`GovernorStopReason`
+ *  删 `window-closed`；用户级 `~/.lantai/mcp.json` 复用同一 schema ⇒ 也失去 `lifecycle`。
+ *  **对外可感知**：声明 `lifecycle` 的 manifest 从「装载成功」变成「具名拒载」，按迁移表改
+ *  `governed: true`；不写受治字段的条目行为逐字节不变。
  *  v71（2026-11-23）**`window-bridge.ts` 入册 + 桥方法增 `doc.save`（插件文档通道 · 批 2 写回）**：
  *  此前 postMessage 白名单（方法集 / 事件集 / deps 形状）只是实现，不入契约面——第三方插件实际
  *  依赖它，事实契约就该登记。本版起它随契约指纹走：白名单增 `doc.save`，事件增 `doc-saved` /

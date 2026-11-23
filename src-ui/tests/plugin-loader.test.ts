@@ -111,22 +111,28 @@ describe('manifest 校验（zod 单一来源）', () => {
     ).toBe(false);
   });
 
-  it('S2 受治治理字段：restart/lifecycle 枚举 + http 不得声明（无受治进程面）', () => {
+  it('S2 受治字段：governed 开关 + restart 只对受治进程有意义 + http 不得声明', () => {
     const STDIO = { name: 's', transport: 'stdio', command: 'node' } as const;
-    // 合法：治理字段组合（任一在场 = 该条目进受治面）
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'on-crash' }] }).ok).toBe(true);
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'lazy' }] }).ok).toBe(true);
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'off' }] }).ok).toBe(true);
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'eager' }] }).ok).toBe(true);
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'with-window' }] }).ok).toBe(true);
+    // 合法：受治开关（restart 缺省 = 不自动重启；显式 off / on-crash 均可）
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, governed: true }] }).ok).toBe(true);
+    expect(
+      validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, governed: true, restart: 'on-crash' }] }).ok,
+    ).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, governed: false }] }).ok).toBe(true);
+    // restart 是受治面的策略旋钮——单独出现即拒（受治面改变失败语义，不能被隐式打开）
+    const solo = validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'on-crash' }] });
+    expect(solo.ok).toBe(false);
+    expect(solo.ok ? '' : solo.error).toContain('governed: true');
     // 坏枚举拒绝（枚举闭集——「写了但不生效」是手误，错误不静默）
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'always' }] }).ok).toBe(false);
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'always' }] }).ok).toBe(false);
-    // http 条目声明治理字段 = 拒绝（进程不是宿主起的——无受治进程面）
+    expect(
+      validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, governed: true, restart: 'always' }] }).ok,
+    ).toBe(false);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, governed: 'true' }] }).ok).toBe(false);
+    // http 条目声明受治字段 = 拒绝（进程不是宿主起的——无受治进程面）
     expect(
       validateManifest({
         ...HELLO_MANIFEST,
-        mcpServers: [{ name: 'r', transport: 'http', url: 'http://x', lifecycle: 'lazy' }],
+        mcpServers: [{ name: 'r', transport: 'http', url: 'http://x', governed: true }],
       }).ok,
     ).toBe(false);
     expect(
@@ -135,8 +141,21 @@ describe('manifest 校验（zod 单一来源）', () => {
         mcpServers: [{ name: 'r', transport: 'http', url: 'http://x', restart: 'on-crash' }],
       }).ok,
     ).toBe(false);
-    // 旧形态（无治理字段）不受影响——兼容钉死
+    // 旧形态（无受治字段）不受影响——兼容钉死
     expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO }] }).ok).toBe(true);
+  });
+
+  it('S2 退役形状具名拒绝：lifecycle（含 eager / with-window 两值）报错说清改什么', () => {
+    const STDIO = { name: 's', transport: 'stdio', command: 'node' } as const;
+    for (const tier of ['lazy', 'eager', 'with-window', 'always']) {
+      const res = validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: tier }] });
+      expect(res.ok, tier).toBe(false);
+      const error = res.ok ? '' : res.error;
+      // 不静默剥掉：错误点名「已退役」并给出迁移写法（Unrecognized key 那种原文不可行动）
+      expect(error, tier).toContain('mcpServers[].lifecycle');
+      expect(error, tier).toContain('已退役');
+      expect(error, tier).toContain('governed: true');
+    }
   });
   it('S6 P3a：activation 声明形状 + lazy 与 eager 互斥（资源型插件的副作用只能在激活时启动）', () => {
     // 合法：lazy / resources（闭集）/ exclusive（资源实例名）
@@ -152,10 +171,16 @@ describe('manifest 校验（zod 单一来源）', () => {
     expect(validateManifest({ ...HELLO_MANIFEST, activation: { resources: ['gpu'] } }).ok).toBe(false);
     expect(validateManifest({ ...HELLO_MANIFEST, activation: { bogus: 1 } }).ok).toBe(false);
     expect(validateManifest({ ...HELLO_MANIFEST, activation: { exclusive: [''] } }).ok).toBe(false);
-    // lazy:true 与 mcpServers[].lifecycle="eager" 互斥（那正是 apply 期起进程）
-    const EAGER = { name: 's', transport: 'stdio', command: 'node', lifecycle: 'eager' } as const;
-    expect(validateManifest({ ...HELLO_MANIFEST, activation: { lazy: true }, mcpServers: [EAGER] }).ok).toBe(false);
-    // 非 eager / 无 activation 块 = 放行（缺省 = P3 前语义，kill switch）
+    // 受治进程只剩一档：activation.lazy × governed:true 合法（原先的 eager 互斥
+    // refine 随 lifecycle 退役一并删除——「apply 期起进程」这个口子已不存在）
+    expect(
+      validateManifest({
+        ...HELLO_MANIFEST,
+        activation: { lazy: true },
+        mcpServers: [{ name: 's', transport: 'stdio', command: 'node', governed: true }],
+      }).ok,
+    ).toBe(true);
+    // 无 activation 块 = 放行（缺省 = P3 前语义，kill switch）
     expect(
       validateManifest({
         ...HELLO_MANIFEST,
@@ -163,7 +188,6 @@ describe('manifest 校验（zod 单一来源）', () => {
         mcpServers: [{ name: 's', transport: 'stdio', command: 'node' }],
       }).ok,
     ).toBe(true);
-    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [EAGER] }).ok).toBe(true);
   });
 });
 
@@ -587,7 +611,7 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
           version: '1.0.0',
           entry: 'entry.js',
           dataDir: true,
-          mcpServers: [{ name: 'engine', transport: 'stdio', command: './bin/engine', lifecycle: 'lazy' }],
+          mcpServers: [{ name: 'engine', transport: 'stdio', command: './bin/engine', governed: true }],
         },
       }),
       importModule: async () => ({
@@ -1220,7 +1244,7 @@ describe('S6 P3a：activation 声明-接线对齐（登记 ≠ 激活）', () =>
     expect(log).toEqual(['start', 'stop']);
   });
 
-  it('声明 activation.lazy 的 MCP 插件：懒激活由治理器 lifecycle 承担（不要求 apply 再登记）', async () => {
+  it('声明 activation.lazy 的 MCP 插件：懒激活由治理器 governed 承担（不要求 apply 再登记）', async () => {
     const root = new Context();
     await root.plugin(compositionServicesPlugin);
     await loadExternalPlugins(root, {
@@ -1229,7 +1253,7 @@ describe('S6 P3a：activation 声明-接线对齐（登记 ≠ 激活）', () =>
         ...routes,
         [ORIGIN + '/acme/res/manifest.json']: {
           ...LAZY_MANIFEST,
-          mcpServers: [{ name: 'engine', transport: 'stdio', command: 'node', lifecycle: 'lazy' }],
+          mcpServers: [{ name: 'engine', transport: 'stdio', command: 'node', governed: true }],
         },
       }),
       importModule: async () => ({ default: { name: 'acme/res', apply() {} } }),
