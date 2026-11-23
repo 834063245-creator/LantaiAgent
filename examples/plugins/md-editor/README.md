@@ -22,6 +22,13 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 只裸导一个 `apply` 会报「插件对象 name (undefined) 与 manifest.name 不一致」——装载失败。
 （对位 `notes-app/entry.js` 同款。）
 
+## 0.2.0（批 3）：接上宿主文档
+
+- `md_open(path)` 工具：Agent（或你在对话里）让它**在窗里打开一份宿主文档**——宿主开窗、签发令牌、帧把令牌推进窗；
+- 窗凭令牌 `doc.read`，**拿不到路径以外的任何文件系统能力**；
+- 保存走 `doc.save` 交单 → 宿主算差分 → **改稿单确认后**才写回磁盘；退回则一个字不写；
+- 窗已开着时再 `md_open` 另一份：令牌重签并直接推到同一窗（不重载 iframe）。
+
 ## 这一版能做什么
 
 - 在**插件自己的数据地盘**里新建 / 编辑 / 保存 / 删除 `.md`；
@@ -33,7 +40,7 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 
 | 不做 | 为什么 | 留给哪一步 |
 |---|---|---|
-| 打开卷里 / 工作区里的文档 | 窗能拿到的 fs 只有本插件数据地盘；碰宿主文档要先有**受治文档通道**（`docToken` + 能力声明 + 保存过审） | 第 2 步 |
+| ~~打开卷里 / 工作区里的文档~~ | **0.2.0 已接上**：manifest 声明 `app.documents`，Agent 经 `md_open(path)` 让宿主开窗并签发令牌；保存走改稿单（宿主算差分、用户点头才写） | 已交付（批 3） |
 | 工具口 / 受治进程 | 与「窗 + 桥 + 生命周期」这条缝无关，只会加噪音 | 需要时（Agent 驱动） |
 | Monaco / CodeMirror | 窗内是自包含 HTML、无打包器；引重依赖要先给插件加构建链——那是「重依赖」那条缝 | 第 3 步 |
 

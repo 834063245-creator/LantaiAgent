@@ -1,9 +1,10 @@
 # 插件文档通道（受治文档面）— 施工单
 
-> **状态**：**批 1 + 批 2 已落地**（2026-11-23，契约 v70 → v71）。
+> **状态**：**三批全部落地**（2026-11-23，契约 v70 → v71；批 3 只动插件与设施，未改契约面）。
 > 批 1 = 只读打通（`AppDecl.documents` + `openPluginWindow` 文档载荷 + `doc.read` + `doc-open`，令牌表 `state/plugin-document-store.ts`）；
 > 批 2 = 写回过审（`doc.save` 交单 → 宿主算差分 → 确认面 → 批准才写；`doc-saved` / `doc-rejected` 回推；
-> `window-bridge.ts` 同批入册契约面）。**批 3（纸面入口 + `md-editor` 接入）待办**——做完才能在真机上看到实物。
+> `window-bridge.ts` 同批入册契约面）；
+> 批 3 = 入口 + 插件接入（`md_open` 工具 → 宿主开窗签令牌；窗内 `doc-open` / `doc.save` 已接）。**真机待验**。
 > 前置：软件级插件第 1 步 `md-editor` 已交付并提交
 > （`examples/plugins/md-editor/`，窗 + 桥 + 数据地盘回归基线）。
 > **来由**：用户 2026-12 拍板「编辑器以**窗**的形态住进架阁」——第 1 步证明窗内只能
@@ -59,7 +60,7 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 > 实落：令牌表 `src/state/plugin-document-store.ts`（一窗一文档、绑 windowId + pluginName、关窗/换文档/卸载整窗回收）；
 > 桥面三道闸（能力声明 → 令牌存在 → 令牌绑窗）与 `{ path, text }` 回执；帧在 `bridge-ready` 后推 `doc-open`。
 > 测试 `tests/plugin-window-document.test.ts`（5 例：正路 / 未声明零读盘 / 无令牌·撤销 / 跨窗串用 / 缺 token）。
-> **已知限制**：窗已开着时再带新文档只重签令牌、不重推 `doc-open`（需重开窗才收到）——批 3 接入口时一并解决。
+> ~~已知限制：窗已开着时再带新文档不重推 `doc-open`~~ ——批 3 已解决（设施对已开窗直接推 `doc-open`）。
 
 | 文件 | 动作 |
 |---|---|
@@ -81,7 +82,12 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
   确认后走既有写通道落盘；拒绝则回 `{ status: "rejected" }`，窗内保持脏标记。
 - 首次保存走审批门（既有 `dynamic-runner` approval 同族语义），不做「永久信任」灰色开关。
 
-### 批 3 · 入口与插件侧
+### 批 3 · 入口与插件侧——**已落地 2026-11-23**
+
+> 实落：`md-editor` 0.2.0 声明 `app.documents` + 工具 `md_open(path)`（Agent 命令窗口打开宿主文档，
+> 与 notes-app 的 `notes_open` 同款分工：工具语义归插件、窗口设施归宿主）；窗内接 `doc-open` / `doc.save`，
+> 保存结果按 `pending-review` / `doc-saved` / `doc-rejected` 三态走；窗已开着时设施直接推新令牌。
+> 入口形态 = **Agent 驱动**（`md_open`），不是纸面按钮——纸面「用文卷打开」需要块级动作，**留待后续单独立项**。
 
 - 纸面/引用处加「用文卷打开」入口（从卷里/工作区取当前文档）；
 - `examples/plugins/md-editor/` 接入 `doc-open` 与 `doc.save`，README 撤掉「刻意不做」里的对应行。

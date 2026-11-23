@@ -17,6 +17,7 @@ import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plug
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../state/plugin-window-store';
 import { notifyPluginWindowClosed, notifyPluginWindowOpened } from './mcp-bridge';
 import type { AppDecl, PluginWindowMode } from './types';
+import { postBridgeEventToWindow } from './window-bridge';
 
 /** manifest.app entry → 窗内容入口 URL：`./app/index.html` 归一为
  *  `<origin>/<插件名>/app/index.html`（`./` 前缀已由 schema 钉死）。 */
@@ -73,7 +74,14 @@ export function openPluginWindow(pluginName: string, opts?: { document?: { path:
   const result = state.openWindow(pluginName);
   if (!result) return null;
   if (result.opened) notifyPluginWindowOpened(pluginName);
-  if (doc) issueDocumentGrant(result.windowId, pluginName, doc.path);
+  if (doc) {
+    const grant = issueDocumentGrant(result.windowId, pluginName, doc.path);
+    // 窗已开着（聚焦路径）：iframe 不重载，帧那条 bridge-ready 不会再发一次 ⇒
+    // 由设施直接把 doc-open 推到同一窗（新开的窗由帧在 bridge-ready 后自己取）。
+    if (!result.opened) {
+      postBridgeEventToWindow(result.windowId, 'doc-open', { docToken: grant.docToken, path: grant.path });
+    }
+  }
   return result.windowId;
 }
 

@@ -135,6 +135,14 @@ window.addEventListener("message", (ev) => {
   if (d.op === "event") {
     if (d.event === "bridge-ready") markReady();
     if (d.event === "window-closing") foot(dirty ? "关窗时还有未保存改动（本次未拦截）" : "关窗", true);
+    // 宿主文档通道（批 3）：开窗时宿主推来令牌 + 真路径 → 凭令牌读正文。
+    if (d.event === "doc-open") openHostDoc(d.docToken, d.path);
+    if (d.event === "doc-saved") {
+      if (hostDoc && d.reviewId === hostDoc.reviewId) { setDirty(false); foot("已写入宿主文档 · " + d.path, false); }
+    }
+    if (d.event === "doc-rejected") {
+      if (hostDoc) foot("改稿单未通过（" + (d.reason === "rejected" ? "你退回了" : d.reason) + "）——正文仍在你这里，未写盘", true);
+    }
   }
 });
 
@@ -174,6 +182,8 @@ const listEl = $("list"), docEl = $("doc"), dirtyEl = $("dirty"), footEl = $("fo
 const editorEl = $("editor"), viewEl = $("view"), saveEl = $("save"), previewEl = $("preview");
 
 let current = null;
+/** 宿主文档模式：有 hostDoc 时保存走改稿单（doc.save），否则写自己的数据地盘。 */
+let hostDoc = null;
 let dirty = false;
 
 function foot(text, isErr) {
@@ -265,9 +275,26 @@ async function refresh() {
   foot("地盘 " + docs.length + " 份 · 改动只写插件自己的目录");
 }
 
+async function openHostDoc(docToken, path) {
+  if (dirty && current && !confirm("「" + current + "」有未保存改动，切走会丢。继续？")) return;
+  try {
+    const res = await call("doc.read", { docToken: docToken });
+    hostDoc = { docToken: docToken, path: (res && res.path) || path, reviewId: null };
+    current = null;
+    docEl.textContent = (res && res.path) || path;
+    editor.setText((res && res.text) || "");
+    setDirty(false);
+    paintPreview();
+    foot("宿主文档（只读令牌）· 保存会先出改稿单", false);
+  } catch (e) {
+    foot("打不开这份宿主文档：" + e.message, true);
+  }
+}
+
 async function openDoc(name) {
   if (dirty && current && !confirm("「" + current + "」有未保存改动，切走会丢。继续？")) return;
   const text = await call("fs.read", { path: name });
+  hostDoc = null;
   current = name;
   docEl.textContent = name;
   editor.setText(typeof text === "string" ? text : "");
@@ -277,6 +304,18 @@ async function openDoc(name) {
 }
 
 async function save() {
+  // 宿主文档：走改稿单（宿主算差分 → 用户点头才写）；自家文档：直接写数据地盘。
+  if (hostDoc) {
+    const res = await call("doc.save", { docToken: hostDoc.docToken, content: editor.getText() });
+    if (res && res.status === "pending-review") {
+      hostDoc.reviewId = res.reviewId;
+      foot("已交改稿单（+ " + res.added + " / − " + res.removed + "）——等宿主确认", false);
+    } else if (res && res.status === "unchanged") {
+      setDirty(false);
+      foot("正文无变化，没有交单", false);
+    }
+    return;
+  }
   if (!current) return;
   await call("fs.write", { path: current, content: editor.getText() });
   setDirty(false);
