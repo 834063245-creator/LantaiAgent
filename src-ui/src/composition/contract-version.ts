@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 76;
+export const OPEN_SURFACE_CONTRACT_VERSION = 77;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v77（2026-11-23）**工作区授权（P1）：`manifest.app.workspace` + 桥 `ws.list` / `ws.read`**：
+ *  声明 `app.workspace: true` 的软件型插件开窗即获**工作区根只读**根令牌（用户
+ *  2026-11-23 拍板：根只读默认，不做「仅此文件」保守档）；桥面只收
+ *  `{ rootToken, relPath }`，绝对路径拼接/`..` 围栏/忽略规则全在宿主，
+ *  `ws.read` 顺带签发文档令牌（保存仍走既有 `doc.save` 改稿单）。不声明 =
+ *  桥里没有 `ws.*`、也不签发根令牌（kill switch，纯增量）。同版 `doc.read`
+ *  回执补 `rev`、`doc-saved` 事件补 `rev`（冲突检测/外部变更用，纯尾键）。
+ *  守护 `tests/plugin-workspace.test.ts` + `tests/plugin-workspace-path.test.ts`。
  *  v76（2026-11-23）**v75 收尾：契约面只有「文件位置 / 注释」变更，形状零变更**——
  *  `manifest.app.size` 的尺寸围栏（`APP_WINDOW_SIZE_MIN/MAX`）仍在 `plugins/types.ts`，
  *  消费它的宿主几何算式模块从 `plugins/window-metrics.ts` 迁到 `state/window-metrics.ts`

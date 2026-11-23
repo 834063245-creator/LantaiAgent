@@ -16,8 +16,14 @@ import { useShellStore } from '../app/shell-store';
 import type { Context } from '../cordis';
 import { resolveFileReference } from '../paper/file-ref';
 import { cancelDocumentReviewsForWindow } from '../state/plugin-document-review';
-import { issueDocumentGrant, revokeDocumentGrantsForWindow } from '../state/plugin-document-store';
+import {
+  issueDocumentGrant,
+  issueWorkspaceGrant,
+  pendingWorkspaceGrant,
+  revokeDocumentGrantsForWindow,
+} from '../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../state/plugin-window-store';
+import { normalizeWorkspaceRoot } from '../state/plugin-workspace-path';
 import { loadWindowGeometry } from '../state/window-geometry';
 import { clampWindowSize, PLUGIN_WINDOW_DEFAULT_H, PLUGIN_WINDOW_DEFAULT_W } from '../state/window-metrics';
 import { notifyPluginWindowClosed, notifyPluginWindowOpened } from './mcp-bridge';
@@ -46,6 +52,7 @@ export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, o
     mode: app.mode ?? 'floating',
     title: app.title ?? pluginName,
     documents: app.documents === true,
+    workspace: app.workspace === true,
     // v75：manifest 声明首选尺寸——只在用户没拖过时生效（落盘几何优先，见
     // openPluginWindow 的 seed 组装）。
     ...(app.size ? { size: app.size } : {}),
@@ -69,8 +76,16 @@ export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, o
 
 /** 开窗：无定义 → null（插件未声明 app 或已卸载）；已开 → 聚焦返回原窗
  *  （v1 每插件单窗）。真开新窗才通知治理器（with-window 拉起 / lazy 阻塞
- *  空闲回收）——窗口计数与真实开窗恒等，聚焦不虚增。 */
-export function openPluginWindow(pluginName: string, opts?: { document?: { path: string } }): string | null {
+ *  空闲回收）——窗口计数与真实开窗恒等，聚焦不虚增。
+ *
+ *  P1 工作区授权：声明 `app.workspace` 的插件开窗即签发**工作区根只读**根令牌
+ *  （用户 2026-11-23 拍板：工作区根只读默认，不要求「仅此文件」升级）。
+ *  根 = opts.workspace.root > 当前工作区 `projectPath`；无根则只开窗、不发根令牌。
+ *  同窗同根复用既有根令牌（不撤已有文档令牌）；换根才整窗重签。 */
+export function openPluginWindow(
+  pluginName: string,
+  opts?: { document?: { path: string }; workspace?: { root?: string } },
+): string | null {
   const state = usePluginWindowStore.getState();
   const def = state.defs[pluginName];
   // 文档载荷只在插件声明 app.documents 时受理（能力不是权限：未声明 = 载荷被
@@ -79,11 +94,17 @@ export function openPluginWindow(pluginName: string, opts?: { document?: { path:
   if (requested && def?.documents !== true) {
     console.warn(`[plugin-window] ${pluginName} 未声明 app.documents——文档载荷被忽略`);
   }
+  const projectPath = useShellStore.getState().projectPath;
+  const requestedRoot = opts?.workspace?.root;
+  const workspaceRoot = def?.workspace === true ? normalizeWorkspaceRoot(requestedRoot ?? projectPath ?? '') : '';
+  if (opts?.workspace && def?.workspace !== true) {
+    console.warn(`[plugin-window] ${pluginName} 未声明 app.workspace——工作区载荷被忽略`);
+  }
   // 相对路径按工作区根解析（2026-11-23 相对路径批）——设施是**所有开窗入口**的共同收口：
   // 仓库相对路径在会话里是最自然的写法，走到这里若还是相对串，Rust canonicalize 必失败。
   const doc =
     def?.documents === true && requested
-      ? { path: resolveFileReference(requested.path, useShellStore.getState().projectPath) ?? requested.path }
+      ? { path: resolveFileReference(requested.path, projectPath) ?? requested.path }
       : undefined;
   /* 起手几何（优先级从高到低）：用户拖过的落盘几何 > manifest.app.size > 缺省
      460×360。两个来源都夹进当前视口——上次关机时的分辨率/显示器未必还是现在这台。
@@ -96,12 +117,35 @@ export function openPluginWindow(pluginName: string, opts?: { document?: { path:
   const result = state.openWindow(pluginName, seed);
   if (!result) return null;
   if (result.opened) notifyPluginWindowOpened(pluginName);
+  let workspaceGrant = null;
+  let workspaceChanged = false;
+  if (workspaceRoot) {
+    const existing = pendingWorkspaceGrant(result.windowId);
+    if (existing && existing.rootPath === workspaceRoot) {
+      workspaceGrant = existing;
+    } else {
+      workspaceGrant = issueWorkspaceGrant(result.windowId, pluginName, workspaceRoot);
+      workspaceChanged = true;
+    }
+    if (!result.opened && workspaceChanged) {
+      postBridgeEventToWindow(result.windowId, 'workspace-open', {
+        rootToken: workspaceGrant.rootToken,
+        rootPath: workspaceGrant.rootPath,
+      });
+    }
+  }
   if (doc) {
-    const grant = issueDocumentGrant(result.windowId, pluginName, doc.path);
+    const grant = issueDocumentGrant(result.windowId, pluginName, doc.path, {
+      rootToken: workspaceGrant?.rootToken ?? null,
+    });
     // 窗已开着（聚焦路径）：iframe 不重载，帧那条 bridge-ready 不会再发一次 ⇒
     // 由设施直接把 doc-open 推到同一窗（新开的窗由帧在 bridge-ready 后自己取）。
     if (!result.opened) {
-      postBridgeEventToWindow(result.windowId, 'doc-open', { docToken: grant.docToken, path: grant.path });
+      postBridgeEventToWindow(result.windowId, 'doc-open', {
+        docToken: grant.docToken,
+        path: grant.path,
+        ...(workspaceGrant ? { rootToken: workspaceGrant.rootToken } : {}),
+      });
     }
   }
   return result.windowId;

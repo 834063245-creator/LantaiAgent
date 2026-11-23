@@ -40,7 +40,7 @@ import {
 } from 'react';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
-import { pendingDocumentGrant } from '../../state/plugin-document-store';
+import { pendingDocumentGrant, pendingWorkspaceGrant } from '../../state/plugin-document-store';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
 import { saveWindowGeometry } from '../../state/window-geometry';
 import { clampWindowPosition, clampWindowSize, type ViewportSize, type WindowSize } from '../../state/window-metrics';
@@ -93,14 +93,27 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     const cw = iframeRef.current?.contentWindow;
     if (!cw) return;
     boundWindowRef.current = cw;
-    bindBridgeWindow(cw, instance.pluginName, instance.windowId, undefined, { documents: def.documents });
+    bindBridgeWindow(cw, instance.pluginName, instance.windowId, undefined, {
+      documents: def.documents,
+      workspace: def.workspace === true,
+    });
     postBridgeEvent(cw, 'bridge-ready', instance.windowId);
-    // 文档通道（批 1）：开窗时带过文档 ⇒ 就绪后推令牌（窗凭令牌 doc.read，
-    // 宿主从不把路径交给它去拼——路径只在这条事件里随令牌同行，窗拿到的仍只是
-    // 「你要读哪一页」的标识而非文件系统权限）。
+    // 工作区授权（P1）：先推根令牌（窗据此列树/读文件），再推文档令牌。
+    // 两者都是「就绪后推」——窗内 main.js 在 bridge-ready 之前只连监听，不取数。
+    const workspaceGrant = def.workspace === true ? pendingWorkspaceGrant(instance.windowId) : null;
+    if (workspaceGrant) {
+      postBridgeEvent(cw, 'workspace-open', instance.windowId, {
+        rootToken: workspaceGrant.rootToken,
+        rootPath: workspaceGrant.rootPath,
+      });
+    }
     const grant = def.documents ? pendingDocumentGrant(instance.windowId) : null;
     if (grant) {
-      postBridgeEvent(cw, 'doc-open', instance.windowId, { docToken: grant.docToken, path: grant.path });
+      postBridgeEvent(cw, 'doc-open', instance.windowId, {
+        docToken: grant.docToken,
+        path: grant.path,
+        ...(workspaceGrant ? { rootToken: workspaceGrant.rootToken } : {}),
+      });
     }
   };
 

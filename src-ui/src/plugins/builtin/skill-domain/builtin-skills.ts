@@ -138,7 +138,7 @@ manifest.json 字段（\`name\`/\`version\`/\`entry\` 必填）：
 | \`tools\` | 声明式工具（§2.4） |
 | \`mcpServers\` | 声明式 MCP 挂接（§2.6） |
 | \`dataDir\` | \`true\` = 装载即分配专属数据目录（\`<数据根>/<插件名>/ \`，经宿主桥 fs 面读写，卸载随插件回收进 .trash） |
-| \`app\` | **软件级插件**（§2.7）：窗内容入口 + 窗模式——\`entry\`（插件自包含 HTML，\`./\` 相对路径）**或** \`url\`（环回 http(s) 远端页；仅本机、禁凭据）二选一；\`mode\`（\`floating\` 缺省 / \`dock\` / \`fullscreen\`——后两者**冻结**：0 消费者，窗口管理重做时再定）；\`title\`（窗书眉标题，缺省 = 插件名）；\`documents\`（\`true\` 才开文档通道，见 §2.7）；\`size\`（\`{ w, h }\` 起手窗尺寸，v75：只对 floating，320–2400 × 240–1600，用户拖过则以用户几何为准） |
+| \`app\` | **软件级插件**（§2.7）：窗内容入口 + 窗模式——\`entry\`（插件自包含 HTML，\`./\` 相对路径）**或** \`url\`（环回 http(s) 远端页；仅本机、禁凭据）二选一；\`mode\`（\`floating\` 缺省 / \`dock\` / \`fullscreen\`——后两者**冻结**：0 消费者，窗口管理重做时再定）；\`title\`（窗书眉标题，缺省 = 插件名）；\`documents\`（\`true\` 才开文档通道，见 §2.7）；\`workspace\`（\`true\` 才签发工作区根只读令牌、桥面才认 \`ws.list\` / \`ws.read\`，v77）；\`size\`（\`{ w, h }\` 起手窗尺寸，v75：只对 floating，320–2400 × 240–1600，用户拖过则以用户几何为准） |
 | \`engines\` | 宿主兼容声明（v74）：\`{ lantai: '>=1.0.0' }\`（semver range）——**声明了就必须满足**，不满足或区间非法 = 具名拒载；宿主版本未知（开发/测试）只记 warning。**用了新字段就声明它**（旧宿主读新嵌套键会整份拒载） |
 | \`activation\` | \`{ lazy?, resources?, exclusive? }\`（§3 尾注「登记 ≠ 激活」）：副作用挪到**组合装配期**按引用计数启停；整块缺席 = 旧语义（登记即激活） |
 | \`displace\` | \`true\` = 位移式装载：与同名内置插件共享行 id（贡献面单活互换）；第三方同名产物声明 true 可覆盖同名内置插件 |
@@ -353,11 +353,19 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
   宿主开窗时签发一份**令牌**（\`windows.open(名字, { document: { path } })\` 或
   \`windows.openWith(path)\`），窗只拿令牌、**不拿路径**（路径解释权只在宿主）：
   · 窗内收事件 \`doc-open\`（\`{ docToken, path }\`）→ 调 \`doc.read({ docToken })\`
-    读正文（回 \`{ path, text }\`）；
-  · 保存调 \`doc.save({ docToken, content })\`——**不直接落盘**：宿主算差分、出**改稿单**
+    读正文（回 \`{ path, text, rev }\`）；
+  · 保存调 \`doc.save({ docToken, content, baseRev? })\`——**不直接落盘**：宿主算差分、出**改稿单**
     给用户点头，回执 \`pending-review\`（带 reviewId / added / removed / diff）；批准后窗收
-    \`doc-saved\`，退回或写盘失败收 \`doc-rejected\`（带 reason）。同一扇窗同时只许一张待审单。
+    \`doc-saved\`（带 rev），退回或写盘失败收 \`doc-rejected\`（带 reason）。同一扇窗同时只许一张待审单；
+    \`baseRev\` 与磁盘不一致回 \`conflict\`（不写盘）。
   · 未声明 \`documents\` ⇒ 桥里没有 \`doc.*\`（kill switch），载荷被忽略并 warn（不静默）。
+- **工作区授权（v77——打开了「工作区」这扇门）**：声明 \`app.workspace: true\` 才签发
+  **工作区根只读**令牌（开窗即签，根 = 当前工作区）。窗内收事件 \`workspace-open\`
+  （\`{ rootToken, rootPath }\`）；桥面只收 **根令牌 + 相对路径**：
+  · \`ws.list({ rootToken, relPath })\` → \`{ entries: [{ name, is_dir, size, relPath }] }\`（一层）；
+  · \`ws.read({ rootToken, relPath })\` → \`{ text, rev, docToken, relPath }\`——顺带签发文档令牌，
+    保存继续走 \`doc.save\` 改稿单。
+  绝对路径拼接 / \`..\` 围栏 / 忽略规则全在宿主；未声明 \`workspace\` ⇒ 桥里没有 \`ws.*\`。
 - **谁被「打开文件」选中**：注册面里按名字排序**第一个**声明 \`app.documents\` 的插件；
   没有 ⇒ 状态栏具名提示「没有能打开文档的软件插件（插件需声明 app.documents）」。
 - **起手尺寸（v75）**：\`app.size: { w, h }\` 只对 floating 生效（320–2400 × 240–1600）；

@@ -66,10 +66,11 @@ describe('插件文档通道：令牌化只读（批 1）', () => {
     await vi.waitFor(() => expect(cw.postMessage).toHaveBeenCalledTimes(1));
     const payload = cw.postMessage.mock.calls[0][0] as {
       ok: boolean;
-      result: { path: string; text: string };
+      result: { path: string; text: string; rev: string };
     };
     expect(payload.ok).toBe(true);
-    expect(payload.result).toEqual({ path: '/work/docs/a.md', text: 'TEXT:/work/docs/a.md' });
+    expect(payload.result).toMatchObject({ path: '/work/docs/a.md', text: 'TEXT:/work/docs/a.md' });
+    expect(payload.result.rev).toMatch(/^[0-9a-z]+\.[0-9a-f]{8}$/);
     expect(readDocument).toHaveBeenCalledWith('/work/docs/a.md');
   });
 

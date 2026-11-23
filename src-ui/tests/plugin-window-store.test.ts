@@ -113,6 +113,14 @@ describe('S3 窗口原语：manifest.app schema', () => {
     expect(validateManifest({ ...HELLO, app: { url: 'http://127.0.0.1:1/', size: { w: 900, h: 700 } } }).ok).toBe(true);
   });
 
+  it('workspace（v77 工作区授权）：布尔可选，非布尔拒', () => {
+    const ok = validateManifest({ ...HELLO, app: { entry: './a.html', workspace: true } });
+    expect(ok.ok).toBe(true);
+    expect(ok.ok ? ok.manifest.app?.workspace : undefined).toBe(true);
+    expect(validateManifest({ ...HELLO, app: { entry: './a.html', workspace: false } }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO, app: { entry: './a.html', workspace: 'yes' } }).ok).toBe(false);
+  });
+
   it('缺省不声明 = 行为不变（无 app 字段照常装载）', () => {
     expect(validateManifest(HELLO).ok).toBe(true);
   });

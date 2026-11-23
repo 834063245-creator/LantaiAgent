@@ -45,6 +45,9 @@ export interface PluginWindowDef {
   /** 文档通道（manifest.app.documents 折算，批 1 只读）：true 才允许开窗带文档
    *  载荷、桥面才解析 `doc.read`。判定单一真源在本字段（渲染处不重推）。 */
   documents: boolean;
+  /** 工作区授权（manifest.app.workspace 折算，P1）：true 才签发根令牌、
+   *  桥面才解析 `ws.list` / `ws.read`。 */
+  workspace?: boolean;
   /** manifest.app.size 折算的首选初始尺寸（v75）——**只在用户没拖过时**生效；
    *  用户拖过的几何由 window-facility 从 localStorage 恢复并优先传进来。 */
   size?: WindowSize;

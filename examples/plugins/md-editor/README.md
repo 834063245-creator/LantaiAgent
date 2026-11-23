@@ -1,10 +1,13 @@
-# md-editor — 软件级插件（第 1 步回归基线）
+# 文卷（md-editor）— 软件型插件 · 0.4.0
 
-对位范本：[`../notes-app/`](../notes-app/)（四件套闭环全量）。本插件**只取其中一件**——
-窗（件 A）+ 数据地盘（件 B），其余刻意不做，用来当第 1 步实验的**干净载荷**：
+兰台的案头文档编辑器：一扇窗里读、改、存。对位范本仍是
+[`../notes-app/`](../notes-app/)，本插件取「窗 + 数据地盘 + 宿主文档通道 + 工作区授权」四件，
+把编辑器本身做成产品。
 
-> 第 1 步要证的是「一个编辑器形态的软件，能不能以窗的形态住进架阁、开得起来、关得干净」。
-> 证的不是编辑器好不好用——所以这里零依赖、无打包、无后端进程、不碰宿主文档。
+> **0.4.0 的边界**：卷库 = 插件自己的数据地盘；工作区 = **只读根 + 树 + 多文档标签**
+> （内容搜索 / 相对链接跳转 / 相对图片 / Agent hunk 仍在后续批）。
+> **宿主要求**：`app.workspace` 是开放面契约 v77 的新字段；旧宿主（v76 及以前）
+> 读这个 manifest 会整份拒载——先升级/重建兰台，再安装本版。
 
 ## 装上看一眼
 
@@ -14,49 +17,105 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 
 然后重启兰台 → 顶部「架阁」→ **软件型**页 → 「文卷」。
 （装载面 = `~/.lantai/plugins/<name>/`；数据地盘 = `~/.lantai/plugins-data/md-editor/`。）
+从会话里点开一份宿主文档时，宿主会同时签发**工作区根只读令牌**，左侧「工作区」页
+直接出现当前工作区的树。
+
+## 0.4.0 能做什么
+
+**读**
+- 从会话里引用到的文件点一下，窗内以**阅读模式**打开；排版按纸面（宋体正文、版心、行宽）。
+- **工作区树**：左侧「工作区」页懒加载当前工作区目录（点目录展开、点文件开标签）。
+- **多文档标签**：工作区文件 + 宿主文档可同时开多份；每份独立令牌，互不顶掉。
+- Markdown 预览：GFM 表格、任务列表、脚注、删除线、代码高亮（highlight.js）、frontmatter 卡片。
+- 左侧大纲（ATX + Setext 标题，跳过代码块），点击跳行；光标/滚动时高亮当前段。
+- 夜读 / 纸白双主题；卷库宽度、大纲宽度、打开的文档、滚动位置跨重启恢复。
+
+**改**
+- CodeMirror 6：Markdown 语法、行号、自动换行、撤销历史、查找替换（`Ctrl/Cmd+F`）、多光标。
+- 阅读 / 编辑 / 分栏三态；`Ctrl/Cmd+E` 切换。
+- 快捷键：`Ctrl/Cmd+S` 保存、`Ctrl/Cmd+W` 关标签、`Ctrl/Cmd+P` 快速打开、
+  `Ctrl/Cmd+K` 命令面板、`Ctrl/Cmd+B` 卷库、`Ctrl/Cmd+1..9` 切标签。
+- 关闭不丢正文。
+
+**存**
+- 自家卷库：`fs.write` 直接落盘。
+- 宿主文档 / 工作区文件：`doc.save` 交改稿单 → 宿主算差分 → 用户确认才写；窗内保留正文，
+  等 `doc-saved` / `doc-rejected` 回推。带 `baseRev` 时磁盘被外部改过会回 `conflict`，
+  不静默覆盖。
+- **草稿自动保存**：每次改动 650ms 后写 `drafts/`；关窗/崩溃/切标签都不丢，
+  重开自动恢复。
+- 外部变更：窗口重新获得焦点时比对磁盘版本；干净就自动同步，脏就出横幅
+  「用磁盘版 / 保留我的」。
+
+**卷库**
+- 数据地盘里的 `.md` / `.markdown` / `.txt` 列表、筛选、新建、右键删除。
+- 最近打开（本地 + 工作区 + 宿主；宿主条目需从会话重新点开）。
+
+## 这一版刻意不做 / 下一批
+
+| 不做 | 为什么 | 留给哪批 |
+|---|---|---|
+| 工作区内容搜索 / 快速打开全工作区 | 需要宿主 `ws.search`（内容搜索走 `search_cap`） | P1c 余项 |
+| Markdown 里的相对图片 / 相对链接跳宿主文档 | 需要 `doc.asset` / `doc.follow`（根内解析仍归宿主） | P1c 余项 |
+| PDF / Office / Excel 预览 | DSH 同款能力是几 MB 级分块；兰台先「用系统程序打开」，不追这个性价比 | P3 |
+| 批注 / Agent 改稿 hunk / 选段问 Agent | 需要宿主 `doc-proposed` 与创作坞插入通道 | P2 |
+
+## 编辑器内核是适配点（0.3 已换 CodeMirror 6）
+
+`app/js/editor.js` 是窗内唯一知道内核的地方；`app/vendor/lantai-editor.js` 是
+`build/vendor.mjs` 打出的单文件 ESM（CodeMirror 6 + markdown-it + DOMPurify +
+highlight.js），随插件提交，装插件仍然只需拷贝目录，不需要 npm。
+
+重新生成 vendor：
+
+```
+cd examples/plugins/md-editor/build
+npm install
+npm run build          # 压缩
+npm run build -- --dev # 不压缩（排查用）
+```
+
+许可证清单在同目录 `app/vendor/LICENSES.md`。
 
 ## 入口形状（硬契约，踩过一次）
 
 `entry.js` 必须 `export default { name, apply }`，且 `name` 与 `manifest.name` 逐字一致。
-装载器 `pickPluginObject` 优先取 `default` 导出，`isPluginShape` 只认 `{ name: string, apply: function }`；
-只裸导一个 `apply` 会报「插件对象 name (undefined) 与 manifest.name 不一致」——装载失败。
-（对位 `notes-app/entry.js` 同款。）
+装载器 `pickPluginObject` 优先取 `default` 导出，`isPluginShape` 只认
+`{ name: string, apply: function }`；只裸导一个 `apply` 会报
+「插件对象 name (undefined) 与 manifest.name 不一致」——装载失败。
 
-## 0.2.0（批 3）：接上宿主文档
+## 目录
 
-- `md_open(path)` 工具：Agent（或你在对话里）让它**在窗里打开一份宿主文档**——宿主开窗、签发令牌、帧把令牌推进窗；
-- 窗凭令牌 `doc.read`，**拿不到路径以外的任何文件系统能力**；
-- 保存走 `doc.save` 交单 → 宿主算差分 → **改稿单确认后**才写回磁盘；退回则一个字不写；
-- 窗已开着时再 `md_open` 另一份：令牌重签并直接推到同一窗（不重载 iframe）。
+```
+md-editor/
+├── manifest.json
+├── entry.js                 # md_open 工具 + 空 apply
+├── app/
+│   ├── index.html           # 窗结构
+│   ├── css/app.css          # 纸面主题 + 布局 + 夜读
+│   ├── js/
+│   │   ├── main.js          # 文档模型 / 卷库 / 草稿 / 桥事件 / 渲染
+│   │   ├── bridge.js        # postMessage 白名单桥客户端
+│   │   ├── editor.js        # CodeMirror 适配（唯一内核点）
+│   │   └── pure.js          # 无 DOM 纯函数（单测覆盖）
+│   └── vendor/
+│       ├── lantai-editor.js # 预构建 ESM（不要手改）
+│       └── LICENSES.md
+└── build/
+    ├── package.json
+    ├── vendor-entry.js
+    └── vendor.mjs
+```
 
-## 这一版能做什么
-
-- 在**插件自己的数据地盘**里新建 / 编辑 / 保存 / 删除 `.md`；
-- 极简预览（标题 / 粗斜 / 行内码 / 围栏 / 引用 / 链接）；
-- `Ctrl/Cmd+S` 保存，脏标记在标题栏左侧；
-- 关窗时若有未保存改动，会在页脚提示（不拦截——宿主只广播 `window-closing`）。
-
-## 这一版刻意不做
-
-| 不做 | 为什么 | 留给哪一步 |
-|---|---|---|
-| ~~打开卷里 / 工作区里的文档~~ | **0.2.0 已接上**：manifest 声明 `app.documents`，Agent 经 `md_open(path)` 让宿主开窗并签发令牌；保存走改稿单（宿主算差分、用户点头才写） | 已交付（批 3） |
-| 工具口 / 受治进程 | 与「窗 + 桥 + 生命周期」这条缝无关，只会加噪音 | 需要时（Agent 驱动） |
-| Monaco / CodeMirror | 窗内是自包含 HTML、无打包器；引重依赖要先给插件加构建链——那是「重依赖」那条缝 | 第 3 步 |
-
-## 编辑器内核是适配点
-
-`app/index.html` 里的 `mountEditor(el, { onChange, onSave })` 是唯一的内核接口
-（`getText` / `setText` / `setReadOnly` / `destroy`）。今天用原生 `textarea`——
-中文输入法天然稳、零依赖；将来换 CodeMirror 6 / Monaco **只改这一个函数**，
-桥协议、文档逻辑、生命周期一字不动。
-
-## 验收口径（五条，全绿才算这条路走得通）
+## 验收口径
 
 1. 装：目录出现在 `~/.lantai/plugins/`，架阁「软件型」页能看到「文卷」；
 2. 开：点开是一扇窗；关掉进程与内存回收（再开无残留状态）；
-3. 取：能在窗内新建并读到自己的文档（数据地盘生效）；
-4. 存：改完保存后重开仍在（写到 `~/.lantai/plugins-data/md-editor/`）；
-5. 拆：删掉插件目录 / 卸载后，窗、进程、数据目录都不留残渣。
-
-第 3、4 条只覆盖「插件自己的地盘」——**覆盖不到宿主文档**，这是第 2 步的活。
+3. 读：从会话引用点开宿主文档 → 阅读模式 → 大纲/预览正常；
+4. 树：左侧「工作区」页出现当前工作区目录；点目录展开、点文件开标签；
+5. 多文档：工作区文件与宿主文档可同时开多份，各自保存互不顶掉；
+6. 改：点「编辑」→ 改动 → 状态栏「草稿已存」→ 关窗重开，草稿恢复；
+7. 存：自家文档 `Ctrl/Cmd+S` 直接落盘；宿主/工作区文档弹改稿单，确认后才写；
+8. 变：在外部改同一文件 → 窗重新聚焦时同步（干净）或出横幅（脏）；
+9. 越界：工作区根外的文件不可见；相对路径 `..` 被宿主拒绝；
+10. 拆：删掉插件目录 / 卸载后，窗、进程、数据目录都不留残渣。

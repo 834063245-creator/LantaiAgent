@@ -87,6 +87,9 @@
         },
         "documents": {
           "type": "boolean"
+        },
+        "workspace": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

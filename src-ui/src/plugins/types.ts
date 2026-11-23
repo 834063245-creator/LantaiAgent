@@ -224,6 +224,10 @@ const AppDeclSchema = z
      *  「读 token X」，路径解释权只在宿主。不声明 ⇒ 桥里没有 `doc.*`、开窗也不
      *  接受 document 载荷（kill switch：不声明 = 不发生）。 */
     documents: z.boolean().optional(),
+    /** 工作区授权（P1）：声明 true 才签发根令牌、桥面才认 `ws.list` / `ws.read`。
+     *  窗只说「根令牌 + 相对路径」，绝对路径解析与围栏全在宿主。不声明 ⇒
+     *  没有 `ws.*`、也不签发根令牌（kill switch）。 */
+    workspace: z.boolean().optional(),
   })
   .refine((v) => (v.entry !== undefined) !== (v.url !== undefined), {
     message: 'app 必须且只能声明 entry（资产 HTML）或 url（环回远端页）之一',

@@ -11,7 +11,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { openFileWithPlugin } from '../src/plugins/window-facility';
-import { pendingDocumentGrant, resetDocumentGrantsForTests } from '../src/state/plugin-document-store';
+import {
+  pendingDocumentGrant,
+  pendingWorkspaceGrant,
+  resetDocumentGrantsForTests,
+} from '../src/state/plugin-document-store';
 import { usePluginWindowStore } from '../src/state/plugin-window-store';
 
 const DEF = {
@@ -51,6 +55,15 @@ describe('openFileWithPlugin：会话文件引用的宿主出口', () => {
     expect(openFileWithPlugin('docs/README.md')).toBe(true);
     const win = usePluginWindowStore.getState().windows[0];
     expect(pendingDocumentGrant(win.windowId)?.path).toBe('D:/ws/docs/README.md');
+  });
+
+  it('声明 app.workspace → 开窗即签发工作区根只读令牌（根 = 当前工作区）', () => {
+    useShellStore.getState().setProjectPath('D:/ws');
+    usePluginWindowStore.getState().registerAppDef({ ...DEF, workspace: true });
+    expect(openFileWithPlugin('docs/README.md')).toBe(true);
+    const win = usePluginWindowStore.getState().windows[0];
+    expect(pendingWorkspaceGrant(win.windowId)?.rootPath).toBe('D:/ws');
+    expect(pendingDocumentGrant(win.windowId)?.rootToken).toBe(pendingWorkspaceGrant(win.windowId)?.rootToken);
   });
 
   it('窗已开着再点另一份 → 仍 true，令牌换成新路径（换页不重开窗）', () => {

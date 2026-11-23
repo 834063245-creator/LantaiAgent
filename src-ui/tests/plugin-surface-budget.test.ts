@@ -57,7 +57,7 @@ const BUDGET = {
     'url',
   ],
   'tools 条目': ['description', 'name', 'parameters', 'readOnly'],
-  'app 声明': ['documents', 'entry', 'mode', 'size', 'title', 'url'],
+  'app 声明': ['documents', 'entry', 'mode', 'size', 'title', 'url', 'workspace'],
   'activation 声明': ['exclusive', 'lazy', 'resources'],
   'engines 声明': ['lantai'],
 } as const;

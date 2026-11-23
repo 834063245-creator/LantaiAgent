@@ -21,10 +21,11 @@
 // （名字 + rel 双围栏 + canonicalize 前缀），本桥只做形状校验。
 
 import { useShellStore } from '../app/shell-store';
-import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
+import { kernelListDirectoryFlat, kernelReadFile, kernelWriteFile } from '../rpc-contract';
 import { summarizeDocumentDiff } from '../state/plugin-document-diff';
 import { hasPendingReviewForWindow, requestDocumentReview } from '../state/plugin-document-review';
-import { resolveDocumentGrant } from '../state/plugin-document-store';
+import { issueDocumentGrant, resolveDocumentGrant, resolveWorkspaceGrant } from '../state/plugin-document-store';
+import { contentRevision, joinWorkspacePath, normalizeRelPath } from '../state/plugin-workspace-path';
 import type { PluginDataFs } from './data-fs';
 import { pluginDataFs } from './data-fs';
 
@@ -38,6 +39,7 @@ export const WINDOW_BRIDGE_PROTOCOL = 'lantai-plugin-bridge';
 export type WindowBridgeEvent =
   | 'bridge-ready'
   | 'window-closing'
+  | 'workspace-open'
   | 'doc-open'
   /** 改稿单裁决回推（批 2）：approve → 已落盘；reject → 用户退回或写盘失败（带 reason）。 */
   | 'doc-saved'
@@ -53,7 +55,10 @@ export type WindowBridgeMethod =
   /** 文档通道（批 1 只读）：凭令牌读宿主文档——只收 docToken，不收路径。 */
   | 'doc.read'
   /** 文档通道（批 2 写回）：交新正文 → 宿主出改稿单；回执只报 pending-review。 */
-  | 'doc.save';
+  | 'doc.save'
+  /** 工作区授权（P1）：根令牌 + 相对路径；`ws.read` 顺带签发文档令牌。 */
+  | 'ws.list'
+  | 'ws.read';
 
 /** 每窗依赖（fs/notify 可注入——测试隔离 RPC 通道；缺省真源）。 */
 export interface WindowBridgeDeps {
@@ -63,6 +68,10 @@ export interface WindowBridgeDeps {
   readDocument: (path: string) => Promise<string>;
   /** 写回宿主文档（只在改稿单被批准后调用；路径同样来自令牌解析）。 */
   writeDocument: (path: string, content: string) => Promise<void>;
+  /** 列一层工作区目录（P1；缺省 = kernelListDirectoryFlat）。 */
+  listDirectory?: (path: string) => Promise<Array<{ name: string; is_dir: boolean; size?: number }>>;
+  /** 读工作区文件（P1；缺省 = kernelReadFile——与 readDocument 同源）。 */
+  readWorkspaceFile?: (path: string) => Promise<string>;
 }
 
 export function defaultWindowBridgeDeps(): WindowBridgeDeps {
@@ -73,6 +82,8 @@ export function defaultWindowBridgeDeps(): WindowBridgeDeps {
     writeDocument: async (path, content) => {
       await kernelWriteFile(path, content);
     },
+    listDirectory: (path) => kernelListDirectoryFlat(path),
+    readWorkspaceFile: (path) => kernelReadFile(path),
   };
 }
 
@@ -82,6 +93,8 @@ interface BridgeBinding {
   deps: WindowBridgeDeps;
   /** 文档通道（manifest.app.documents 折算）：false ⇒ 桥面不认 doc.*（kill switch）。 */
   documents: boolean;
+  /** 工作区授权（manifest.app.workspace 折算）：false ⇒ 桥面不认 ws.*（kill switch）。 */
+  workspace: boolean;
 }
 
 /** 绑定表：contentWindow → 插件身份（容器侧权威——消息不携带插件名）。 */
@@ -167,9 +180,59 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
         throw new Error('doc.read 拒绝：插件未声明 app.documents（文档通道未开启）');
       }
       const docToken = reqStr(p.docToken, 'docToken');
-      const path = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
-      if (path == null) throw new Error('doc.read 拒绝：文档令牌无效或已过期');
-      return { path, text: await binding.deps.readDocument(path) };
+      const grant = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
+      if (grant == null) throw new Error('doc.read 拒绝：文档令牌无效或已过期');
+      const text = await binding.deps.readDocument(grant.path);
+      return { path: grant.path, text, rev: contentRevision(text) };
+    }
+    // 工作区授权（P1）：根令牌绑定窗/插件；窗只报 `relPath`，拼接与围栏在宿主。
+    // `ws.list` 不签发文档令牌（列目录不该膨胀令牌表）；`ws.read` 读一份文件时
+    // 顺带签发 docToken——后续保存走既有 doc.save 改稿单，不另开写通道。
+    case 'ws.list': {
+      if (!binding.workspace) {
+        throw new Error('ws.list 拒绝：插件未声明 app.workspace（工作区授权未开启）');
+      }
+      const rootToken = reqStr(p.rootToken, 'rootToken');
+      const grant = resolveWorkspaceGrant(binding.windowId, binding.pluginName, rootToken);
+      if (grant == null) throw new Error('ws.list 拒绝：工作区根令牌无效或已过期');
+      const relPath = typeof p.relPath === 'string' ? p.relPath : '';
+      const relNorm = normalizeRelPath(relPath);
+      if (relNorm == null) throw new Error('ws.list 拒绝：相对路径非法（禁绝对路径/回溯/反斜杠）');
+      const absolute = joinWorkspacePath(grant.rootPath, relNorm);
+      if (absolute == null) throw new Error('ws.list 拒绝：路径越出工作区根');
+      const listDirectory = binding.deps.listDirectory;
+      if (!listDirectory) throw new Error('ws.list 拒绝：宿主未装配目录列举能力');
+      const entries = await listDirectory(absolute);
+      return {
+        entries: entries.map((entry) => ({
+          name: entry.name,
+          is_dir: entry.is_dir,
+          size: entry.size ?? 0,
+          relPath: relNorm ? `${relNorm}/${entry.name}` : entry.name,
+        })),
+      };
+    }
+    case 'ws.read': {
+      if (!binding.workspace) {
+        throw new Error('ws.read 拒绝：插件未声明 app.workspace（工作区授权未开启）');
+      }
+      const rootToken = reqStr(p.rootToken, 'rootToken');
+      const grant = resolveWorkspaceGrant(binding.windowId, binding.pluginName, rootToken);
+      if (grant == null) throw new Error('ws.read 拒绝：工作区根令牌无效或已过期');
+      const relPath = reqStr(p.relPath, 'relPath');
+      const relNorm = normalizeRelPath(relPath);
+      if (relNorm == null || relNorm === '') {
+        throw new Error('ws.read 拒绝：相对路径非法（必须是根内的文件路径）');
+      }
+      const absolute = joinWorkspacePath(grant.rootPath, relNorm);
+      if (absolute == null) throw new Error('ws.read 拒绝：路径越出工作区根');
+      const readWorkspaceFile = binding.deps.readWorkspaceFile ?? binding.deps.readDocument;
+      const text = await readWorkspaceFile(absolute);
+      const doc = issueDocumentGrant(binding.windowId, binding.pluginName, absolute, {
+        rootToken,
+        origin: 'workspace',
+      });
+      return { text, rev: contentRevision(text), docToken: doc.docToken, relPath: relNorm };
     }
     // 文档通道（批 2 写回）：门口与 doc.read 同三道（能力 / 令牌 / 绑窗），再多一道
     // 「一窗一笔待审」——同一扇窗不许同时挂两张改稿单（会在用户面前互相打架）。
@@ -179,13 +242,18 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
         throw new Error('doc.save 拒绝：插件未声明 app.documents（文档通道未开启）');
       }
       const docToken = reqStr(p.docToken, 'docToken');
-      const path = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
-      if (path == null) throw new Error('doc.save 拒绝：文档令牌无效或已过期');
+      const grant = resolveDocumentGrant(binding.windowId, binding.pluginName, docToken);
+      if (grant == null) throw new Error('doc.save 拒绝：文档令牌无效或已过期');
+      const path = grant.path;
       if (hasPendingReviewForWindow(binding.windowId)) {
         throw new Error('doc.save 拒绝：本窗已有一张待审改稿单');
       }
       const content = reqStr(p.content, 'content');
       const before = await binding.deps.readDocument(path);
+      const baseRev = typeof p.baseRev === 'string' ? p.baseRev : null;
+      if (baseRev != null && contentRevision(before) !== baseRev) {
+        return { status: 'conflict', path, currentRev: contentRevision(before) };
+      }
       const summary = summarizeDocumentDiff(before, content);
       if (summary.added === 0 && summary.removed === 0) return { status: 'unchanged', path };
       const { reviewId, approved } = requestDocumentReview({
@@ -206,7 +274,11 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
           }
           try {
             await binding.deps.writeDocument(path, content);
-            postBridgeEventToWindow(windowId, 'doc-saved', { reviewId, path });
+            postBridgeEventToWindow(windowId, 'doc-saved', {
+              reviewId,
+              path,
+              rev: contentRevision(content),
+            });
           } catch (e) {
             postBridgeEventToWindow(windowId, 'doc-rejected', { reviewId, path, reason: errText(e) });
           }
@@ -222,7 +294,9 @@ async function invokeMethod(binding: BridgeBinding, method: string, params: unkn
       };
     }
     default:
-      throw new Error(`方法 "${method}" 不在白名单（默认最小集 fs.list/fs.read/fs.write/fs.delete/notify——按需申请）`);
+      throw new Error(
+        `方法 "${method}" 不在白名单（默认最小集 fs.list/fs.read/fs.write/fs.delete/notify + doc.read/doc.save + ws.list/ws.read——按需申请）`,
+      );
   }
 }
 
@@ -273,9 +347,15 @@ export function bindBridgeWindow(
   pluginName: string,
   windowId: string,
   deps: WindowBridgeDeps = defaultWindowBridgeDeps(),
-  capabilities: { documents?: boolean } = {},
+  capabilities: { documents?: boolean; workspace?: boolean } = {},
 ): void {
-  bindings.set(cw, { pluginName, windowId, deps, documents: capabilities.documents === true });
+  bindings.set(cw, {
+    pluginName,
+    windowId,
+    deps,
+    documents: capabilities.documents === true,
+    workspace: capabilities.workspace === true,
+  });
   ensureListener();
 }
 
