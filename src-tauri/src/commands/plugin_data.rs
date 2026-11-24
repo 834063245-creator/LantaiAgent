@@ -22,7 +22,7 @@
 // 强制层定位：webview 无盘权 → 数据目录 I/O 必须 Rust（v3 决策「应用壳」
 // 保留面）；路径闸属沙箱族安全件。非能力口——不进 Agent 工具面。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 单文件读写上限（防无界内存读入——镜像 MAX_PLUGIN_FILE_BYTES 量级）。
 const MAX_PLUGIN_DATA_BYTES: u64 = 32 * 1024 * 1024;
@@ -246,6 +246,41 @@ pub(crate) fn recycle_on_uninstall(name: &str) -> Result<(), String> {
             dest.display()
         )
     })
+}
+
+/// 插件代码目录回收（卸载安全网，2026-11-24）：plugins/<名> → <dataRoot>/.trash/plugin-<名>。
+/// 与数据目录回收同一条 .trash 根，但加 `plugin-` 前缀区分（数据用裸名）；
+/// 重名 → 秒级时间戳后缀（再撞 → 加纳秒段）。卸载删代码是不可逆操作，
+/// 这里把目录整体挪进回收站，让误点可挽回。
+pub(crate) fn recycle_plugin_dir_on_uninstall(name: &str, dir: &Path) -> Result<PathBuf, String> {
+    fence_name(name)?;
+    if !dir.exists() {
+        return Err(format!("插件目录不存在: {}", dir.display()));
+    }
+    let root = plugin_data_root();
+    let trash_root = root.join(".trash");
+    std::fs::create_dir_all(&trash_root)
+        .map_err(|e| format!("创建 .trash 失败（{}）: {e}", trash_root.display()))?;
+    let base = format!("plugin-{name}");
+    let mut dest = trash_root.join(&base);
+    if dest.exists() {
+        let (secs, nanos) = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| (d.as_secs(), d.subsec_nanos()))
+            .unwrap_or((0, 0));
+        dest = trash_root.join(format!("{base}-{secs}"));
+        if dest.exists() {
+            dest = trash_root.join(format!("{base}-{secs}-{nanos}"));
+        }
+    }
+    std::fs::rename(dir, &dest).map_err(|e| {
+        format!(
+            "插件目录回收失败（{} → {}）: {e}",
+            dir.display(),
+            dest.display()
+        )
+    })?;
+    Ok(dest)
 }
 
 #[cfg(test)]

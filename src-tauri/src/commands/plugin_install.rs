@@ -25,8 +25,9 @@
 // 供应链警告立场（ADR §5 维持）：完全信任模型——安装 UI 常驻警告文本，
 // 不做签名/校验和（用户已拍板，如实声明不加固）。
 //
-// 卸载/禁用：plugin_uninstall（删目录）/ plugin_set_enabled（plugins.json
-// 读改写——webview 无盘权必须走 RPC；S0 已定文件形状 {"disabled": [...]}）。
+// 卸载/禁用：plugin_uninstall（目录挪进 .trash 回收）/ plugin_set_enabled
+// （plugins.json 读改写——webview 无盘权必须走 RPC；S0 已定文件形状
+// {"disabled": [...]}）。
 // 生效时机（平台化 Phase 4 · D6）：前端在 RPC 落盘后即时装卸插件 fiber
 // （运行时生效）；本 Rust 侧只管盘面与进程。
 
@@ -101,6 +102,20 @@ impl PluginSource {
                 let path = PathBuf::from(&loc);
                 if !path.is_dir() {
                     return Err(format!("local_dir 源目录不存在或不是目录: {loc}"));
+                }
+                // 源目录不能位于插件安装根内（2026-11-24）：源 = 目标的
+                // 「就地安装」会让卸载删掉唯一一份源码（先建根再 canonicalize；
+                // Windows canonicalize 带 \\?\ 前缀，两边同法才可比）。
+                let root = crate::plugin_assets::plugins_root();
+                let _ = std::fs::create_dir_all(&root);
+                let root_canon = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+                let path_canon = std::fs::canonicalize(&path)
+                    .map_err(|e| format!("local_dir 源路径不可解析（{loc}）: {e}"))?;
+                if path_canon.starts_with(&root_canon) {
+                    return Err(format!(
+                        "local_dir 源不能位于插件安装根内（{}）——请把源码放到外部目录再安装；否则卸载会删掉唯一一份",
+                        root_canon.display()
+                    ));
                 }
                 Ok(PluginSource::LocalDir(path))
             }
@@ -632,7 +647,19 @@ pub(crate) fn plugin_uninstall(name: &str) -> Result<(), String> {
     if !dir.exists() {
         return Ok(()); // 幂等
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| format!("删除 {dir:?} 失败: {e}"))
+    // 代码目录也进 .trash（2026-11-24）：卸载删代码不可逆，与数据回收同根
+    // （前缀 plugin- 区分）。回收失败降级为直接删除——卸载不因回收入口
+    // 失败而阻断（目录残留比卸载假装成功更糟）。
+    match crate::commands::plugin_data::recycle_plugin_dir_on_uninstall(name, &dir) {
+        Ok(dest) => {
+            eprintln!("[plugin_uninstall] 插件目录已回收: {}", dest.display());
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[plugin_uninstall] 目录回收失败，降级为直接删除: {e}");
+            std::fs::remove_dir_all(&dir).map_err(|e| format!("删除 {dir:?} 失败: {e}"))
+        }
+    }
 }
 
 /// 插件目录绝对路径（S4-4 乙机器桥）：manifest.mcpServers 的 stdio command
@@ -757,6 +784,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("HOLOGRAM_PLUGINS_ROOT", &tmp);
+        // 卸载回收（代码目录 → .trash）也走数据根：测试隔离到兄弟临时目录，
+        // 否则会把测试插件挪进真实 ~/.lantai/plugins-data/.trash。
+        let data_root =
+            std::env::temp_dir().join(format!("hologram_plugin_data_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data_root);
+        std::fs::create_dir_all(&data_root).unwrap();
+        std::env::set_var("HOLOGRAM_PLUGIN_DATA_ROOT", &data_root);
         (guard, tmp)
     }
 
@@ -873,6 +907,25 @@ mod tests {
         assert!(err.contains("链接"), "应拒绝符号链接: {err}");
     }
 
+    /// local_dir 源位于插件安装根内 → 拒绝（防「卸载删掉唯一一份源码」）。
+    #[test]
+    fn rejects_local_dir_source_inside_plugins_root() {
+        let (_guard, tmp) = with_plugins_root("src_fence");
+        let inside = tmp.join("would-be-plugin");
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::write(
+            inside.join("manifest.json"),
+            br#"{"name":"inside","version":"1.0.0","entry":"entry.js"}"#,
+        )
+        .unwrap();
+        let params = serde_json::json!({
+            "source_kind": "local_dir",
+            "location": inside.to_string_lossy()
+        });
+        let err = PluginSource::from_params(&params).unwrap_err();
+        assert!(err.contains("安装根"), "应拒绝就地安装: {err}");
+    }
+
     /// 本地目录安装 + 卸载 + 禁用读改写（HOLOGRAM_PLUGINS_ROOT 隔离）。
     #[test]
     fn install_uninstall_set_enabled_roundtrip() {
@@ -946,9 +999,16 @@ mod tests {
             "disabled 段仍应按开关语义更新"
         );
 
-        // 卸载：目录消失 + 幂等
+        // 卸载：目录挪进 .trash（不是裸删）+ 幂等
         plugin_uninstall("hello").unwrap();
         assert!(!root.join("hello").exists());
+        let data_root = std::path::PathBuf::from(
+            std::env::var("HOLOGRAM_PLUGIN_DATA_ROOT").expect("测试 helper 应设置数据根"),
+        );
+        assert!(
+            data_root.join(".trash").join("plugin-hello").exists(),
+            "卸载应把插件代码目录整体挪进 .trash/plugin-<名>"
+        );
         plugin_uninstall("hello").unwrap(); // 幂等
                                             // 非法名拒绝（路径逃逸防护）
         assert!(plugin_uninstall("../evil").is_err());

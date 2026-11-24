@@ -137,6 +137,8 @@ function PluginCard({
   const badge = statusBadge(plugin.status);
   const enabled = plugin.status !== 'disabled';
   const busy = busyName === plugin.name;
+  // 卸载不可逆（目录挪进 .trash，但贡献面已拆）——两段式确认，防误点。
+  const [confirmingUninstall, setConfirmingUninstall] = useState(false);
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
@@ -188,15 +190,39 @@ function PluginCard({
           <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => onDiagnose(plugin.name)}>
             诊断
           </button>
-          <button
-            type="button"
-            className="sp-btn-sm pp-btn-danger"
-            disabled={busy}
-            onClick={() => onUninstall(plugin.name)}
-          >
-            卸载
-          </button>
+          {confirmingUninstall ? (
+            <>
+              <button
+                type="button"
+                className="sp-btn-sm pp-btn-danger"
+                disabled={busy}
+                onClick={() => {
+                  setConfirmingUninstall(false);
+                  onUninstall(plugin.name);
+                }}
+              >
+                确认卸载
+              </button>
+              <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => setConfirmingUninstall(false)}>
+                取消
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="sp-btn-sm pp-btn-danger"
+              disabled={busy}
+              onClick={() => setConfirmingUninstall(true)}
+            >
+              卸载
+            </button>
+          )}
         </div>
+        {confirmingUninstall && (
+          <div className="sp-lsp-card-err" style={{ color: 'var(--ink-2)' }}>
+            将卸载 {plugin.name}：目录挪进 <code>plugins-data/.trash</code>（可找回），贡献面立即回收。
+          </div>
+        )}
         {diagnostics}
       </div>
     </div>
