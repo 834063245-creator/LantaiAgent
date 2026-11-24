@@ -217,9 +217,17 @@ fn resolve_asset(root: &Path, url_path: &str) -> ResolveOutcome {
         return ResolveOutcome::Forbidden;
     }
     let mut full = root.to_path_buf();
+    let mut first_seg: Option<&str> = None;
     for seg in decoded.split('/') {
         if seg.is_empty() || seg == "." || seg == ".." {
             return ResolveOutcome::Forbidden;
+        }
+        // .meta（安装来源记录）不是插件资产——不开放经资产通道读取。
+        if seg == ".meta" {
+            return ResolveOutcome::Forbidden;
+        }
+        if first_seg.is_none() {
+            first_seg = Some(seg);
         }
         full.push(seg);
     }
@@ -230,9 +238,34 @@ fn resolve_asset(root: &Path, url_path: &str) -> ResolveOutcome {
         return ResolveOutcome::Missing;
     };
     if !canonical.starts_with(&canonical_root) {
-        return ResolveOutcome::Forbidden;
+        // dev link 放行（2026-11-24）：插件目录是指向根外的目录链接时，
+        // canonicalize 会解析到根外——只有安装时 Rust 写进
+        // .meta/<名>.json 的 link 目标才允许读（显式授权，不是「任意
+        // 根外路径都放行」）；未登记 = 仍 Forbidden。
+        let allowed = first_seg
+            .and_then(|plugin| registered_link_target(root, plugin))
+            .and_then(|target| std::fs::canonicalize(target).ok())
+            .is_some_and(|target_canon| canonical.starts_with(&target_canon));
+        if !allowed {
+            return ResolveOutcome::Forbidden;
+        }
     }
     ResolveOutcome::Found(canonical)
+}
+
+/// 读 .meta/<名>.json 的 link 目标（仅 source_kind=link 有效）。
+/// 供 resolve_asset 的 dev link 放行判定用——文件由安装通道写入，用户
+/// 手改 .meta 等价于本机全信任模型下的自担风险（同插件代码本身）。
+fn registered_link_target(root: &Path, plugin: &str) -> Option<PathBuf> {
+    let file = root
+        .join(".meta")
+        .join(format!("{}.json", plugin.replace('/', "__")));
+    let text = std::fs::read_to_string(file).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if v.get("source_kind").and_then(|x| x.as_str()) != Some("link") {
+        return None;
+    }
+    v.get("location").and_then(|x| x.as_str()).map(PathBuf::from)
 }
 
 /// MIME 映射——ES module import 对 MIME 严格，`.js`/`.mjs` 必须是
@@ -471,7 +504,10 @@ fn list_plugin_dirs(root: &Path) -> Vec<String> {
     }
     for entry in walkdir::WalkDir::new(root).max_depth(2).min_depth(1) {
         let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_dir() {
+        // walkdir 的 file_type 对 junction/symlink 返回 symlink——dev link 的
+        // 插件目录会被漏掉（装载器看不见）。用 path().is_dir()（跟随链接）判目录；
+        // 是否允许读内容由 resolve_asset 的 .meta 登记判定。
+        if !entry.path().is_dir() {
             continue;
         }
         if !entry.path().join("manifest.json").is_file() {
@@ -783,6 +819,58 @@ mod tests {
                 ResolveOutcome::Forbidden
             ),
             "junction 逃逸必须被前缀检查拒绝"
+        );
+        let _ = std::fs::remove_dir_all(root.parent().unwrap());
+    }
+
+    /// dev link：.meta 里登记过的链接目标放行；.meta 本身不经资产通道开放。
+    #[cfg(windows)]
+    #[test]
+    fn registered_dev_link_reads_outside_root() {
+        use std::os::windows::process::CommandExt;
+        let root = make_root("devlink");
+        let outside = root.parent().unwrap().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("manifest.json"), b"{}").unwrap();
+        let link = root.join("linked");
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&outside)
+            .creation_flags(crate::utils::HIDDEN_CONSOLE)
+            .output()
+            .expect("mklink /J 应可执行（junction 无需特权）");
+        if !status.status.success() {
+            eprintln!("[plugin_assets] junction 创建失败，跳过 dev link 测试: {status:?}");
+            let _ = std::fs::remove_dir_all(root.parent().unwrap());
+            return;
+        }
+        std::fs::create_dir_all(root.join(".meta")).unwrap();
+        std::fs::write(
+            root.join(".meta").join("linked.json"),
+            format!(
+                r#"{{"source_kind":"link","location":{}}}"#,
+                serde_json::to_string(&outside.to_string_lossy()).unwrap()
+            ),
+        )
+        .unwrap();
+        assert!(
+            matches!(
+                resolve_asset(&root, "linked/manifest.json"),
+                ResolveOutcome::Found(_)
+            ),
+            "已登记的 dev link 目标应放行"
+        );
+        assert!(
+            list_plugin_dirs(&root).contains(&"linked".to_string()),
+            "索引应列出 link 插件目录（walkdir 不跟随 junction，需按跟随后的目录判定）"
+        );
+        assert!(
+            matches!(
+                resolve_asset(&root, ".meta/linked.json"),
+                ResolveOutcome::Forbidden
+            ),
+            ".meta 不应经资产通道开放"
         );
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
