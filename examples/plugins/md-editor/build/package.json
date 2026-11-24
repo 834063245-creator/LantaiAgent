@@ -2,14 +2,21 @@
   "name": "md-editor-vendor",
   "private": true,
   "type": "module",
-  "description": "文卷窗内编辑器的预构建依赖（CodeMirror 6 + Markdown 渲染）。产物 app/vendor/lantai-editor.js 随插件提交，装插件仍只需拷贝目录。",
+  "description": "文卷窗内编辑器的预构建依赖（CodeMirror 6 + 语言包 + Markdown 渲染）。产物 app/vendor/lantai-editor.js 随插件提交，装插件仍只需拷贝目录。",
   "scripts": {
     "build": "node vendor.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
     "@codemirror/language": "^6.11.3",
+    "@codemirror/legacy-modes": "^6.5.5",
     "@codemirror/search": "^6.5.11",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.6",

@@ -8,6 +8,10 @@
 > `doc.follow`/`doc.asset` + 根只读令牌 + 多文档标签 + 树/快速打开/内容搜索/相对链接/图片 +
 > 本卷引用（会话消息里的可见引用推窗）。
 > **余 P1c 尾项**：`ws.stat`/树变更事件（非阻塞）；写仍每次过审（租约 = P2）。
+> **0.5 代码文件支持已落地（2026-11-24）**：按扩展名分派 Markdown / 代码 / 文本；
+> 代码进 CodeMirror 源码编辑（JS/TS/JSON/Python/Rust/HTML/CSS/Shell/YAML/TOML/SQL/
+> C/C++/Java/Go/C#/Kotlin/Dart/Dockerfile 等；无 parser 的按纯文本），Markdown 预览/
+> 大纲/分栏自动收起；大文件 1.5M 字符闸 + NUL 二进制拒绝。**宿主零改动**（仍是契约 v78）。
 > **部署**：P1 需宿主 v78（重建 exe；先关掉运行中的兰台，否则 `target/release/lantai.exe`
 > 被占用会报 os error 32）；随包版默认在架阁，旧的手装 `md-editor` 需移走以免
 > 同时出现两扇文卷窗（随包工具名 `wenjuan_open`，旧手装 `md_open`）。

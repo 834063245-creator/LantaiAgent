@@ -43,6 +43,13 @@ await build({
   },
 });
 
+// 依赖的 legalComments 里偶有行尾 tab/空格；产物随插件提交，先剥掉（不动机器生成的
+// 语义，只让 `git diff --check` 保持干净）。
+const emitted = readFileSync(outfile, 'utf8')
+  .replace(/[ \t]+$/gm, '')
+  .replace(/\n+$/g, '\n');
+writeFileSync(outfile, emitted, 'utf8');
+
 writeFileSync(
   resolve(here, '..', 'app', 'vendor', 'LICENSES.md'),
   [

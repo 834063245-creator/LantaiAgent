@@ -1,7 +1,7 @@
 {
   "name": "md-editor",
-  "version": "0.4.0",
-  "description": "文卷——兰台的案头文档编辑器：阅读/编辑双模、CodeMirror 6、GFM 预览、大纲、草稿自动保存与外部变更检测。0.4 接工作区根授权：左侧工作区树、相对路径只读浏览、多文档标签；窗凭根令牌列目录、凭文档令牌读写，保存仍走改稿单。",
+  "version": "0.5.0",
+  "description": "文卷——兰台的案头编辑器：Markdown 阅读/改稿 + 代码文件编辑，CodeMirror 6、GFM 预览、大纲、草稿自动保存与外部变更检测。工作区根授权下可浏览/搜索/多文档打开；代码文件支持 JS/TS/JSON/Python/Rust 等语法高亮，保存仍走改稿单。",
   "entry": "entry.js",
   "app": {
     "entry": "./app/index.html",
@@ -15,13 +15,13 @@
   "tools": [
     {
       "name": "md_open",
-      "description": "在文卷窗口里打开一份宿主文档（绝对路径）。窗口设施归宿主，本工具只调设施并带上文档令牌；窗内保存会先出改稿单，用户确认后才写回磁盘。文卷 0.3 起默认以阅读模式打开，用户点「编辑」才进入改稿。",
+      "description": "在文卷窗口里打开一份宿主文档（绝对路径）。窗口设施归宿主，本工具只调设施并带上文档令牌；窗内保存会先出改稿单，用户确认后才写回磁盘。文卷 0.5 起按扩展名自动分派 Markdown / 代码 / 文本视图。",
       "parameters": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "宿主文档绝对路径（如 D:/proj/docs/a.md）"
+            "description": "宿主文档绝对路径（如 D:/proj/docs/a.md 或 D:/proj/src/main.ts）"
           }
         },
         "required": ["path"]

@@ -1,13 +1,15 @@
-# 文卷（md-editor）— 软件型插件 · 0.4.0
+# 文卷（md-editor）— 软件型插件 · 0.5.0
 
-兰台的案头文档编辑器：一扇窗里读、改、存。对位范本仍是
+兰台的案头编辑器：一扇窗里读、改、存。对位范本仍是
 [`../notes-app/`](../notes-app/)，本插件取「窗 + 数据地盘 + 宿主文档通道 + 工作区授权」四件，
 把编辑器本身做成产品。
 
-> **0.4.0 的边界**：卷库 = 插件自己的数据地盘；工作区 = **只读根 + 树 + 多文档标签 +
-> 快速打开 + 内容搜索 + 相对链接/图片**（本卷引用、Agent hunk 仍在后续批）。
-> **宿主要求**：`app.workspace` 是开放面契约 v77 的新字段、`ws.search`/`doc.follow`/
-> `doc.asset` 是 v78；旧宿主（v77 及以前）读这个 manifest 会整份拒载——先升级/重建兰台。
+> **0.5.0 的边界**：卷库/工作区 = 文本与代码文件；Markdown 走阅读/编辑/分栏，
+> 代码/文本按扩展名进源码编辑（不渲染 Markdown 预览）；工作区仍为只读根。
+> **宿主要求**：`app.workspace` 是开放面契约 v77、`ws.search`/`doc.follow`/`doc.asset`
+> 是 v78；旧宿主（v77 及以前）读这个 manifest 会整份拒载——先升级/重建兰台。
+> **代码支持不需要新宿主契约**：`ws.read`/`doc.save` 本来就按文本处理，本版只改了
+> 窗内的文件分类、视图与 CodeMirror 语言。
 >
 > **随包形态（P1a）**：正式分发走第一方软件型产物 `hologram/md-editor`（构建脚本把
 > `app/` 原样复制进 `dist-plugins/builtin/hologram/md-editor`，manifest 由
@@ -30,25 +32,31 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
 > 会各注册一扇文卷窗；调试前先把旧的 `~/.lantai/plugins/md-editor` 移走（数据目录
 > `~/.lantai/plugins-data/md-editor/` 可保留）。
 
-## 0.4.0 能做什么
+## 0.5.0 能做什么
 
 **读**
-- 从会话里引用到的文件点一下，窗内以**阅读模式**打开；排版按纸面（宋体正文、版心、行宽）。
-- **工作区树**：左侧「工作区」页懒加载当前工作区目录（点目录展开、点文件开标签）。
+- 从会话里引用到的文件点一下，按扩展名分派：Markdown 进阅读模式，代码/文本进源码编辑。
+- **代码文件**：JS/TS/JSX/TSX、JSON、Python、Rust、HTML/CSS、Shell、YAML、TOML、SQL、
+  C/C++、Java、Go、C#/Kotlin/Dart、Dockerfile 等；CodeMirror 语法高亮，Markdown 预览/
+  大纲/分栏自动收起。没有官方 parser 的扩展名按纯文本可编辑，不丢内容。
+- **工作区树**：左侧「工作区」页懒加载当前工作区目录（点目录展开、点文件开标签）；
+  二进制/未知扩展名看得见，但点开会具名拒绝，不冒充文本。
 - **快速打开 / 内容搜索**：`Ctrl/Cmd+P` 文件名（含工作区），`Ctrl/Cmd+Shift+F` 全文；
   命中直接跳到编辑模式对应行。
 - **多文档标签**：工作区文件 + 宿主文档可同时开多份；每份独立令牌，互不顶掉。
 - **本卷引用**：左侧工作区页顶部列出当前会话里出现过的文件（用户附件 / 正文链接与
   行内码 / 工具参数），点一下直接开。
-- **相对链接/图片**：Markdown 里的 `[x](../a.md)` 按当前文档目录跳转；`![](img/p.png)`
+- **相对链接/图片**：Markdown 里的 `[x](../a.ts)` 按当前文档目录跳转；`![](img/p.png)`
   经宿主 `doc.asset` 读成 data URL（8 MiB 闸）。
 - Markdown 预览：GFM 表格、任务列表、脚注、删除线、代码高亮（highlight.js）、frontmatter 卡片。
-- 左侧大纲（ATX + Setext 标题，跳过代码块），点击跳行；光标/滚动时高亮当前段。
+- 左侧大纲（只对 Markdown；ATX + Setext 标题，跳过代码块），点击跳行。
 - 夜读 / 纸白双主题；卷库宽度、大纲宽度、打开的文档、滚动位置跨重启恢复。
 
 **改**
-- CodeMirror 6：Markdown 语法、行号、自动换行、撤销历史、查找替换（`Ctrl/Cmd+F`）、多光标。
-- 阅读 / 编辑 / 分栏三态；`Ctrl/Cmd+E` 切换。
+- CodeMirror 6：Markdown/JS/TS/JSON/Python/Rust/HTML/CSS 等语法、行号、自动换行、
+  撤销历史、查找替换（`Ctrl/Cmd+F`）、多光标。
+- Markdown：阅读 / 编辑 / 分栏三态；`Ctrl/Cmd+E` 切换。代码/文本：直接源码编辑，
+  不提供 Markdown 分栏。
 - 快捷键：`Ctrl/Cmd+S` 保存、`Ctrl/Cmd+W` 关标签、`Ctrl/Cmd+P` 快速打开、
   `Ctrl/Cmd+Shift+F` 内容搜索、`Ctrl/Cmd+K` 命令面板、`Ctrl/Cmd+B` 卷库、`Ctrl/Cmd+1..9` 切标签。
 - 关闭不丢正文。
@@ -64,13 +72,14 @@ cp -r examples/plugins/md-editor ~/.lantai/plugins/md-editor
   「用磁盘版 / 保留我的」。
 
 **卷库**
-- 数据地盘里的 `.md` / `.markdown` / `.txt` 列表、筛选、新建、右键删除。
+- 数据地盘里的 Markdown / 文本 / 代码文件列表、筛选、新建、右键删除。
 - 最近打开（本地 + 工作区 + 宿主；宿主条目需从会话重新点开）。
 
 ## 这一版刻意不做 / 下一批
 
 | 不做 | 为什么 | 留给哪批 |
 |---|---|---|
+| LSP 补全 / 诊断 / 跳转定义 / 格式化 | 需要 TypeScript server / pyright / rust-analyzer 等 sidecar 与协议、生命周期；不是“打开代码文件”的必需项 | 单独立项（IDE 面） |
 | PDF / Office / Excel 预览 | DSH 同款能力是几 MB 级分块；兰台先「用系统程序打开」，不追这个性价比 | P3 |
 | 批注 / Agent 改稿 hunk / 选段问 Agent | 需要宿主 `doc-proposed` 与创作坞插入通道 | P2 |
 

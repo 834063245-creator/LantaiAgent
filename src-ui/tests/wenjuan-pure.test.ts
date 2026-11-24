@@ -8,12 +8,16 @@ import {
   basename,
   countText,
   dirname,
+  docKindOf,
   draftFileName,
   extractOutline,
   fuzzyScore,
   hashText,
   isDocumentName,
+  isMarkdownName,
+  isPluginInternalName,
   isSafeRelPath,
+  languageOf,
   normalizeDocName,
   resolveLocalHref,
   splitFrontmatter,
@@ -97,10 +101,22 @@ describe('文卷纯函数', () => {
     expect(fuzzyScore('文卷', 'docs/文卷.md')).toBeGreaterThan(fuzzyScore('文卷', 'docs/x文y卷.md'));
   });
 
-  it('文档后缀判定', () => {
-    expect(isDocumentName('a.MD')).toBe(true);
-    expect(isDocumentName('a.markdown')).toBe(true);
-    expect(isDocumentName('a.txt')).toBe(true);
-    expect(isDocumentName('a.json')).toBe(false);
+  it('文档分类：Markdown / 代码 / 文本；二进制拒绝', () => {
+    expect(docKindOf('a.MD')).toEqual({ kind: 'markdown', language: 'markdown' });
+    expect(docKindOf('a.ts')).toEqual({ kind: 'code', language: 'typescript' });
+    expect(docKindOf('a.json')).toEqual({ kind: 'code', language: 'json' });
+    expect(docKindOf('a.txt')).toEqual({ kind: 'text', language: 'plain' });
+    expect(docKindOf('Dockerfile')).toEqual({ kind: 'code', language: 'dockerfile' });
+    expect(docKindOf('README')).toEqual({ kind: 'text', language: 'plain' });
+    expect(isDocumentName('a.json')).toBe(true);
+    expect(isDocumentName('a.png')).toBe(false);
+    expect(isDocumentName('a.bin')).toBe(false);
+    expect(isMarkdownName('a.md')).toBe(true);
+    expect(isMarkdownName('a.ts')).toBe(false);
+    expect(languageOf('a.tsx')).toBe('tsx');
+    expect(languageOf('a.rs')).toBe('rust');
+    expect(isPluginInternalName('state.json')).toBe(true);
+    expect(isPluginInternalName('drafts/a.md')).toBe(true);
+    expect(isPluginInternalName('docs/a.json')).toBe(false);
   });
 });

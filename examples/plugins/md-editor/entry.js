@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 //
-// 文卷 0.4.0 — 软件级插件入口。
+// 文卷 0.5.0 — 软件级插件入口。
 //
 // 入口形状是硬契约（loader 阶段 2）：`pickPluginObject` 优先取 `default` 导出，
 // `isPluginShape` 要求 `{ name, apply }`，且 name 必须与 manifest.name 逐字一致。
@@ -11,7 +11,7 @@
 //   → 宿主开窗并签发文档令牌 → 帧在就绪后把令牌推给窗 → 窗凭令牌 doc.read。
 //   **路径不经过窗**：窗只拿到令牌与「读哪一页」的标识。
 //
-// 0.4.0 起窗内有工作区树 / 多文档；本入口不加职责。
+// 0.5.0 起按扩展名分派 Markdown / 代码 / 文本；本入口不加职责。
 
 export const toolHandlers = {
   md_open: async ({ path }) => {

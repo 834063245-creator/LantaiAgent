@@ -41,6 +41,137 @@ export function normalizeDocName(input) {
   return name;
 }
 
+/* ── 文件分类：Markdown / 代码 / 纯文本 ──
+ * 只认明确白名单；二进制/未知扩展名一律不冒充文本（树里仍可看见，点开时具名拒绝）。
+ * language 供 CodeMirror 选 parser；plain = 可编辑但无语法高亮。 */
+const MARKDOWN_EXT = new Set(['md', 'markdown']);
+const TEXT_EXT = new Set([
+  'txt',
+  'text',
+  'log',
+  'csv',
+  'tsv',
+  'diff',
+  'patch',
+  'ini',
+  'cfg',
+  'conf',
+  'properties',
+  'env',
+]);
+const CODE_LANG = Object.freeze({
+  js: 'javascript',
+  javascript: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  jsx: 'jsx',
+  ts: 'typescript',
+  mts: 'typescript',
+  cts: 'typescript',
+  tsx: 'tsx',
+  json: 'json',
+  jsonc: 'json',
+  py: 'python',
+  pyw: 'python',
+  rs: 'rust',
+  go: 'go',
+  java: 'java',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  c: 'c',
+  h: 'c',
+  cc: 'cpp',
+  cpp: 'cpp',
+  cxx: 'cpp',
+  hpp: 'cpp',
+  hh: 'cpp',
+  cs: 'csharp',
+  dart: 'dart',
+  sh: 'shell',
+  bash: 'shell',
+  zsh: 'shell',
+  ps1: 'powershell',
+  psm1: 'powershell',
+  sql: 'sql',
+  css: 'css',
+  scss: 'css',
+  less: 'css',
+  html: 'html',
+  htm: 'html',
+  vue: 'html',
+  svelte: 'html',
+  xml: 'html',
+  svg: 'html',
+  yml: 'yaml',
+  yaml: 'yaml',
+  toml: 'toml',
+  dockerfile: 'dockerfile',
+  lua: 'plain',
+  r: 'plain',
+  php: 'plain',
+  rb: 'plain',
+  swift: 'plain',
+  scala: 'plain',
+  groovy: 'plain',
+  pl: 'plain',
+  sol: 'plain',
+});
+const SPECIAL_NAMES = Object.freeze({
+  makefile: 'plain',
+  gnumakefile: 'plain',
+  dockerfile: 'dockerfile',
+  containerfile: 'dockerfile',
+  readme: 'plain',
+  license: 'plain',
+  licence: 'plain',
+  notice: 'plain',
+  changelog: 'plain',
+  authors: 'plain',
+  contributing: 'plain',
+});
+
+/**
+ * 文件名 → { kind: 'markdown'|'code'|'text', language }；不认识返回 null。
+ * 代码文件 language 是 CM parser 名；text 用 'plain'（可编辑、无高亮）。
+ */
+export function docKindOf(name) {
+  const base = basename(name).toLowerCase();
+  if (!base) return null;
+  const special = SPECIAL_NAMES[base];
+  if (special) return { kind: special === 'markdown' ? 'markdown' : special === 'plain' ? 'text' : 'code', language: special };
+  const dot = base.lastIndexOf('.');
+  const ext = dot >= 0 ? base.slice(dot + 1) : '';
+  if (!ext) return null;
+  if (MARKDOWN_EXT.has(ext)) return { kind: 'markdown', language: 'markdown' };
+  if (CODE_LANG[ext]) {
+    const language = CODE_LANG[ext];
+    return { kind: language === 'plain' ? 'text' : 'code', language };
+  }
+  if (TEXT_EXT.has(ext)) return { kind: 'text', language: 'plain' };
+  return null;
+}
+
+/** 能进文卷文本面的文件（Markdown / 代码 / 纯文本）。 */
+export function isDocumentName(name) {
+  return docKindOf(name) != null;
+}
+
+/** 是否 Markdown（决定预览/大纲/分栏）。 */
+export function isMarkdownName(name) {
+  return docKindOf(name)?.kind === 'markdown';
+}
+
+/** CodeMirror 语言名（未知 → plain）。 */
+export function languageOf(name) {
+  return docKindOf(name)?.language ?? 'plain';
+}
+
+/** 插件自己的状态/草稿文件不冒充可编辑文档（state.json、drafts/ 下）。 */
+export function isPluginInternalName(name) {
+  const text = String(name ?? '').replace(/\\/g, '/');
+  return basename(text).toLowerCase() === 'state.json' || text.startsWith('drafts/');
+}
+
 /** FNV-1a 32 位（非加密；只用于草稿键/外部变更判等）。 */
 export function hashText(text) {
   let hash = 0x811c9dc5;
@@ -212,9 +343,4 @@ export function relativeTime(timestamp, now = Date.now()) {
   if (delta < 30 * day) return `${Math.floor(delta / day)} 天前`;
   const date = new Date(Number(timestamp));
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-/** 只让 .md/.markdown/.txt 进文档面（数据地盘里的草稿/状态文件不冒充文档）。 */
-export function isDocumentName(name) {
-  return /\.(md|markdown|txt)$/i.test(String(name ?? ''));
 }

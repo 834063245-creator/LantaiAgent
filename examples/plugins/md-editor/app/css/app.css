@@ -738,6 +738,21 @@ kbd {
   border-left: 1px solid var(--line);
 }
 
+/* 代码 / 文本：Markdown 的大纲列与分栏按钮没有意义，收掉换全宽编辑。 */
+#app[data-code="on"] .outline,
+#app[data-code="on"] .outline-resizer {
+  display: none;
+}
+
+#app[data-code="on"] .cm-scroller {
+  font-size: var(--code-size, 12.5px);
+  line-height: 1.65;
+}
+
+.tb-btn[hidden] {
+  display: none !important;
+}
+
 .empty-host {
   position: absolute;
   inset: 0;

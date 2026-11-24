@@ -26,7 +26,7 @@ export const toolHandlers = {
     if (windowId == null) {
       return '[wenjuan_open] 文卷窗口定义不在册——插件可能已被停用，请重新启用后重试';
     }
-    return `文卷已打开（${windowId}）：窗内默认为阅读模式，点「编辑」才进入改稿；保存会先出改稿单，用户确认后才写回。`;
+    return `文卷已打开（${windowId}）：Markdown 默认为阅读模式，点「编辑」才进入改稿；代码/文本文件直接进编辑。保存会先出改稿单，用户确认后才写回。`;
   },
 };
 

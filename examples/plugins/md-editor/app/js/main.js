@@ -21,11 +21,13 @@ import {
   basename,
   countText,
   dirname,
+  docKindOf,
   draftFileName,
   extractOutline,
   fuzzyScore,
   hashText,
   isDocumentName,
+  isPluginInternalName,
   isSafeRelPath,
   normalizeDocName,
   relativeTime,
@@ -36,6 +38,8 @@ import {
 const DRAFTS_DIR = 'drafts';
 const STATE_FILE = 'state.json';
 const PREVIEW_LIMIT = 320_000;
+/** 代码文件进 CM 的上限（超过就明确拒绝，避免整份正文与撤销栈把窗拖死）。 */
+const CODE_LIMIT = 1_500_000;
 const MAX_TABS = 16;
 const MAX_RECENT = 30;
 /** 工作区树默认不展开的构建/依赖目录（宿主 list_flat 只跳 VCS，不跳这些）。 */
@@ -180,11 +184,13 @@ function draftKey(kind, path) {
 }
 
 function viewHasPreview(tab) {
-  return tab?.view === 'read' || tab?.view === 'split';
+  return tab?.docKind === 'markdown' && (tab?.view === 'read' || tab?.view === 'split');
 }
 
 function viewHasEditor(tab) {
-  return tab?.view === 'edit' || tab?.view === 'split';
+  if (!tab) return false;
+  if (tab.docKind !== 'markdown') return true;
+  return tab.view === 'edit' || tab.view === 'split';
 }
 
 function clamp(value, min, max) {
@@ -221,7 +227,7 @@ function escapeHtml(value) {
 
 /* ── 标签模型 ── */
 
-function makeTab({ kind, path, name, text, view, docToken = null }) {
+function makeTab({ kind, path, name, text, view, docToken = null, docKind = 'markdown', language = 'markdown' }) {
   return {
     id: `${kind}:${path}`,
     kind,
@@ -232,6 +238,8 @@ function makeTab({ kind, path, name, text, view, docToken = null }) {
     savedHash: hashText(text),
     dirty: false,
     view: view || (kind === 'host' ? 'read' : 'edit'),
+    docKind,
+    language,
     scroll: 0,
     cursor: { line: 1, col: 1 },
     docToken,
@@ -277,6 +285,7 @@ function activateTab(id, { focus = false } = {}) {
     return;
   }
   if (editor) {
+    editor.setLanguage(tab.docKind === 'markdown' ? 'markdown' : tab.language || 'plain');
     editor.setText(tab.text);
     editor.setReadOnly(tab.kind === 'host' && (tab.stale || !tab.docToken));
     editor.setCursor(tab.cursor.line, tab.cursor.col);
@@ -334,7 +343,13 @@ async function refreshLocalFiles({ silent = false } = {}) {
     const raw = await bridge.call('fs.list', { path: '' });
     const entries = Array.isArray(raw?.entries) ? raw.entries : [];
     const docs = entries
-      .filter((entry) => entry && !entry.is_dir && isDocumentName(entry.name))
+      .filter(
+        (entry) =>
+          entry &&
+          !entry.is_dir &&
+          isDocumentName(entry.name) &&
+          !isPluginInternalName(entry.name),
+      )
       .map((entry) => ({ name: entry.name, path: entry.name, size: entry.size ?? 0 }))
       .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
     state.localFiles = docs;
@@ -539,8 +554,9 @@ async function openWorkspaceFile(relPath, { line = 0 } = {}) {
     showToast('宿主还没有签发工作区根授权', 'err', 3600);
     return;
   }
-  if (!isDocumentName(relPath)) {
-    showToast('工作区里暂只接 Markdown / 文本文件（非文本文件下一批接系统打开）', 'info', 4200);
+  const info = docKindOf(relPath);
+  if (!info) {
+    showToast('这份文件不是可打开的文本 / 代码格式（二进制请走系统程序）', 'info', 4200);
     return;
   }
   const existing = state.tabs.find((tab) => tab.kind === 'host' && tab.workspace && tab.path === relPath);
@@ -552,13 +568,23 @@ async function openWorkspaceFile(relPath, { line = 0 } = {}) {
   try {
     const raw = await bridge.call('ws.read', { rootToken: state.workspace.rootToken, relPath });
     const text = textOf(raw);
+    if (info.kind !== 'markdown' && text.length > CODE_LIMIT) {
+      showToast(`文件太大（${formatBytes(text.length)}）——超过代码编辑上限 ${formatBytes(CODE_LIMIT)}`, 'err', 4600);
+      return;
+    }
+    if (info.kind !== 'markdown' && text.includes('\0')) {
+      showToast('这份文件看起来是二进制，文卷只接文本 / 代码', 'err', 4200);
+      return;
+    }
     const tab = makeTab({
       kind: 'host',
       path: relPath,
       name: basename(relPath),
       text,
-      view: line > 0 ? 'edit' : 'read',
+      view: info.kind === 'markdown' ? (line > 0 ? 'edit' : 'read') : 'edit',
       docToken: typeof raw?.docToken === 'string' ? raw.docToken : null,
+      docKind: info.kind,
+      language: info.language,
     });
     tab.workspace = true;
     tab.rootToken = state.workspace.rootToken;
@@ -591,8 +617,9 @@ function jumpToDocLine(tab, line) {
 
 
 async function openLocal(path, { activate = true, view = 'edit', silent = false } = {}) {
-  if (!isSafeRelPath(path) || !isDocumentName(path)) {
-    showToast('文件名不合法（只认数据地盘里的 .md / .txt）', 'err');
+  const info = docKindOf(path);
+  if (!isSafeRelPath(path) || !info || isPluginInternalName(path)) {
+    showToast('文件名不合法（只认数据地盘里的文本 / 代码文件）', 'err');
     return null;
   }
   const existing = tabById(`local:${path}`);
@@ -608,7 +635,23 @@ async function openLocal(path, { activate = true, view = 'edit', silent = false 
     showToast(`打开失败：${error.message}`, 'err', 4200);
     return null;
   }
-  const tab = makeTab({ kind: 'local', path, name: basename(path), text, view });
+  if (info.kind !== 'markdown' && text.length > CODE_LIMIT) {
+    showToast(`文件太大（${formatBytes(text.length)}）——超过代码编辑上限 ${formatBytes(CODE_LIMIT)}`, 'err', 4600);
+    return null;
+  }
+  if (text.includes('\0')) {
+    showToast('这份文件看起来是二进制，文卷只接文本 / 代码', 'err', 4200);
+    return null;
+  }
+  const tab = makeTab({
+    kind: 'local',
+    path,
+    name: basename(path),
+    text,
+    view: info.kind === 'markdown' ? view : 'edit',
+    docKind: info.kind,
+    language: info.language,
+  });
   applyDraft(tab);
   addTab(tab, { activate });
   touchRecent({ kind: 'local', path, name: tab.name });
@@ -622,11 +665,18 @@ async function openHostDocument(payload) {
   if (!docToken) return;
   const existing = state.tabs.find((tab) => tab.kind === 'host' && tab.path === path);
   if (existing) {
+    const info = docKindOf(path);
+    if (!info) {
+      showToast('这份文件不是可打开的文本 / 代码格式（二进制请走系统程序）', 'info', 4200);
+      return;
+    }
     existing.docToken = docToken;
     existing.stale = false;
     existing.pending = false;
     existing.reviewId = null;
-    existing.view = existing.view === 'edit' ? 'edit' : 'read';
+    existing.docKind = info.kind;
+    existing.language = info.language;
+    existing.view = existing.docKind === 'markdown' ? (existing.view === 'edit' ? 'edit' : 'read') : 'edit';
     if (!existing.dirty) {
       try {
         const raw = await bridge.call('doc.read', { docToken });
@@ -658,13 +708,28 @@ async function openHostDocument(payload) {
     showToast(`宿主文档读取失败：${error.message}`, 'err', 4200);
     return;
   }
+  const info = docKindOf(realPath);
+  if (!info) {
+    showToast('这份文件不是可打开的文本 / 代码格式（二进制请走系统程序）', 'info', 4200);
+    return;
+  }
+  if (info.kind !== 'markdown' && text.length > CODE_LIMIT) {
+    showToast(`文件太大（${formatBytes(text.length)}）——超过代码编辑上限 ${formatBytes(CODE_LIMIT)}`, 'err', 4600);
+    return;
+  }
+  if (info.kind !== 'markdown' && text.includes('\0')) {
+    showToast('这份文件看起来是二进制，文卷只接文本 / 代码', 'err', 4200);
+    return;
+  }
   const tab = makeTab({
     kind: 'host',
     path: realPath,
     name: basename(realPath),
     text,
-    view: 'read',
+    view: info.kind === 'markdown' ? 'read' : 'edit',
     docToken,
+    docKind: info.kind,
+    language: info.language,
   });
   tab.rev = rev;
   applyDraft(tab);
@@ -1098,13 +1163,17 @@ function scheduleOutline() {
 
 function renderOutline() {
   const tab = activeTab();
-  const items = tab ? extractOutline(tab.text) : [];
+  const items = tab?.docKind === 'markdown' ? extractOutline(tab.text) : [];
   state.outline = items;
   const frag = document.createDocumentFragment();
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'outline-empty';
-    empty.textContent = tab ? '这份文档还没有标题' : '打开文档后显示标题';
+    empty.textContent = !tab
+      ? '打开文档后显示标题'
+      : tab.docKind === 'markdown'
+        ? '这份文档还没有标题'
+        : '代码 / 文本文件不显示大纲';
     frag.append(empty);
   } else {
     for (const item of items) {
@@ -1412,29 +1481,41 @@ function renderTopbar() {
     el.docTitle.textContent = '从左侧选一份文档';
     el.btnSave.disabled = true;
     el.btnMode.textContent = '编辑';
+    el.btnMode.hidden = false;
+    el.btnSplit.hidden = false;
+    el.btnOutlineToggle.hidden = false;
+    el.btnOutline.hidden = false;
     el.btnSplit.classList.remove('on');
     el.app.dataset.view = 'read';
+    el.app.dataset.code = 'off';
     el.btnTheme.textContent = state.theme === 'night' ? '白' : '夜';
     return;
   }
-  el.docKind.textContent =
-    tab.kind === 'host'
-      ? tab.workspace
-        ? '工作区文档 · 只读根'
-        : tab.stale
-          ? '宿主文档 · 令牌失效'
-          : '宿主文档'
-      : tab.missing
-        ? '卷库文档 · 已删除'
-        : '卷库文档';
+  const isMarkdown = tab.docKind === 'markdown';
+  const isCode = tab.docKind === 'code';
+  const origin = tab.kind === 'host' ? (tab.workspace ? '工作区' : '宿主') : tab.missing ? '卷库' : '卷库';
+  const kindWord = isMarkdown ? '文档' : isCode ? '代码' : '文本';
+  const suffix = isCode
+    ? ` · ${tab.language || 'plain'}`
+    : tab.kind === 'host' && tab.workspace
+      ? ' · 只读根'
+      : tab.kind === 'host' && tab.stale
+        ? ' · 令牌失效'
+        : '';
+  el.docKind.textContent = `${origin}${kindWord}${suffix}`;
   el.docTitle.textContent = tab.name;
   el.docTitle.title = tab.path;
   el.btnSave.disabled =
     !tab.dirty || (tab.kind === 'host' && (!tab.docToken || tab.stale || tab.pending)) || tab.missing;
   el.btnMode.textContent = tab.view === 'read' ? '编辑' : '阅读';
-  el.btnSplit.classList.toggle('on', tab.view === 'split');
+  el.btnMode.hidden = !isMarkdown;
+  el.btnSplit.hidden = !isMarkdown;
+  el.btnOutlineToggle.hidden = !isMarkdown;
+  el.btnOutline.hidden = !isMarkdown;
+  el.btnSplit.classList.toggle('on', isMarkdown && tab.view === 'split');
   el.btnTheme.textContent = state.theme === 'night' ? '白' : '夜';
-  el.app.dataset.view = tab.view;
+  el.app.dataset.view = isMarkdown ? tab.view : 'edit';
+  el.app.dataset.code = isMarkdown ? 'off' : 'on';
 }
 
 function renderStatus() {
@@ -1448,14 +1529,26 @@ function renderStatus() {
     el.statusSave.className = 'status-save';
     return;
   }
-  const viewLabel = tab.view === 'read' ? '阅读' : tab.view === 'split' ? '分栏' : '编辑';
+  const viewLabel =
+    tab.docKind === 'code'
+      ? '代码'
+      : tab.docKind === 'text'
+        ? '文本'
+        : tab.view === 'read'
+          ? '阅读'
+          : tab.view === 'split'
+            ? '分栏'
+            : '编辑';
   el.statusLeft.textContent = `Ln ${tab.cursor.line}, Col ${tab.cursor.col} · ${viewLabel}`;
   clearTimeout(state.countTimer);
   state.countTimer = setTimeout(() => {
     const current = activeTab();
     if (!current) return;
     const count = countText(current.text);
-    el.statusCount.textContent = `${count.words} 字 · ${count.lines} 行`;
+    el.statusCount.textContent =
+      current.docKind === 'markdown'
+        ? `${count.words} 字 · ${count.lines} 行`
+        : `${count.chars} 字符 · ${count.lines} 行`;
   }, 120);
   if (tab.pending) {
     el.statusSave.textContent = '待审';
@@ -1954,6 +2047,10 @@ async function loadPersistedState() {
 function toggleMode() {
   const tab = activeTab();
   if (!tab) return;
+  if (tab.docKind !== 'markdown') {
+    showToast('代码 / 文本文件直接编辑；预览只给 Markdown', 'info', 3000);
+    return;
+  }
   tab.view = tab.view === 'read' ? 'edit' : 'read';
   applyView(tab);
 }
@@ -1961,16 +2058,21 @@ function toggleMode() {
 function toggleSplit() {
   const tab = activeTab();
   if (!tab) return;
+  if (tab.docKind !== 'markdown') {
+    showToast('代码 / 文本文件不提供 Markdown 分栏', 'info', 3000);
+    return;
+  }
   tab.view = tab.view === 'split' ? 'edit' : 'split';
   applyView(tab);
 }
 
 function applyView(tab) {
-  el.app.dataset.view = tab.view;
+  el.app.dataset.view = tab.docKind === 'markdown' ? tab.view : 'edit';
   renderTopbar();
   renderStatus();
   if (viewHasEditor(tab)) {
     if (editor) {
+      editor.setLanguage(tab.docKind === 'markdown' ? 'markdown' : tab.language || 'plain');
       editor.setReadOnly(tab.kind === 'host' && (tab.stale || !tab.docToken));
       editor.setText(tab.text);
       editor.focus();

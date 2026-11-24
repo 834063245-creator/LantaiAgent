@@ -15,7 +15,22 @@
 import { Compartment, EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
+import { StreamLanguage } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
+import { javascript as javascriptLang } from '@codemirror/lang-javascript';
+import { json as jsonLang } from '@codemirror/lang-json';
+import { python as pythonLang } from '@codemirror/lang-python';
+import { rust as rustLang } from '@codemirror/lang-rust';
+import { html as htmlLang } from '@codemirror/lang-html';
+import { css as cssLang } from '@codemirror/lang-css';
+import { shell as shellMode } from '@codemirror/legacy-modes/mode/shell';
+import { yaml as yamlMode } from '@codemirror/legacy-modes/mode/yaml';
+import { toml as tomlMode } from '@codemirror/legacy-modes/mode/toml';
+import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
+import { c as cMode, cpp as cppMode, java as javaMode, csharp as csharpMode, kotlin as kotlinMode, dart as dartMode } from '@codemirror/legacy-modes/mode/clike';
+import { go as goMode } from '@codemirror/legacy-modes/mode/go';
+import { dockerFile as dockerMode } from '@codemirror/legacy-modes/mode/dockerfile';
+import { powerShell as powershellMode } from '@codemirror/legacy-modes/mode/powershell';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import footnote from 'markdown-it-footnote';
@@ -82,6 +97,38 @@ const ALIAS = {
   yml: 'yaml',
   md: 'markdown',
 };
+
+/** 代码语言 → CM 语言扩展。未知语言返回空数组（纯文本编辑，不丢内容）。 */
+const LANGUAGE_PACKS = {
+  markdown: () => markdown(),
+  javascript: () => javascriptLang(),
+  jsx: () => javascriptLang({ jsx: true }),
+  typescript: () => javascriptLang({ typescript: true }),
+  tsx: () => javascriptLang({ jsx: true, typescript: true }),
+  json: () => jsonLang(),
+  python: () => pythonLang(),
+  rust: () => rustLang(),
+  html: () => htmlLang(),
+  css: () => cssLang(),
+  shell: () => StreamLanguage.define(shellMode),
+  yaml: () => StreamLanguage.define(yamlMode),
+  toml: () => StreamLanguage.define(tomlMode),
+  sql: () => StreamLanguage.define(standardSQL),
+  c: () => StreamLanguage.define(cMode),
+  cpp: () => StreamLanguage.define(cppMode),
+  java: () => StreamLanguage.define(javaMode),
+  csharp: () => StreamLanguage.define(csharpMode),
+  kotlin: () => StreamLanguage.define(kotlinMode),
+  dart: () => StreamLanguage.define(dartMode),
+  go: () => StreamLanguage.define(goMode),
+  dockerfile: () => StreamLanguage.define(dockerMode),
+  powershell: () => StreamLanguage.define(powershellMode),
+};
+
+function languageExtension(name) {
+  const make = LANGUAGE_PACKS[String(name ?? '').toLowerCase()];
+  return make ? make() : [];
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
@@ -177,6 +224,7 @@ const paperTheme = EditorView.theme(
  * @param {{
  *   parent: HTMLElement,
  *   doc?: string,
+ *   language?: string,
  *   readOnly?: boolean,
  *   onChange?: (text: string) => void,
  *   onCursor?: (pos: { line: number, col: number }) => void,
@@ -188,6 +236,7 @@ const paperTheme = EditorView.theme(
 export function createEditor(opts) {
   const parent = opts.parent;
   const readOnly = new Compartment();
+  const language = new Compartment();
   let applying = false;
 
   const saveKey = {
@@ -221,7 +270,7 @@ export function createEditor(opts) {
       doc: opts.doc ?? '',
       extensions: [
         basicSetup,
-        markdown(),
+        language.of(languageExtension(opts.language ?? 'markdown')),
         EditorView.lineWrapping,
         paperTheme,
         readOnly.of(EditorState.readOnly.of(opts.readOnly === true)),
@@ -258,6 +307,9 @@ export function createEditor(opts) {
     },
     setReadOnly(value) {
       view.dispatch({ effects: readOnly.reconfigure(EditorState.readOnly.of(value === true)) });
+    },
+    setLanguage(name) {
+      view.dispatch({ effects: language.reconfigure(languageExtension(name)) });
     },
     setValueWithoutNotify(text) {
       const next = String(text ?? '');
