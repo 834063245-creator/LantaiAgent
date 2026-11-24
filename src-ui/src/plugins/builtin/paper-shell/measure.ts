@@ -1120,6 +1120,21 @@ interface ObservedHeight {
 const observedHeights = new Map<string, ObservedHeight>();
 const observedListeners = new Set<() => void>();
 
+/* ── 宽度同一性 = LayoutUnit 单元（1/64 px）──
+ * 2026-11-24「正文压抄录」真根因（CDP 直连运行中的兰台取证）：
+ * RO 报的是 **used width**——Chrome 把布局宽量化到 1/64 px 网格（本机实测：
+ * 布局侧 b.w = 723.425，RO 报 723.421875），而观测键的比较另一头是 b.w **原值**。
+ * 旧实现要求严格相等 ⇒ 只要版心宽不在网格上（流区宽是视口派生的浮点，几乎总不在），
+ * 实测记录写了却永远不认账 ⇒ 正文/夹注/抄录/资产全族**静默**回落静态镜像
+ * （「同一把失明的尺子」，正文 17% / 夹注 27% 块高有差）⇒ 叠字以「修了又犯」的
+ * 形态复发（该块 DOM 1000 高、布局只记 944，下一块压进来 24px）。
+ * 归一化到同一单元 = 同一 used width = 同一折行与同一高：读写在同一个坐标系里比较。
+ * 真改宽（≥ 1/64 px 且跨格）仍旧作废待重报——钉住改宽/折叠翻转的旧读数不许串用。 */
+const LAYOUT_UNITS_PER_PX = 64;
+export function layoutUnitWidth(w: number): number {
+  return Math.round(w * LAYOUT_UNITS_PER_PX) / LAYOUT_UNITS_PER_PX;
+}
+
 /** RO 实测回写结果：registered=首报/换宽校准登记（不触发布局重排）/
  *  changed=挂载后值变（动态高，立即重排）/ restated=渲染态翻转（立即重排）/
  *  unchanged=同值（无变化）。 */
@@ -1170,16 +1185,19 @@ export function reportObservedBlockHeight(observedKey: string, w: number, h: num
    * 有效实测）；壳层同时在卸载时 unobserve（use-block-measure.ts），两道闸。 */
   if (!(w > 0)) return 'unchanged';
   const rec = Math.ceil(h);
+  /* 宽度按 LayoutUnit 归一后再比（RO 报 used width，布局侧传 b.w 原值）——
+   * 严格相等会把非网格宽度的卷的实测全部作废，见 layoutUnitWidth 头注。 */
+  const qw = layoutUnitWidth(w);
   const [blockId, key] = splitObservedKey(observedKey);
   const prev = observedHeights.get(blockId);
-  if (prev && prev.w === w && prev.key === key) {
+  if (prev && prev.w === qw && prev.key === key) {
     if (prev.h === rec) return 'unchanged';
-    observedHeights.set(blockId, { w, h: rec, key });
+    observedHeights.set(blockId, { w: qw, h: rec, key });
     notifyObserved();
     return 'changed';
   }
-  observedHeights.set(blockId, { w, h: rec, key });
-  if (prev && prev.w === w) {
+  observedHeights.set(blockId, { w: qw, h: rec, key });
+  if (prev && prev.w === qw) {
     notifyObserved();
     return 'restated';
   }
@@ -1191,7 +1209,8 @@ export function reportObservedBlockHeight(observedKey: string, w: number, h: num
 export function observedBlockHeightOf(observedKey: string, w: number): number | undefined {
   const [blockId, key] = splitObservedKey(observedKey);
   const rec = observedHeights.get(blockId);
-  return rec && rec.w === w && rec.key === key ? rec.h : undefined;
+  // 同 layoutUnitWidth 头注：查询侧同样归一（不然记录永远对不上）
+  return rec && rec.w === layoutUnitWidth(w) && rec.key === key ? rec.h : undefined;
 }
 
 /** 眉批栏 extent 实测回写（壳层对 `.pp-marginalia` 的 RO 单独上报）。

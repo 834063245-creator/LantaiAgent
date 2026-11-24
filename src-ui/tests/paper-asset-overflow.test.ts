@@ -454,6 +454,26 @@ describe('实测回写桥（动态高兜底）', () => {
     off();
   });
 
+  /* ── 宽度同一性 = LayoutUnit 单元（2026-11-24「正文压抄录」真根因）──
+   * 真机取证（CDP 直连运行中的兰台）：布局侧 b.w = 723.425（流区宽 1446.85 × 0.5），
+   * 而 RO 报的是 **used width**——Chrome 按 LayoutUnit（1/64 px）量化 = 723.421875。
+   * 旧实现严格相等 ⇒ 实测记录写了永远不认账 ⇒ 正文/夹注/抄录/资产全族回落静态镜像
+   * （「同一把失明的尺子」）⇒ 叠字以「修了又犯」的形态复发（实测：该块 DOM 1000 高、
+   * 布局只记 944，下一块压进来 24px）。同一 LayoutUnit 单元 = 同一换行，必须认账。 */
+  it('RO 报 used width（1/64 量化）与布局 b.w 原值同格 → 实测认账', () => {
+    const b = { ...block('markdown', { text: '正文' }), w: 723.425 };
+    const key = observedKeyOf(b, false, false, false);
+    const usedW = 723.421875; // RO 侧（LayoutUnit 量化后的 used width）
+    expect(reportObservedBlockHeight(key, usedW, 1000)).toBe('registered');
+    expect(observedBlockHeightOf(key, b.w)).toBe(1000);
+    // 布局直接消费：记录在，cached 就是实测值（不再回落静态镜像）
+    expect(measureBlockHeightCached(b, createBlockMeasureCache())).toBe(1000);
+    // 同格重报同值仍是「无变化」——量化抖动不得退化成首报（否则每帧重排）
+    expect(reportObservedBlockHeight(key, usedW, 1000)).toBe('unchanged');
+    // 真改宽（跨格）仍旧作废待重报
+    expect(observedBlockHeightOf(key, 640)).toBeUndefined();
+  });
+
   it('clearObservedBlockHeights 复位（测试域）', () => {
     reportObservedBlockHeight('x2', 720, 100);
     expect(observedBlockHeightOf('x2', 720)).toBe(100);
