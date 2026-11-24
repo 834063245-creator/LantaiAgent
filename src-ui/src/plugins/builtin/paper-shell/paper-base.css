@@ -267,7 +267,17 @@
 .pp-canvas {
   position: relative;
   flex: 1;
-  overflow: hidden;
+  /* **clip 而非 hidden**（2026-11-24 实机事故：整张画布错位 1,464px）。
+   * `overflow: hidden` 仍是**可编程滚动的滚动容器**：世界内容比画布的 clientHeight
+   * 大两个数量级（实测 scrollHeight 215,529 / clientHeight 1,400），于是任何
+   * `focus()` / `scrollIntoView()`（块内折叠钮、文档段锚）或 Chromium 的滚动锚定
+   * 都能**静默**改它的 scrollTop。而画布的平移缩放是 `.pp-world` 的 translate+scale，
+   * 数学层（`viewportWorldRect` / `worldToScreen`）不知道这层滚动 ⇒ 纸与块在屏上
+   * 整体偏移，而匣脚引线、块虚拟化窗口、定位仍按未偏移的世界坐标算：
+   * 表现就是引线扎进空白、块被裁出窗口（读作「文字消失」）。
+   * `clip` 不建立滚动容器 ⇒ scrollTop 恒 0（实测 clip 下 `scrollTop = 500` 读回 0）。
+   * 别再改回 hidden。 */
+  overflow: clip;
   cursor: grab;
 }
 .pp-canvas.pp-panning {

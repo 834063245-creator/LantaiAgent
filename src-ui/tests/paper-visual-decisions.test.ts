@@ -752,6 +752,21 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     expect(PANEL_TSX).not.toContain('grainStyle');
   });
 
+  /* 2026-11-24 实机事故（整张画布错位 1,464px）：`.pp-canvas` 曾是 `overflow: hidden`
+   * 的滚动容器——世界内容远超 clientHeight（实测 scrollHeight 215,529 / clientHeight
+   * 1,400），于是 focus / scrollIntoView / 滚动锚定都能静默改 scrollTop；而平移缩放
+   * 只走 `.pp-world` 的 translate+scale，viewportWorldRect / worldToScreen 一概不知情。
+   * 症状 = 匣脚引线扎进空白、块虚拟化窗口错位（「视口挪到卷上文字消失」）。
+   * 判据：画布必须**不是**滚动容器——clip 下 `scrollTop = 500` 读回 0。 */
+  it('画布不是滚动容器：.pp-canvas 用 overflow: clip（hidden 仍可被静默滚动）', () => {
+    // 只断言声明面：排除注释（本规则的注释里正引用了旧写法作病灶记录）。
+    const canvas = ruleBody(PANEL_CSS, '.pp-canvas {').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(canvas).toContain('overflow: clip');
+    for (const bad of ['overflow: hidden', 'overflow: auto', 'overflow: scroll']) {
+      expect(canvas, `${bad} 会把画布变回可编程滚动的容器`).not.toContain(bad);
+    }
+  });
+
   it('空态提层：桌垫入场后 pp-empty 须浮于世界单元之上', () => {
     expect(ruleBody(PANEL_CSS, '.pp-empty {')).toContain('z-index: 2');
   });
