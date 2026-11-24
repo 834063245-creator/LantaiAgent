@@ -133,6 +133,22 @@ function str(a: Record<string, unknown> | null, ...keys: string[]): string | und
   return undefined;
 }
 
+/** 文件动作（语义工具名）——只有这三种的 `path` 是「要打开的那一份文件」；
+ *  list/glob/search/git/shell 的路径/模式/cwd 都不是。 */
+const FILE_ARG_TOOLS = new Set(['read_file_content', 'write_file', 'edit_file']);
+
+/** 工具调用**结构化参数**里的文件路径（工具卡「打开」签的唯一来源）。
+ *  2026-11-24 可点判定收紧：旧实现扫参数面展示文本的第一条路径——shell 的
+ *  `cwd /d/...`、code_execution 的代码片段、search 的 `/正则/` 全被当成文件，
+ *  实测 8191 个签里 5759 个指向不存在的路径。这里只认文件动作的 path/filePath。 */
+export function toolFileArg(name: string | undefined, argsJson: string | undefined): string | null {
+  const a = parseArgsObj(argsJson);
+  if (!a || !name) return null;
+  const semantic = resolveSemanticToolName(name, argsJson);
+  if (!FILE_ARG_TOOLS.has(semantic)) return null;
+  return str(a, 'path', 'filePath', 'file_path') ?? null;
+}
+
 /** 参数取数值（数字或数字串）。 */
 function num(a: Record<string, unknown> | null, ...keys: string[]): number | undefined {
   if (!a) return undefined;

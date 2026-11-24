@@ -31,7 +31,6 @@ import type { BlockRendererContribution, BlockRendererProps } from '../../../com
 import type { CodeCallPart } from '../../../paper/block-model';
 import { CODE_CALLS_LABEL, codeCallLines } from '../../../paper/code-calls';
 import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
-import { firstFileReference, resolveFileReference } from '../../../paper/file-ref';
 import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
   type MdBlock,
@@ -41,7 +40,7 @@ import {
   parseMarkdownIncremental,
 } from '../../../paper/markdown';
 import { parseCircledSegments } from '../../../paper/marks';
-import { presentTool } from '../../../paper/tool-present';
+import { presentTool, toolFileArg } from '../../../paper/tool-present';
 import {
   codeDisplay,
   codeSrcText,
@@ -58,7 +57,7 @@ import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
 import type { ChatImageRef } from '../../../provider/types';
 import type { PlanPart } from '../../../ui/message-model';
 import { CodeSrc, highlightCode } from './code-src';
-import { openReferencedFile, workspaceRoot } from './file-open';
+import { openReferencedFile, useOpenableRef } from './file-open';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
 // A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
@@ -72,6 +71,7 @@ import {
   typedRpc,
   useShellStore,
 } from './host';
+import { InlineCodeRef, InlineLinkRef } from './inline-refs';
 import { SubagentPostBody } from './post-renderer';
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
@@ -250,45 +250,8 @@ function InlineRuns({ inl }: { inl: MdInline[] }) {
       {inl.map((seg, i) => {
         let node: ReactNode = seg.text;
         if (seg.math !== undefined) node = <MathInline source={seg.math} />;
-        else if (seg.c) {
-          // 行内码整段是文件引用 → 可点（绝对路径凭原样，相对路径按工作区根解析）。
-          const ref = resolveFileReference(seg.text, workspaceRoot());
-          node =
-            ref !== null ? (
-              <button
-                type="button"
-                className="pp-md-ci pp-md-ci--ref"
-                data-tip={ref}
-                onClick={() => openReferencedFile(ref)}
-              >
-                {seg.text}
-              </button>
-            ) : (
-              <code className="pp-md-ci">{seg.text}</code>
-            );
-        } else if (seg.href) {
-          // Markdown 链接：本机文件（含仓库相对路径）点开进文卷；其余照旧走浏览器。
-          // 保留原 href 而非 #（锚点语义/可访问性）；普通点击 preventDefault——不让纸面变成网页导航。
-          const ref = resolveFileReference(seg.href, workspaceRoot());
-          node =
-            ref !== null ? (
-              <a
-                className="pp-md-a"
-                href={seg.href}
-                data-tip={ref}
-                onClick={(e) => {
-                  e.preventDefault();
-                  openReferencedFile(ref);
-                }}
-              >
-                {seg.text}
-              </a>
-            ) : (
-              <a className="pp-md-a" href={seg.href} target="_blank" rel="noreferrer">
-                {seg.text}
-              </a>
-            );
-        }
+        else if (seg.c) node = <InlineCodeRef text={seg.text} />;
+        else if (seg.href) node = <InlineLinkRef href={seg.href} text={seg.text} />;
         if (seg.s) node = <del>{node}</del>;
         if (seg.i) node = <em>{node}</em>;
         if (seg.b) node = <strong>{node}</strong>;
@@ -1159,6 +1122,8 @@ const PayloadSection = memo(function PayloadSection({
   body,
   variant,
   gap,
+  refRaw,
+  refRevision,
 }: {
   label: string;
   /** 文本展示模型（缺省时须给 body——结构化体自带渲染）。 */
@@ -1168,16 +1133,22 @@ const PayloadSection = memo(function PayloadSection({
   variant: 'args' | 'out' | 'err' | 'result';
   /** 段头前留空档（首段紧跟折叠行/程序体，不留） */
   gap?: boolean;
+  /** 工具调用**结构化参数**里的文件路径（只由 file 动作给；不再扫展示文本）。 */
+  refRaw?: string | null;
+  /** 落定代：参数面 0 → 结果到 1（`fs(write)` 的新文件要重探）。 */
+  refRevision?: number;
 }) {
   const boxClass = variant === 'err' ? 'pp-out pp-out--err' : variant === 'args' ? 'pp-args' : 'pp-out';
   const content = body ?? (display ? <PayloadText display={display} /> : null);
-  // 参数里带文件路径（绝对或仓库相对）→ 段头右侧出一枚可点签（工具卡"文件在哪"最直接的落点）。
-  const refPath = variant === 'args' && display ? firstFileReference(display.text, workspaceRoot()) : null;
+  // 文件名从工具调用参数取（paper/tool-present 的 toolFileArg），再由 stat 门禁核实
+  // 可打开才出签——shell/code_execution/search 的参数文本里没有「这一份文件」，不再误出。
+  const ref = useOpenableRef(variant === 'args' ? (refRaw ?? null) : null, refRevision ?? 0);
+  const refPath = ref.path;
   return (
     <div className={`pp-sec pp-sec--${variant}${gap ? ' pp-sec--gap' : ''}`}>
       <div className="pp-sec-head">
         <span className="pp-sec-label">{label}</span>
-        {refPath && (
+        {ref.state === 'openable' && refPath !== null && (
           <button type="button" className="pp-sec-ref" data-tip={refPath} onClick={() => openReferencedFile(refPath)}>
             打开
           </button>
@@ -1200,6 +1171,10 @@ function ToolBody({ block, folded }: BlockRendererProps) {
     () => presentTool({ name: p.name, args: p.args, output: p.output, err: p.err }),
     [p.name, p.args, p.output, p.err],
   );
+  // 参数面「打开」签的唯一来源：工具动作的 path/filePath（不是任意展示文本）。
+  const refRaw = useMemo(() => toolFileArg(p.name, p.args), [p.name, p.args]);
+  // 结果落定代：fs(write) 的新文件在参数面还不存在，结果到后必须重探一次。
+  const refRevision = p.output !== undefined || p.err !== undefined ? 1 : 0;
   if (folded) return null; // 折叠态只留壳层折叠行（paper/fold.ts 规则）——各段全收
   return (
     <>
@@ -1211,6 +1186,8 @@ function ToolBody({ block, folded }: BlockRendererProps) {
           display={sec.display}
           variant={sec.variant}
           gap={i > 0}
+          refRaw={refRaw}
+          refRevision={refRevision}
         />
       ))}
     </>

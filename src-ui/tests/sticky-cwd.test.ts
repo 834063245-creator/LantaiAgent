@@ -14,7 +14,8 @@ import {
   setStickyCwd,
   stickyCwdOf,
 } from '../src/agent/session-context';
-import { CWD_MARKER_END, CWD_MARKER_START, CwdMarkerFilter, normalizeMsysPath } from '../src/agent/sticky-cwd';
+import { CWD_MARKER_END, CWD_MARKER_START, CwdMarkerFilter } from '../src/agent/sticky-cwd';
+import { normalizeMsysPath } from '../src/path-forms';
 
 beforeEach(() => {
   clearOwnerContextsForTest();
@@ -34,9 +35,12 @@ describe('normalizeMsysPath（MSYS → Windows 规整）', () => {
     expect(normalizeMsysPath('/c/')).toBe('c:/');
   });
 
-  it('UNC / 相对路径 → null（放弃捕获，粘性不动自愈）', () => {
+  it('UNC / 相对路径 / 真 POSIX 绝对路径 → null（不误切盘符）', () => {
     expect(normalizeMsysPath('//server/share')).toBeNull();
     expect(normalizeMsysPath('relative/x')).toBeNull();
+    // 2026-11-24 收紧：/home 这类首段多字母的 POSIX 路径不是 MSYS 盘符
+    expect(normalizeMsysPath('/home/u/a.md')).toBeNull();
+    expect(normalizeMsysPath('/usr/local/bin')).toBeNull();
   });
 
   it('Windows 风格直通（pwsh 路径）', () => {

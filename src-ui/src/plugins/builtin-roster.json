@@ -383,6 +383,7 @@
       "paper/tool-present.ts",
       "paper/tool-text.ts",
       "paper/viewer-exts.ts",
+      "path-forms.ts",
       "ui/tool-semantics.ts"
     ],
     "required": true,

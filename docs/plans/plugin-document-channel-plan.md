@@ -103,6 +103,17 @@ doc.save({ docToken, content }) → { status: "pending-review" | "written", diff
 > 工具卡「打开」签同步认带扩展名的相对 token；宿主窗口设施 `openPluginWindow` 兜底把相对文档路径解析成绝对
 > （Rust 只收绝对路径）。测试：`tests/file-ref.test.ts`（12）/ `tests/paper-file-link.test.tsx`（5）/
 > `tests/open-file-with-plugin.test.ts`（相对路径令牌一例）。
+>
+> **可点判定收紧（2026-11-24，真机复盘）**：上述相对路径批把「像路径的文本」直接做成可点，
+> 实测 75 卷里 1306 个可点引用有 971 个点开是 os error 2（74%）；工具卡「打开」签 8191 个里
+> 5759 个指向不存在的路径（shell/code_execution/search 的 cwd、代码片段、正则被当成文件）。
+> 本批落：① 工具卡签只认文件动作（`fs(read/edit/write)`）的结构化 `path/filePath`，不再扫展示文本；
+> ② `paper/file-ref` 只认「非空文件名前缀 + 已知文件后缀」，`doc.save`/`ctx.windows`/`.ts`/glob/占位符一律 null；
+> ③ `~/` 原样交给 Rust 展开（前端不再拼根），MSYS `/d/...` 经根 `path-forms.ts` 转盘符；
+> ④ 渲染前 `fs_cap stat` 门禁：存在、非目录、文卷可打开才出可点签；相对写法再按常见子根试候选；
+> ⑤ 点击时 fresh stat，失败落状态栏「找不到可打开的文件：<path>」；文卷后缀白名单与
+> `md-editor/pure.js` 的 `docKindOf` 同集。测试：`tests/file-ref.test.ts`（16）/
+> `tests/paper-file-link.test.tsx`（7）/ `tests/tool-file-arg.test.ts`（3）。
 
 - 纸面/引用处加「用文卷打开」入口（从卷里/工作区取当前文档）；
 - `examples/plugins/md-editor/` 接入 `doc-open` 与 `doc.save`，README 撤掉「刻意不做」里的对应行。

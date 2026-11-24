@@ -621,6 +621,19 @@
   text-decoration-color: var(--seal);
 }
 
+/* 本地链接但 stat 核实不可开（2026-11-24）：保留链接墨色与下划线，但不给可点感 */
+.pp-md-a--dead,
+.pp-pc .pp-md-a--dead {
+  cursor: default;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in oklch, var(--graphite) 45%, transparent);
+}
+.pp-md-a--dead:hover,
+.pp-pc .pp-md-a--dead:hover {
+  color: var(--indigo);
+  text-decoration-color: color-mix(in oklch, var(--indigo) 45%, transparent);
+}
+
 /* ── 数学（科研 LaTeX，2026-09 scientific-rendering）──
  * KaTeX 输出 .katex / .katex-display；纸壳只做容器与墨色协调。
  * 版式数字 token：--pp-md-mathGap（块下距）/--pp-md-mathSizeRatio（字号系数）/
