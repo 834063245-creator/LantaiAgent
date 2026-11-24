@@ -9,6 +9,7 @@
 // focusRafRef/focusFlightRef 载体。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLostFocusCancel } from '../../../app/interaction/lost-focus';
 import { claimPointer } from '../../../app/interaction/pointer-claims';
 import { useEdgeAutoScroll, useHoverEdgeScroll } from './edge-scroll';
 import { createFocusFlightScheduler } from './focus-flight';
@@ -257,7 +258,28 @@ export function usePaperViewport(core: PaperCore | null) {
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
   /** 平移手势的指针所有权认领（plan §2.3）：起手记账、松手/失联释放。 */
   const panReleaseRef = useRef<(() => void) | null>(null);
+  /** pointer capture 的指针 id（拖过 iframe / 拖出窗口仍收得到 move/up；见下方 capture 注）。 */
+  const panCapturePointerRef = useRef<number | null>(null);
+  /** 失联收手：blur / 切走 / 指针离开文档时 pointerup 不会来——由 useLostFocusCancel 调。 */
+  const panUpRef = useRef<(() => void) | null>(null);
   const [panning, setPanning] = useState(false);
+  useLostFocusCancel(
+    useCallback(() => {
+      panUpRef.current?.();
+    }, []),
+  );
+
+  /** 释放平移捕获（pointerup 浏览器会自己释放；取消 / 失联路径手动收——失败无妨）。 */
+  const releasePanCapture = useCallback(() => {
+    const id = panCapturePointerRef.current;
+    panCapturePointerRef.current = null;
+    if (id === null) return;
+    try {
+      canvasRef.current?.releasePointerCapture?.(id);
+    } catch {
+      /* 指针已消失 / 元素已卸载：无需释放 */
+    }
+  }, []);
   /* 焦点飞行载体（use-paper-focus / glide 消费——wheel 与手动拖拽抢占飞行）。 */
   const focusRafRef = useRef(0);
   const focusFlightRef = useRef(createFocusFlightScheduler());
@@ -463,6 +485,19 @@ export function usePaperViewport(core: PaperCore | null) {
       // 先跑，激活与平移并存。
       const onEmpty = t === e.currentTarget || t.classList.contains('pp-world') || t.classList.contains('pp-region');
       if (!onEmpty) return;
+      /* **pointer capture（2026-11-24 指针穿透批）**：平移此前只挂 window 监听——
+       * 指针经过插件窗 / HTML 卡的 iframe 时，pointermove/pointerup 被投进子文档，
+       * 父文档收不到 ⇒ 画布停摆；松手落在窗上更连 up 都没有。捕获后事件恒回画布
+       * （以及冒泡到 window），出窗、过窗、窗外松手都收得到。失败也不塌：全局
+       * pointer-shield 在按住期把 iframe 从命中面摘掉，window 监听同样能收到。 */
+      const el = e.currentTarget;
+      releasePanCapture();
+      try {
+        el.setPointerCapture?.(e.pointerId);
+        panCapturePointerRef.current = el.hasPointerCapture?.(e.pointerId) ? e.pointerId : null;
+      } catch {
+        panCapturePointerRef.current = null;
+      }
       /* 指针所有权裁决（2026-11-17 交互原语批 C4 / plan §2.3）：**有手势在途就让路**。
        * 病灶：这一句 preventDefault 是平移手势的正确实现，但它同时是全局副作用——
        * 它不知道上面还浮着谁。于是每个浮层都要自己打「怎么不被吃掉」的补丁，同类
@@ -482,7 +517,7 @@ export function usePaperViewport(core: PaperCore | null) {
       panningRef.current = { lastX: e.clientX, lastY: e.clientY };
       setPanning(true);
     },
-    [core],
+    [core, releasePanCapture],
   );
 
   useEffect(() => {
@@ -523,17 +558,22 @@ export function usePaperViewport(core: PaperCore | null) {
       setPanning(false);
       panReleaseRef.current?.();
       panReleaseRef.current = null;
+      releasePanCapture();
+      panUpRef.current = null;
     };
+    panUpRef.current = up;
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
     return () => {
+      panUpRef.current = null;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       if (raf) cancelAnimationFrame(raf);
+      releasePanCapture();
     };
-  }, [panning, setView]);
+  }, [panning, setView, releasePanCapture]);
 
   /* ── 拖选自动滚屏：手势臂装（window capture——块手柄类手势在 React 层
    * stopPropagation，冒泡路看不到，须捕获面先行）→ rAF 循环（活选区非折叠

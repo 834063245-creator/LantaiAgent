@@ -378,6 +378,47 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(container?.querySelector('.pp-canvas.pp-panning')).toBeNull();
   }, 30_000);
 
+  it('平移起手对画布 setPointerCapture，收手释放（拖过插件窗 / 出窗仍收得回）', async () => {
+    const canvas = await mountCanvas();
+    const region = container?.querySelector('.pp-region') ?? null;
+    const setCapture = vi.fn();
+    const releaseCapture = vi.fn();
+    Object.defineProperties(canvas, {
+      setPointerCapture: { configurable: true, value: setCapture },
+      hasPointerCapture: { configurable: true, value: () => true },
+      releasePointerCapture: { configurable: true, value: releaseCapture },
+    });
+    await act(async () => {
+      fire(region as Element, 'mousedown', { button: 0, clientX: 400, clientY: 300 });
+    });
+    expect(setCapture).toHaveBeenCalledWith(1);
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 520, clientY: 380 });
+    });
+    expect(releaseCapture).toHaveBeenCalledWith(1);
+    expect(container?.querySelector('.pp-canvas.pp-panning')).toBeNull();
+  }, 30_000);
+
+  it('平移失联（blur 后 pointerup 永不到）自愈：panning 态与指针账一起清掉', async () => {
+    const canvas = await mountCanvas();
+    const region = container?.querySelector('.pp-region') ?? null;
+    await act(async () => {
+      fire(region as Element, 'mousedown', { button: 0, clientX: 400, clientY: 300 });
+    });
+    expect(canvas.classList.contains('pp-panning')).toBe(true);
+    await act(async () => {
+      fire(window, 'blur', {});
+    });
+    expect(canvas.classList.contains('pp-panning'), '失联即收：不能留 grabbing 光标面').toBe(false);
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 900, clientY: 500 });
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const v = useCanvasViewStore.getState().view;
+    expect(v.panX).toBe(600);
+    expect(v.panY).toBe(600);
+  }, 30_000);
+
   it('块文本按下拖动 ≠ 平移（文本区是选择面）', async () => {
     await mountCanvas();
     const block = container?.querySelector('.pp-block') ?? null;

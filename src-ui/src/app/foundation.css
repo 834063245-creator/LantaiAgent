@@ -63,6 +63,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── 指针穿透盾（2026-11-24）──
+ * iframe 是独立 document：宿主按住拖动经过插件窗 / HTML 卡时，pointermove /
+ * pointerup 被送进子文档，父文档收不到 ⇒ 画布停摆、松手丢 up（panning 态与
+ * pointer claim 残留，之后的手势全被吞）。标记由 app/interaction/pointer-shield.ts
+ * 在宿主自己的 pointerdown 后挂上；iframe 内起手不经过父文档，故窗内交互不受影响。
+ * 这里必须覆盖**所有** iframe：插件窗（.pw-iframe）、纸面 HTML 卡（.pp-html-frame）、
+ * 架阁卡（.shf-frame）同一病灶。 */
+html[data-pointer-held] iframe {
+  pointer-events: none;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

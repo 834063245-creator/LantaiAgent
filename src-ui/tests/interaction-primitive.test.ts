@@ -57,6 +57,8 @@ const WITHOUT_COMMENTS = new Map(FILES.map((f) => [f.rel, stripComments(readFile
 const LISTENER_REGISTRY: Record<string, string> = {
   'src-ui/src/app/interaction/use-drag-gesture.ts':
     '手势核心本体：setPointerCapture / 回退窗口监听都住在这里，其余全部经它',
+  'src-ui/src/app/interaction/pointer-shield.ts':
+    '宿主按住期的 iframe 命中盾：只记 pointerdown/up 的账，不接管手势、不 preventDefault',
   'src-ui/src/app/overlay-hooks.ts':
     '外点关闭（useOutsideClose）与 Escape 的唯一实现（2026-11-24 自 overlay.tsx 拆出，容器面不再挂监听）',
   'src-ui/src/app/tip/tip-host.tsx':

@@ -19,6 +19,7 @@ import { activeRootViews, type RootViewSlot, subscribeRootViews } from '../compo
 import { CommandPalette } from './CommandPalette';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { HelpSheet } from './HelpSheet';
+import { usePointerShield } from './interaction/pointer-shield';
 import { DockPanel } from './panels/DockPanel';
 import { DocumentReviewHost } from './plugin-windows/DocumentReviewHost';
 import { PluginWindowsHost } from './plugin-windows/PluginWindowsHost';
@@ -34,6 +35,7 @@ function useRootViewRows(slot: RootViewSlot) {
 }
 
 export function App() {
+  usePointerShield();
   useGlobalKeys();
   useDocumentTitle();
   const homeViews = useRootViewRows('home');

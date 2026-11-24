@@ -25,7 +25,9 @@
 // 换 pointer 的好处在这里最实在：**指针拖出窗口仍然收得到**——旧实现靠
 // document 级 mousemove 硬扛（快速拖出书眉会断线），现在 `setPointerCapture`
 // 把事件锁在书眉上，出窗照跟。位置经 store moveWindow 写回（视口边界夹持——
-// 书眉恒可达）。帧内指针事件 stopPropagation：不向画布底座漏（pan 抢占防线第二道）。
+// 书眉恒可达）。帧内指针事件 stopPropagation：不向画布底座漏（pan 抢占防线第二道）；
+// 宿主按住期间另有 app/interaction/pointer-shield 把 iframe 从命中面摘掉——跨
+// document 的 pointermove/pointerup 不会再漏进窗内（2026-11-24 指针穿透批）。
 //
 // ⚠ **交互件不承载拖拽**（2026-11-18 实机修）：书眉带 pointer capture，按下关窗钮
 // 再松手时指针事件被重定向到书眉，按钮收不到自己的 pointerup ⇒ 浏览器凑不齐
