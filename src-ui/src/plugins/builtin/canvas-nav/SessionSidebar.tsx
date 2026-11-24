@@ -184,7 +184,9 @@ export const SessionSidebar = memo(function SessionSidebar() {
    * listSavedSessions（sess/agent/ask/space/消息 store 多条订阅各触发一次），
    * 先发的应答后到就把旧清单写回，已合卷的卷闪回「摊开中」节（书脊同病灶，
    * 2026-09-14 用户报书脊「被合卷那根先消失又闪回来」）。 */
-  const [openRows, setOpenRows] = useState<Array<{ id: number; label: string; msgCount: number }>>([]);
+  const [openRows, setOpenRows] = useState<Array<{ id: number; label: string; msgCount: number; createdAt?: string }>>(
+    [],
+  );
   const [savedRows, setSavedRows] = useState<Parameters<typeof mergeSessionRows>[1]>([]);
   /** 当前活跃卷 id（渲染当前卷朱砂标记；status 计算也要用）。 */
   const [activeSid, setActiveSid] = useState<number | null>(null);
@@ -284,6 +286,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
         label: s.label,
         // 与卷目录同口径：UI 消息数（catalogMsgCount 的 UI 快照分支）——开/合不得两把尺。
         msgCount: msgStoreFor(pid, s.id).getState().messages.length,
+        // 立卷时刻：摊开组的排序键（内存真源——禁拿异步磁盘 savedAt 排，见模型头注）。
+        createdAt: s.createdAt,
       })),
     );
   }, [core]);
@@ -1065,9 +1069,18 @@ export const SessionSidebar = memo(function SessionSidebar() {
   );
   const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  /* 当前卷进场（2026-09-20 双视角批）：切换当前卷后把它滚进视野（nearest = 已在视野内不动）。 */
+  /* 当前卷进场（2026-09-20 双视角批）：切换当前卷后把它滚进视野（nearest = 已在视野内不动）。
+   * ⚠ **挂载后首个落定值不滚**（2026-11-29）：侧栏每次展开都是重新挂载，`activeSid` 由
+   * null 变存量卷号会被这条 effect 读成「切换当前卷」⇒ 面刚摊开、用户还没动手，列表就
+   * 自己滚一大截（真机实测 0 → 327px）。展开瞬间不该动的动了，与「展开即播位移动画」
+   * 同一句话。之后的值才来自用户切卷，照滚。 */
+  const activeScrollArmedRef = useRef(false);
   useEffect(() => {
     if (activeSid == null) return;
+    if (!activeScrollArmedRef.current) {
+      activeScrollArmedRef.current = true;
+      return;
+    }
     rowRefs.current.get(activeSid)?.scrollIntoView?.({ block: 'nearest' });
   }, [activeSid]);
 

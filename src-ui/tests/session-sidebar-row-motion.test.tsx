@@ -174,6 +174,94 @@ describe('案卷侧栏行位置变化：FLIP 让位', () => {
     expect(row2.classList.contains('ss-row--moving')).toBe(true);
   });
 
+  it('展开侧栏：磁盘清单迟到不得让摊开行重排（「每次展开都播位移动画」的根因）', async () => {
+    stubMatchMedia(false);
+    // 只给摊开行的布局 y（其余盒 offsetTop 为 0，链求和等价）
+    rowTops = new Map([
+      ['3', 100],
+      ['2', 200],
+    ]);
+    let releaseSaved = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseSaved = resolve;
+    });
+    const core = fakeCore(panelId);
+    core.listSavedSessions = vi.fn(async () => {
+      await gate; // 磁盘清单故意迟到（真机 = 读全部卷体，数百毫秒）
+      return [
+        { id: 2, label: '卷甲', msgCount: 1, savedAt: '2026-08-29T00:00:00Z' }, // 旧 id 却最近落盘
+        { id: 3, label: '卷乙', msgCount: 1, savedAt: '2026-08-21T00:00:00Z' },
+      ];
+    });
+    useCoreStore.getState().setChatCore(core);
+    getChatStore(panelId).sess.setState({
+      sessions: [
+        { id: 2, label: '卷甲', createdAt: '2026-08-20T00:00:00Z' },
+        { id: 3, label: '卷乙', createdAt: '2026-08-25T00:00:00Z' },
+      ],
+      activeIdx: 0,
+      sessionTokens: {},
+      nextSessionId: 4,
+    });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<SessionSidebar />);
+    });
+    await act(async () => {});
+
+    const order = () =>
+      Array.from(container.querySelectorAll<HTMLElement>('.ss-row[data-id]')).map((el) => el.dataset.id);
+    const before = order();
+    expect(before).toEqual(['3', '2']); // 立卷时刻倒序：新卷在上
+
+    await act(async () => {
+      releaseSaved();
+      await Promise.resolve();
+    });
+    await act(async () => {});
+
+    expect(order()).toEqual(before); // 磁盘清单落地不改序
+    expect(container.querySelectorAll('.ss-row--moving')).toHaveLength(0); // 也就没有让位动画
+  });
+  it('展开侧栏：首个活跃卷落定不自己滚（滚动只属于用户切卷）', async () => {
+    stubMatchMedia(false);
+    const proto = Element.prototype as unknown as { scrollIntoView?: (arg?: unknown) => void };
+    const original = proto.scrollIntoView;
+    const scrollSpy = vi.fn();
+    proto.scrollIntoView = scrollSpy;
+    try {
+      rowTops = new Map([
+        ['3', 100],
+        ['2', 200],
+      ]);
+      useCoreStore.getState().setChatCore(fakeCore(panelId));
+      getChatStore(panelId).sess.setState({
+        sessions: [
+          { id: 2, label: '卷甲', createdAt: '2026-08-20T00:00:00Z' },
+          { id: 3, label: '卷乙', createdAt: '2026-08-25T00:00:00Z' },
+        ],
+        activeIdx: 0,
+        sessionTokens: {},
+        nextSessionId: 4,
+      });
+      await act(async () => {
+        root = createRoot(container);
+        root.render(<SessionSidebar />);
+      });
+      await act(async () => {});
+      // 挂载：活跃卷由「无」变存量 id——面刚摊开就自己滚一大截是「展开即动」同族病灶。
+      expect(scrollSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        getChatStore(panelId).sess.setState({ activeIdx: 1 });
+      });
+      await act(async () => {});
+      expect(scrollSpy).toHaveBeenCalledTimes(1); // 用户切卷照滚
+    } finally {
+      if (original) proto.scrollIntoView = original;
+      else delete proto.scrollIntoView;
+    }
+  });
   it('CSS 合同：行让位只动 transform，时长走 --m-sheet；背景/影仍走 --snap', () => {
     const css = SIDEBAR_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
     const at = css.indexOf('.ss-row.ss-row--moving {');

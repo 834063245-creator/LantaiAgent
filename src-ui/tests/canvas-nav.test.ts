@@ -42,21 +42,41 @@ describe('session-sidebar-model（DSH 合流）', () => {
   it('mergeSessionRows：未摊开磁盘卷为底，摊开会话覆盖 label；摊开优先排序', () => {
     const rows = mergeSessionRows(
       [
-        { id: 2, label: '内存新名', msgCount: 3 },
-        { id: 5, label: '', msgCount: 0 },
+        { id: 2, label: '内存新名', msgCount: 3, createdAt: '2026-08-24T10:00:00Z' },
+        { id: 5, label: '', msgCount: 0, createdAt: '2026-08-25T10:00:00Z' },
       ],
       [
         { id: 1, label: '盘卷甲', msgCount: 8, savedAt: '2026-08-24T00:00:00Z' },
         { id: 2, label: '盘卷乙', msgCount: 1, savedAt: '2026-08-23T00:00:00Z' },
       ],
     );
-    expect(rows.map((r) => r.id)).toEqual([2, 5, 1]); // 摊开在前，同组 savedAt 倒序（未落盘新卷在后）
+    // 摊开在前；摊开组按**立卷时刻**倒序（新卷在上）——不看 savedAt（磁盘源异步），
+    // 见下一条用例。已合卷组仍按 savedAt 倒序。
+    expect(rows.map((r) => r.id)).toEqual([5, 2, 1]);
     const r2 = rows.find((r) => r.id === 2)!;
     expect(r2.label).toBe('内存新名'); // 内存覆盖盘上旧名
     expect(r2.open).toBe(true);
     expect(rows.find((r) => r.id === 1)!.open).toBe(false);
   });
 
+  it('mergeSessionRows：磁盘清单迟到不改变摊开组顺序（展开侧栏不重排的根因）', () => {
+    // 病灶（2026-11-29 实机复现）：摊开组曾按磁盘 `savedAt` 排序。挂载首帧磁盘清单
+    // 还没到 ⇒ 全组退化成 id 序；盘清单一到又变成时间序 ⇒ 整组重排一次，侧栏的行
+    // 让位动效把这趟**假重排**播成位移动画（用户报「每次展开侧边栏都播一次」）。
+    const open = [
+      { id: 2, label: '甲', createdAt: '2026-08-20T00:00:00Z' },
+      { id: 3, label: '乙', createdAt: '2026-08-25T00:00:00Z' },
+    ];
+    const early = mergeSessionRows(open, []).map((r) => r.id);
+    const late = mergeSessionRows(open, [
+      // 旧 id 最近落盘——旧规格下它会跳到最上面，新规格下不参与摊开组定序
+      { id: 2, label: '甲', msgCount: 1, savedAt: '2026-08-29T00:00:00Z' },
+      { id: 3, label: '乙', msgCount: 1, savedAt: '2026-08-21T00:00:00Z' },
+      { id: 1, label: '已合卷', msgCount: 2, savedAt: '2026-08-30T00:00:00Z' },
+    ]).map((r) => r.id);
+    expect(late.filter((id) => id === 2 || id === 3)).toEqual(early); // 摊开组顺序逐位相同
+    expect(late).toEqual([3, 2, 1]);
+  });
   it('relativeTime：刚刚 / 分钟 / 小时 / 天；缺省 —', () => {
     const now = Date.parse('2026-08-25T12:00:00Z');
     expect(relativeTime('2026-08-25T11:59:30Z', now)).toBe('刚刚');

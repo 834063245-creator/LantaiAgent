@@ -40,7 +40,15 @@ export interface SidebarRow {
 }
 
 /** 两源合流：磁盘已存卷为底，摊开会话覆盖（label 取内存最新；savedAt 缺失
- *  的未落盘新卷保留空）。排序 = 摊开优先，同组按 savedAt 倒序（新者上）。
+ *  的未落盘新卷保留空）。排序 = 摊开优先；**摊开组按立卷时刻倒序（新者上）**，
+ *  已合卷组按 savedAt 倒序。
+ *
+ *  ⚠ **摊开组禁用 `savedAt` 排序**（2026-11-29 真机根因）：savedAt 只有磁盘源有，
+ *  而侧栏/书脊每次展开都是**重新挂载**——首帧磁盘清单还没到，全组退化成 id 序；
+ *  盘清单一到又变成时间序 ⇒ 整组重排一次。侧栏的行让位动效（FLIP）会忠实地把这次
+ *  **假重排**播成一段位移动画（用户报「每次展开侧边栏，摊开卷都播一次位移动画」）。
+ *  立卷时刻 `createdAt` 是内存真源（起卷当场写；摊开磁盘卷取卷日志头行），首帧即
+ *  可定序 ⇒ 磁盘清单迟到多久都不再改序。
  *  血缘（`parentId`）只在盘上那一源：摊开集没有它（卷日志头行是唯一真源），
  *  故摊开行沿用其盘上行的边——未落盘的摊开卷 = 无父（新卷本就是根卷）。
  *
@@ -48,7 +56,7 @@ export interface SidebarRow {
  *  块数真源在盘上投影。传 `undefined` = 沿用盘上值；2026-09-21 前调用点填死 0，
  *  而 `0` 不是 nullish ⇒ 把盘上真值整个盖掉（书脊小卡「Nº 7 · 0 块」病灶）。 */
 export function mergeSessionRows(
-  open: Array<{ id: number; label: string; msgCount?: number }>,
+  open: Array<{ id: number; label: string; msgCount?: number; createdAt?: string }>,
   saved: Array<{ id: number; label: string; msgCount: number; savedAt: string; parentId?: number }>,
 ): SidebarRow[] {
   const byId = new Map<number, SidebarRow>();
@@ -77,8 +85,16 @@ export function mergeSessionRows(
     });
   }
   const rows = [...byId.values()];
+  // 摊开组序只看内存真源（立卷时刻）——见上方 ⚠：savedAt 是异步磁盘源，用它排
+  // 会让整组在盘清单落地时重排一次（侧栏展开即播位移动画的病灶）。
+  const bornAt = new Map(open.map((o) => [o.id, o.createdAt ?? '']));
   rows.sort((a, b) => {
     if (a.open !== b.open) return a.open ? -1 : 1;
+    if (a.open) {
+      const t = (bornAt.get(b.id) ?? '').localeCompare(bornAt.get(a.id) ?? '');
+      if (t !== 0) return t;
+      return b.id - a.id;
+    }
     const t = (b.savedAt || '').localeCompare(a.savedAt || '');
     if (t !== 0) return t;
     return b.id - a.id;

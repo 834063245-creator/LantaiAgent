@@ -156,13 +156,13 @@ function readRunning(storeId: string, sid: number): boolean {
   return agentSessionState.runStateOf(storeId, sid).running;
 }
 
-/** 书脊卷序 = 侧边栏合流序（摊开组：savedAt 倒序，未落盘按卷号新者上）——
- *  书脊与侧边栏并陈两份名单，顺序打架是可见 bug（2026-08-31 前
+/** 书脊卷序 = 侧边栏合流序（摊开组：立卷时刻倒序，未落盘按卷号新者上；已合卷组
+ *  不在书脊上）——书脊与侧边栏并陈两份名单，顺序打架是可见 bug（2026-08-31 前
  *  书脊用内存数组序，与侧边栏「新者上」相反）。
  *  `msgCount`/`savedAt` 由盘上行供给：内存摊开集只有 `{id, label}`，
  *  故**不传** msgCount（传 0 会把盘上真值盖掉，见 mergeSessionRows 注）。 */
 export function spineRows(
-  open: Array<{ id: number; label: string }>,
+  open: Array<{ id: number; label: string; createdAt?: string }>,
   saved: Parameters<typeof mergeSessionRows>[1],
 ): SpineRow[] {
   return mergeSessionRows(open, saved)
@@ -187,7 +187,7 @@ export const SpineRack = memo(function SpineRack() {
    * 「list_volumes + 每卷并行读文件」的多跳异步），先发的应答后到时就把
    * 「还没发合卷」的旧清单写回书脊 → 已合卷的卷闪回来。
    * 现在：摊开集只由内存写（旧值永不回灌），磁盘应答按请求序号收敛（旧的丢弃）。 */
-  const [openRows, setOpenRows] = useState<Array<{ id: number; label: string }>>([]);
+  const [openRows, setOpenRows] = useState<Array<{ id: number; label: string; createdAt?: string }>>([]);
   const [savedRows, setSavedRows] = useState<Parameters<typeof mergeSessionRows>[1]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
@@ -313,7 +313,8 @@ export const SpineRack = memo(function SpineRack() {
   const resyncMemory = useCallback(() => {
     if (!core) return;
     const st = getChatStore(core.panelId).sess.getState();
-    setOpenRows(st.sessions.map((s) => ({ id: s.id, label: s.label })));
+    // createdAt = 摊开组排序键（内存真源；禁拿异步磁盘 savedAt 排，见 mergeSessionRows 头注）。
+    setOpenRows(st.sessions.map((s) => ({ id: s.id, label: s.label, createdAt: s.createdAt })));
     const active = st.sessions[st.activeIdx];
     setActiveId(active ? active.id : null);
     const running = new Set<number>();
