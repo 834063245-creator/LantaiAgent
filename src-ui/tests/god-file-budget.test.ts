@@ -103,7 +103,13 @@ const DEBT: Record<string, number> = {
   'engine/src/graph/resolver.rs': 1400, // 现 1380
   'src-tauri/src/commands/plugin_install.rs': 1700, // 现 1612；2026-11-24 加 dev link（junction 安装 + 卸载只删链接）与安装来源记录——commands/mod.rs 模块清单被平台边界测试冻结，只能原文件长
   'engine/src/main.rs': 1400, // 现 1317
-  'src-tauri/src/plugin_assets.rs': 1400, // 现 1325
+  /* 2026-11-24 跨档（1400 → 1500，现 1413）：dev link 放行批（3ad8bed1）把
+   * `registered_link_target()`（读 `.meta/<名>.json` 的 link 目标）与它的 junction
+   * e2e 用例长在本模块——放行判据必须与 `resolve_asset` 的 canonicalize 前缀检查
+   * 同处（「哪些根外路径被显式登记过」是这条通道的单点判据，挪出去就变成两处各判
+   * 一次），用例也照本仓 Rust 惯例内联同文件。真要瘦身 = 把根解析/通道判据抽成
+   * `plugin_assets/` 子模块，属另一批的结构活，不为省档位在本批动。 */
+  'src-tauri/src/plugin_assets.rs': 1500, // 现 1413
   'engine/src/stress.rs': 1400, // 现 1358
   // 2026-11-17 跨档（1300 → 1400）：流式「蓄水池」批把读到的字与显示进度分开
   // （useStreamDelta 的 received/shown 双游标 + rAF 泵），是**渲染期状态机**而非可拆纯函数——
