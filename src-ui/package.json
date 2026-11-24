@@ -10,6 +10,7 @@
     "dev:mock": "vite",
     "build": "node ../scripts/build-builtin-plugins.mjs && node ./node_modules/typescript/bin/tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "build:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs",
+    "loc": "node ../scripts/loc.mjs",
     "watch:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --watch",
     "motion:bench": "node ../scripts/motion-bench.cjs",
     "motion:film": "node ../scripts/motion-filmstrip.cjs",
