@@ -57,8 +57,8 @@ pub(super) fn anchors(png: &str, ox: i32, oy: i32) -> Result<Value, String> {
 /// 行框 = 词框并集；`rect`/`center` 都加窗口原点（屏幕虚拟坐标）。
 /// 容忍脏数据：缺字段的词跳过、空行跳过、退化框（宽高 ≤0）跳过——OCR 是增益不是必需。
 pub(super) fn parse_anchors(raw: &str, ox: i32, oy: i32) -> Result<Value, String> {
-    let v: Value = serde_json::from_str(raw)
-        .map_err(|e| format!("[UIA_OCR] 解析 OCR 输出失败: {e}"))?;
+    let v: Value =
+        serde_json::from_str(raw).map_err(|e| format!("[UIA_OCR] 解析 OCR 输出失败: {e}"))?;
     let engine = v["engine"].as_str().unwrap_or("none").to_string();
     let mut anchors: Vec<Value> = Vec::new();
     if let Some(lines) = v["lines"].as_array() {

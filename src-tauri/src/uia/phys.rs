@@ -11,8 +11,8 @@ use super::errors;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
     KEYEVENTF_KEYUP, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT,
-    MOUSE_EVENT_FLAGS, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
+    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, MOUSE_EVENT_FLAGS,
+    VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
@@ -150,7 +150,9 @@ pub(super) fn key_tap(mods: &[String], key: &str) -> Result<(), String> {
     let vk = vk_of(key).ok_or_else(|| {
         errors::err(
             errors::codes::ARG_INVALID,
-            format!("无法识别的按键: {key}（Enter/Tab/Escape/Backspace/Delete/ArrowUp/F1-F12/单字符）"),
+            format!(
+                "无法识别的按键: {key}（Enter/Tab/Escape/Backspace/Delete/ArrowUp/F1-F12/单字符）"
+            ),
         )
     })?;
     let m = mod_vks(mods)?;

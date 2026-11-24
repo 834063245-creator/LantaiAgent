@@ -13,9 +13,7 @@
 
 use serde_json::Value;
 
-use super::uia_cap::{
-    agent_of, arg_str, check_desktop_raw, opt_u32_of, opt_u64_of, UiaGate,
-};
+use super::uia_cap::{agent_of, arg_str, check_desktop_raw, opt_u32_of, opt_u64_of, UiaGate};
 
 /// 坐标模式写动作（批 2，P0-2）：click / right_click / scroll 带 x/y 时进入。
 ///

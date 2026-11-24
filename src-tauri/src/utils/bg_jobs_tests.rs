@@ -430,7 +430,7 @@ fn wait_bg_archived_job_returns_completed_state() {
 fn wait_bg_unknown_id_stays_an_error() {
     let _g = serial();
     clear_history();
-    let err = wait_bg(9_999_999, 20)
-        .expect_err("未登记的 id 仍然是错误（否则拼错 id 会被静默吞掉）");
+    let err =
+        wait_bg(9_999_999, 20).expect_err("未登记的 id 仍然是错误（否则拼错 id 会被静默吞掉）");
     assert!(err.contains("未登记"), "err: {err}");
 }

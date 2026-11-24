@@ -104,8 +104,8 @@ fn write_text(path: &Path, text: &str) -> Result<(), String> {
 /// 校验并规范化状态对象（浅合并语义的前提：顶层必须是 object）。
 fn normalize_state(text: &str) -> Result<String, String> {
     let raw = if text.trim().is_empty() { "{}" } else { text };
-    let value: Value = serde_json::from_str(raw)
-        .map_err(|e| format!("卡片状态不是合法 JSON: {e}"))?;
+    let value: Value =
+        serde_json::from_str(raw).map_err(|e| format!("卡片状态不是合法 JSON: {e}"))?;
     if !value.is_object() {
         return Err("卡片状态必须是 JSON 对象（顶层 object）".to_string());
     }
@@ -141,7 +141,9 @@ pub(crate) fn card_shelve_at(
     }
     let dir = card_dir_at(root, card_id)?;
     if dir.exists() {
-        return Err(format!("卡片已存在（拓印不覆盖，请换一个 cardId）: {card_id}"));
+        return Err(format!(
+            "卡片已存在（拓印不覆盖，请换一个 cardId）: {card_id}"
+        ));
     }
     let state_text = normalize_state(state_json)?;
     std::fs::create_dir_all(&dir)
@@ -204,8 +206,8 @@ pub(crate) fn card_list() -> Result<Value, String> {
 fn summarize_card(dir: &Path, card_id: &str) -> Result<Value, String> {
     let text = read_optional(&dir.join("card.json"), MAX_CARD_JSON_BYTES)?
         .ok_or_else(|| "缺 card.json".to_string())?;
-    let card: Value = serde_json::from_str(&text)
-        .map_err(|e| format!("card.json 不是合法 JSON: {e}"))?;
+    let card: Value =
+        serde_json::from_str(&text).map_err(|e| format!("card.json 不是合法 JSON: {e}"))?;
     let state_bytes = std::fs::metadata(dir.join("state.json"))
         .map(|m| m.len())
         .unwrap_or(0);
@@ -269,8 +271,8 @@ pub(crate) fn card_state_write_at(
         .unwrap_or_else(|| "{}".to_string());
     let mut base: Value = serde_json::from_str(&old_text)
         .map_err(|e| format!("state.json 不是合法 JSON（{card_id}）: {e}"))?;
-    let patch: Value = serde_json::from_str(patch_json)
-        .map_err(|e| format!("patch 不是合法 JSON: {e}"))?;
+    let patch: Value =
+        serde_json::from_str(patch_json).map_err(|e| format!("patch 不是合法 JSON: {e}"))?;
     let patch_map = match patch {
         Value::Object(map) => map,
         _ => return Err("patch 必须是 JSON 对象（顶层 object）".to_string()),
@@ -285,8 +287,7 @@ pub(crate) fn card_state_write_at(
     for (k, v) in patch_map {
         base_map.insert(k, v);
     }
-    let text = serde_json::to_string(&base)
-        .map_err(|e| format!("卡片状态序列化失败: {e}"))?;
+    let text = serde_json::to_string(&base).map_err(|e| format!("卡片状态序列化失败: {e}"))?;
     if text.len() > MAX_CARD_STATE_BYTES {
         return Err(over_budget_msg(text.len()));
     }
@@ -312,13 +313,8 @@ pub(crate) fn card_delete_at(root: &Path, card_id: &str) -> Result<Value, String
         .map(|d| format!("{}-{}", d.as_secs(), d.subsec_nanos()))
         .unwrap_or_else(|_| "0-0".to_string());
     let dest = trash_root.join(format!("{card_id}-{stamp}"));
-    std::fs::rename(&dir, &dest).map_err(|e| {
-        format!(
-            "回收失败（{} → {}）: {e}",
-            dir.display(),
-            dest.display()
-        )
-    })?;
+    std::fs::rename(&dir, &dest)
+        .map_err(|e| format!("回收失败（{} → {}）: {e}", dir.display(), dest.display()))?;
     Ok(json!({ "cardId": card_id, "trashed": dest.to_string_lossy() }))
 }
 
@@ -332,8 +328,8 @@ pub(crate) fn card_rename_at(root: &Path, card_id: &str, title: &str) -> Result<
     let dir = card_dir_at(root, card_id)?;
     let text = read_optional(&dir.join("card.json"), MAX_CARD_JSON_BYTES)?
         .ok_or_else(|| format!("卡片不存在: {card_id}"))?;
-    let mut card: Value =
-        serde_json::from_str(&text).map_err(|e| format!("card.json 不是合法 JSON（{card_id}）: {e}"))?;
+    let mut card: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("card.json 不是合法 JSON（{card_id}）: {e}"))?;
     let trimmed = title.trim();
     if trimmed.chars().count() > 120 {
         return Err(format!("标题超过 120 字符（{}）", trimmed.chars().count()));

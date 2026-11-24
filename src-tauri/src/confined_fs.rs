@@ -850,7 +850,10 @@ mod tests {
 
         // 上一级仍按名单隐藏 tests/（根级噪音照旧）
         let parent = list_dir_recursive(&tmp, true);
-        assert!(!parent.iter().any(|e| e.name == "tests"), "根级 tests/ 仍应隐藏");
+        assert!(
+            !parent.iter().any(|e| e.name == "tests"),
+            "根级 tests/ 仍应隐藏"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

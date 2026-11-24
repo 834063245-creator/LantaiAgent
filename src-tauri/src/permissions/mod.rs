@@ -77,7 +77,8 @@ pub fn current_permission_mode() -> PermissionMode {
 // ═══════════════════════════════════════════════════════════════
 
 /// agent_id → 卷级模式（0=Ask 1=Auto 2=Yolo）。缺 = 跟随全局镜像。
-static AGENT_MODES: LazyLock<RwLock<HashMap<String, u8>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
+static AGENT_MODES: LazyLock<RwLock<HashMap<String, u8>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 fn mode_code(mode: &str) -> Option<u8> {
     match mode {

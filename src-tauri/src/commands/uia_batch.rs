@@ -55,10 +55,7 @@ struct Win {
 }
 
 /// 桌面批处理入口（uia_cap action = `desktop_uia_batch`）。
-pub(crate) async fn desktop_uia_batch(
-    gate: &UiaGate<'_>,
-    args: &Value,
-) -> Result<String, String> {
+pub(crate) async fn desktop_uia_batch(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = agent_of(gate, args);
     let steps = args
         .get("steps")
@@ -243,7 +240,10 @@ pub(crate) async fn desktop_uia_batch(
     crate::uia::desktop_audit_log(
         agent_id.as_deref(),
         "desktop_uia_batch",
-        &format!("steps={} failed={failed} action={batch_action} hwnd={hwnd}", steps.len()),
+        &format!(
+            "steps={} failed={failed} action={batch_action} hwnd={hwnd}",
+            steps.len()
+        ),
         &clip(&payload),
     );
     Ok(payload)
@@ -458,7 +458,9 @@ async fn exec_step(step: &Value, kind: &str, win: &Win) -> Result<String, String
                 opt_u32_of(step, "depth"),
                 step.get("all").and_then(|v| v.as_bool()).unwrap_or(false),
                 step.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
-                step.get("max_results").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+                step.get("max_results")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as usize,
             )
             .await
         }
@@ -480,7 +482,9 @@ async fn exec_step(step: &Value, kind: &str, win: &Win) -> Result<String, String
                 pid,
                 hwnd,
                 // 批 4：步内也可要 OCR 锚点（默认 false——OCR 有几百毫秒成本）
-                step.get("anchors").and_then(|v| v.as_bool()).unwrap_or(false),
+                step.get("anchors")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             )
             .await
         }
@@ -534,9 +538,14 @@ mod tests {
             "status",
             "batch",
         ] {
-            assert!(!ALLOWED.contains(&banned), "{banned} 不得进批（必须单独调用）");
+            assert!(
+                !ALLOWED.contains(&banned),
+                "{banned} 不得进批（必须单独调用）"
+            );
         }
-        for ok in ["click", "type", "scroll", "select", "expand", "read", "wait"] {
+        for ok in [
+            "click", "type", "scroll", "select", "expand", "read", "wait",
+        ] {
             assert!(ALLOWED.contains(&ok), "{ok} 应在白名单");
         }
     }

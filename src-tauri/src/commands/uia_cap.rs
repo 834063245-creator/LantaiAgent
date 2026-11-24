@@ -171,7 +171,6 @@ async fn desktop_screenshot(gate: &UiaGate<'_>, args: &Value) -> Result<String, 
     })
 }
 
-
 async fn desktop_uia_tree(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = agent_of(gate, args);
     gate.check("uia_tree", agent_id.as_deref()).await?;
@@ -475,7 +474,6 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
     outcome
 }
 
-
 /// desktop_uia_keys — 热键（物理输入：Ask + 输入租约）。
 async fn desktop_uia_keys(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = agent_of(gate, args);
@@ -606,7 +604,6 @@ async fn desktop_uia_window_shot(gate: &UiaGate<'_>, args: &Value) -> Result<Str
     // 不成 → 输出原样返回（路径仍在，老行为不破）。
     Ok(super::uia_shot_attach::attach_shot_ref(gate.state, out))
 }
-
 
 /// desktop_audit — 只读:desktop 操作审计查询(对齐 browser_audit)。
 async fn desktop_audit(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {

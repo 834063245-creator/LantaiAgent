@@ -122,7 +122,6 @@ mod tests {
 
     // ── 批 1（P0-1）截图附图转存：白名单 / 字节嗅探 / 参数缺省 ──
 
-
     /// 最小 PNG（签名 + IHDR 宽高）——只够 image_probe 读尺寸。
     fn png_head(w: u32, h: u32) -> Vec<u8> {
         let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
@@ -136,7 +135,10 @@ mod tests {
     #[test]
     fn shot_path_whitelist_is_own_dir_only() {
         let own = crate::uia::shot_dir();
-        assert!(is_shot_path(&own.join("uia-win-1.png")), "本套件截图目录内的图应放行");
+        assert!(
+            is_shot_path(&own.join("uia-win-1.png")),
+            "本套件截图目录内的图应放行"
+        );
         assert!(
             !is_shot_path(std::path::Path::new("C:/Windows/System32/notepad.exe")),
             "外部路径必须拒绝（防路径注入）"
@@ -180,9 +182,16 @@ mod tests {
     #[test]
     fn attach_image_arg_defaults_false() {
         let empty = serde_json::json!({});
-        assert!(!attach_image_arg(&empty), "缺省必须 false（全屏图默认不进上下文）");
-        assert!(attach_image_arg(&serde_json::json!({ "attach_image": true })));
-        assert!(!attach_image_arg(&serde_json::json!({ "attach_image": "true" })));
+        assert!(
+            !attach_image_arg(&empty),
+            "缺省必须 false（全屏图默认不进上下文）"
+        );
+        assert!(attach_image_arg(
+            &serde_json::json!({ "attach_image": true })
+        ));
+        assert!(!attach_image_arg(
+            &serde_json::json!({ "attach_image": "true" })
+        ));
     }
 
     #[test]
