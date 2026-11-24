@@ -420,7 +420,7 @@
     "inject": ["rootViews", "commands"],
     "required": true,
     "face": true,
-    "shared": ["state/card-quote.ts", "paper/plate-sign.ts"]
+    "shared": ["state/card-quote.ts", "paper/plate-sign.ts", "app/dialog-focus.ts", "app/overlay-hooks.ts"]
   },
   {
     "dir": "bundled-engine",

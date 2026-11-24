@@ -1,26 +1,31 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 //
-// plugins/builtin/shelf-domain/ShelfOverlay — **架阁**（docs/plans/entity-shelf-plan.md B3/B4）
-// v66（2026-11-21）：随架阁升格从 paper-shell 迁出，经 ctx.rootViews 的 'overlay' 槽贡献
-// （App 根渲染——纸关着时也在）。同批收编 ctx.panels：软件页 = 插件窗口 ∪ 面板。
+// plugins/builtin/shelf-domain/ShelfOverlay — **架阁**（docs/plans/shelf-ui-iteration-plan.md）
 //
-// 顶部那枚「架阁」字件点开的浮层：两页（软件型 / 卡片型），用户 2026-12-08 拍板。
-// 卡片页点一条 = **展开这张卡**（B4）：html 卡在沙箱里真跑，勾选/输入写回**卡片库**
-// （`card_state_write`，不是会话级 asset-state——入阁的卡不属任何会话）。
+// v67（2026-11-24）全量迭代：从「会随内容伸缩的下拉框」改成**固定册页**，两页各自回答一个问题：
+//   器物（在窗 / 软件 / 面板）——「能不能开、开没开、怎么关」；
+//   卡片（目录 + 阅览）——「这张是什么、在哪一版、拿它做什么」。
 //
-// 形态纪律：**只取既有标准件**——纸片照 `.pp-toc-card`（纸底 / 强线 / 菜单落影 /
-// 宋体位），文字照 `--fs-body` / `--ink-1`，**刻意不透明**（半透明会与底下正文糊字，
-// `app/tip/tip.css` 头注已立此判据）。不自造色、不自造动效、不加图标。
+// 法度（§11 层次法 · 模态档）：`--veil` 遮罩 + `--elev-raise` 压印 + 头线 `--rule-head` +
+// 入场 `veil-in`/`pop-down`；z 走 `--z-shelf-modal`（485，盖过插件窗 460 / 提示 480，
+// 让位于牒卡 500 / 命令面板 510）——旧值 400 在软件窗之下，实测「开着文卷点架阁被压住」。
 //
-// 数据纪律：
-//   - 软件页读 `plugin-window-store` 的 defs（**零新数据源**，装载即登记）；
-//   - 卡片页读 `card_list` RPC——**读失败必须可见**（页面级错误条），不静默成空态；
-//   - 两页空态各给一句实话 + 一个出口，不做假数据。
+// 交互（2026-11-17 收口批的原语，不再自写）：
+//   - focus 圈定 / 初始焦点 / 归还 = `mountDialogFocus`（app/dialog-focus）；
+//   - 外点关闭 = `useOutsideClose`，Esc = `useDialogEscape`（app/overlay-hooks ——
+//     2026-11-24 从 overlay.tsx 拆出的 hooks 面，产物域可复用而不内联 react-dom）。
+//   - ↑↓ 移动 / ↵ 主动作（焦点在搜索框时）/ `/` 聚焦搜索 / Esc 逐层（改名 → 清查询 → 关）。
+//
+// 数据纪律：软件口径 = `plugin-window-store.defs` ∪ `panelDefs()`（两道过滤：side !== null、
+// frame !== 'self'）；卡片 = `card_list` / `card_read`，**读失败必须可见**，坏卡按 skipped 明示。
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { mountDialogFocus } from '../../../app/dialog-focus';
+import { useDialogEscape, useOutsideClose } from '../../../app/overlay-hooks';
 import { newRefId, payloadChars, type QuoteCard } from '../../../state/card-quote';
 import {
+  closePluginWindow,
   deleteCard,
   getCanvasStore,
   getChatStore,
@@ -37,16 +42,35 @@ import {
   useShelfStore,
   useToastStore,
   viewportCenterWorld,
-  writeCardState,
 } from './host';
-import { buildShelfCardDocument, SHELF_CARD_STATE_NS } from './shelf-card-document';
+import { ShelfApps } from './shelf-apps';
+import { ShelfCards } from './shelf-cards';
+import {
+  bucketCards,
+  type CardDoc,
+  type CardEntry,
+  cardDocOf,
+  cardTitle,
+  matches,
+  normalizeCard,
+  type ShelfRow,
+  type ShelfSection,
+} from './shelf-model';
 import './shelf.css';
 
-const PAGE_LABEL = { app: '软件型', card: '卡片型' } as const;
-type Page = keyof typeof PAGE_LABEL;
+/** 页签口径（2026-11-24 用户拍板：软件型/卡片型 → 器物/卡片）。 */
+const PAGE_LABEL = { app: '器物', card: '卡片' } as const;
 
-/** 卡片摘要的最小形状（列表只用这三样；Rust 侧完整形状见 card_store.rs）。 */
-/** 宿主桥的窗口设施（仅取用 openWith）——文件卡的「开」走它，不直接 import 宿主模块。 */
+/** 删除两击的确认窗（ms）——业务计时器，不是动画窗。 */
+const DELETE_ARM_MS = 3000;
+
+function modeLabel(mode: string): string {
+  if (mode === 'dock') return '停靠';
+  if (mode === 'fullscreen') return '全屏';
+  return '浮动';
+}
+
+/** 宿主桥的窗口设施（仅取 openWith）——文件卡的「开」不直接 import 宿主模块。 */
 type OpenWithHost = { windows?: { openWith?: (path: string) => boolean } };
 
 function openFileFromShelf(path: string): void {
@@ -54,192 +78,285 @@ function openFileFromShelf(path: string): void {
   host?.windows?.openWith?.(path);
 }
 
-interface CardRow {
-  cardId: string;
-  kind: unknown;
-  title: unknown;
-  /** 文件卡记的绝对路径（2026-11-23 记文件式）：非空 ⇒ 这张卡能再被打开。 */
-  file?: unknown;
-  shelvedAt: unknown;
-}
-
-/** 展开中的一张卡（html 卡带 code，其余 kind 暂时只报类型）。 */
-interface OpenedCard {
-  cardId: string;
-  kind: string;
-  title: string;
-  code: string | null;
-}
-
-function formatAt(value: unknown): string {
-  if (typeof value !== 'string' || !value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 export function ShelfOverlay() {
   const open = useShelfStore((s) => s.open);
-  const page = useShelfStore((s) => s.page) as Page;
+  const page = useShelfStore((s) => s.page);
   const setPage = useShelfStore((s) => s.setPage);
   const closeShelf = useShelfStore((s) => s.closeShelf);
+
   const defs = usePluginWindowStore((s) => s.defs);
   const windows = usePluginWindowStore((s) => s.windows);
+  const panelTick = usePanelDefsStore((s) => s.panelDefsTick);
+  const dockOpen = useDockStore((s) => s.open);
+  const inCanvas = useDockStore((s) => s.open.paper) === true;
 
-  /* ── 搜索 / 键盘（2026-11-21 架阁升格批，用户拍板「一批做完」+「视觉后面单独立项」）──
-   * 搜索：两页共用一条查询（切页不重置——「我刚才在找东西」不应该因为换页忘掉）。
-   * **空查询 = 全列**，不做默认截断：架阁是查询面不是信息流（列表本来就是全量）。 */
+  /* ── 搜索 / 键盘游标 ─────────────────────────────────────────
+   * 查询两页共用（切页不重置）；**空查询 = 全列**（架阁是查询面不是信息流）。
+   * 卡片页的「游标」就是选中那张（见下）——预览跟着走，不给两套选中态。 */
   const [query, setQuery] = useState('');
-  /** 键盘选中行（-1 = 未选）。只在**当前页**的行序上移动。 */
-  const [cursor, setCursor] = useState(-1);
-  /** 行序的**可读最新值**：键盘 handler 只注册一次（窗口级），若直接把 rows 放进
-   *  依赖数组，每次筛选/切页都会重绑一次监听器；走 ref 则监听器恒定、读到的永远
-   *  是这一帧的行序（单一真源仍是下面的 rows 派生）。 */
-  const rowsRef = useRef<Array<{ id: string; run: () => void }>>([]);
+  const [appCursor, setAppCursor] = useState(-1);
 
-  const [cards, setCards] = useState<CardRow[] | null>(null);
+  /* ── 卡片库 ─────────────────────────────────────────────────── */
+  const [cards, setCards] = useState<CardEntry[] | null>(null);
+  const [skipped, setSkipped] = useState<Array<{ cardId: string; error: string }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [opened, setOpened] = useState<OpenedCard | null>(null);
-  const [openError, setOpenError] = useState<string | null>(null);
-  /** 行内改名（改的是卡片库里的 title，卡片身份与内容不动）。 */
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const editRef = useRef<HTMLInputElement>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [showSkipped, setShowSkipped] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [doc, setDoc] = useState<CardDoc | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [readTick, setReadTick] = useState(0);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteArmedId, setDeleteArmedId] = useState<string | null>(null);
 
-  // 每次打开都重读（卡片库是盘上的真源，缓存一份就是第二真相）。
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const renameRef = useRef<HTMLInputElement | null>(null);
+  const rowEls = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const toast = useToastStore.getState().showToast;
+
+  /* ── 开合：每次打开重读卡片库（盘上是真源，缓存一份就是第二真相）── */
   useEffect(() => {
     if (!open) return;
+    setQuery('');
+    setAppCursor(-1);
+    setDeleteArmedId(null);
+    setRenaming(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    void reloadTick; // 重试信号：本效应只认「打开」与「重试」两次触发
     let alive = true;
     setLoadError(null);
     listCards()
       .then((r) => {
-        if (alive) setCards(r.cards as CardRow[]);
+        if (!alive) return;
+        const rows = (Array.isArray(r.cards) ? r.cards : []).map(normalizeCard).filter((c) => c.cardId);
+        setCards(rows);
+        setSkipped(Array.isArray(r.skipped) ? r.skipped : []);
       })
       .catch((e: unknown) => {
         if (!alive) return;
         setCards([]);
+        setSkipped([]);
         setLoadError(String(e));
       });
     return () => {
       alive = false;
     };
-  }, [open]);
+  }, [open, reloadTick]);
 
-  // 收起浮层 = 收掉展开的那张（下次打开回到列表，不做"上次看到哪张"的记忆）。
+  // 读选中那张（选中即读；切卡/重试都走这一条）。
   useEffect(() => {
-    if (!open) {
-      setOpened(null);
-      setOpenError(null);
+    void readTick; // 重试信号（读失败后右栏「重试」重跑这一条）
+    if (!open || !selectedId) {
+      setDoc(null);
+      setDocError(null);
+      setReading(false);
+      return;
     }
+    let alive = true;
+    setReading(true);
+    setDocError(null);
+    readCard(selectedId)
+      .then((r) => {
+        if (!alive) return;
+        setDoc(cardDocOf(r.card));
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setDoc(null);
+        setDocError(String(e));
+      })
+      .finally(() => {
+        if (alive) setReading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, selectedId, readTick]);
+
+  /* ── 焦点圈定 / 外点关闭 / Esc 逐层 ─────────────────────────── */
+  useEffect(() => {
+    if (!open || !dialogRef.current) return;
+    return mountDialogFocus(dialogRef.current, { initial: searchRef.current });
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        // Esc 先退一层：展开中 → 回列表；列表 → 关浮层。
-        if (opened) setOpened(null);
-        else closeShelf();
-        return;
-      }
-      /* ↑↓ / Enter（架阁升格批，2026-11-21）：只在**未展开卡片**时接管——卡片详图里
-         那些键属于卡片自己的界面（iframe 里的表单），浮层不能抢。
-         输入件聚焦时也不接管（搜索框里 ↑↓ 该走光标）。 */
-      if (opened) return;
-      const el = document.activeElement;
-      if (el && el.tagName === 'INPUT') return;
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        setCursor((c) => {
-          const n = rowsRef.current.length;
-          if (n === 0) return -1;
-          const step = e.key === 'ArrowDown' ? 1 : -1;
-          const next = c < 0 ? (step > 0 ? 0 : n - 1) : (c + step + n) % n;
-          return next;
-        });
-        return;
-      }
-      if (e.key === 'Enter') {
-        const row = rowsRef.current[cursor];
-        if (!row) return;
-        e.preventDefault();
-        row.run();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, opened, closeShelf, cursor]);
+  useOutsideClose(
+    dialogRef,
+    useCallback(() => closeShelf(), [closeShelf]),
+    { enabled: open },
+  );
 
-  // 卡片详图的状态桥：iframe 的 get/patch → 卡片库的 card_read / card_state_write。
-  // 只认**本 iframe** 的消息（e.source 校验），回执按 req 配对——与 renderers 的
-  // HtmlBody 同一套协议，只换了对面（库而非会话）。
+  useDialogEscape(
+    useCallback(() => {
+      if (renaming) {
+        setRenaming(false);
+        return;
+      }
+      if (query) {
+        setQuery('');
+        searchRef.current?.focus();
+        return;
+      }
+      closeShelf();
+    }, [renaming, query, closeShelf]),
+    { enabled: open },
+  );
+
+  /* ── 删除两击的确认窗 ──────────────────────────────────────── */
   useEffect(() => {
-    if (!opened?.code) return;
-    const cardId = opened.cardId;
-    const onMessage = (e: MessageEvent) => {
-      const win = frameRef.current?.contentWindow;
-      if (!win || e.source !== win) return;
-      const data = e.data as { type?: unknown; req?: unknown; op?: unknown; patch?: unknown } | null;
-      if (!data || typeof data !== 'object') return;
-      if (data.type !== SHELF_CARD_STATE_NS || typeof data.req !== 'number') return;
-      const req = data.req;
-      const reply = (payload: { ok: boolean; state?: unknown; error?: string }) => {
-        win.postMessage({ type: SHELF_CARD_STATE_NS, req, ...payload }, '*');
+    if (!deleteArmedId) return;
+    const timer = window.setTimeout(() => setDeleteArmedId(null), DELETE_ARM_MS);
+    return () => window.clearTimeout(timer);
+  }, [deleteArmedId]);
+
+  // 改名输入聚焦（不用 autoFocus：biome 的 a11y 规则禁裸 autoFocus）。
+  useEffect(() => {
+    if (renaming) renameRef.current?.focus();
+  }, [renaming]);
+
+  /* ── 器物页清单（窗口 / 软件 / 面板）────────────────────────── */
+  const panels = useMemo(() => {
+    void panelTick; // 贡献热注册即时重进清单
+    /* 两道过滤，各自一条理由（沿用 v66 判例）：
+     *   ① side !== null——side:null 的面板（纸/设置）语义是「不上轨道」，不是软件；
+     *   ② frame !== 'self'——书脊/案卷是家具，生命周期挂在纸上，列进来会在首页开出空侧栏。 */
+    return panelDefs()
+      .filter((d) => d.side !== null)
+      .filter((d) => d.frame !== 'self');
+  }, [panelTick]);
+
+  const openPluginNames = useMemo(() => new Set(windows.map((w) => w.pluginName)), [windows]);
+
+  const appSections = useMemo<ShelfSection[]>(() => {
+    const windowRows: ShelfRow[] = windows.map((w) => {
+      const def = defs[w.pluginName];
+      const title = def?.title || w.pluginName;
+      const size = w.mode === 'floating' ? ` · ${Math.round(w.w)} × ${Math.round(w.h)}` : '';
+      return {
+        id: `window:${w.windowId}`,
+        title,
+        sub: `${w.pluginName} · ${modeLabel(w.mode)}${size}`,
+        on: true,
+        run: () => {
+          usePluginWindowStore.getState().focusWindow(w.windowId);
+          closeShelf();
+        },
+        acts: [
+          {
+            label: '聚焦',
+            run: () => {
+              usePluginWindowStore.getState().focusWindow(w.windowId);
+              closeShelf();
+            },
+          },
+          { label: '关', run: () => closePluginWindow(w.windowId), quiet: true },
+        ],
       };
-      if (data.op === 'get') {
-        readCard(cardId)
-          .then((r) => reply({ ok: true, state: r.state }))
-          .catch((err: unknown) => reply({ ok: false, error: String(err) }));
-        return;
-      }
-      if (data.op === 'patch') {
-        const patch = (data.patch ?? {}) as Record<string, unknown>;
-        writeCardState(cardId, patch)
-          .then(() => reply({ ok: true }))
-          .catch((err: unknown) => reply({ ok: false, error: String(err) }));
-        return;
-      }
-      reply({ ok: false, error: `未知状态操作 '${String(data.op)}'` });
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [opened]);
+    });
 
-  // 行内改名的聚焦（不用 autoFocus：biome 的 a11y 规则禁裸 autoFocus）。
+    const appRows: ShelfRow[] = Object.values(defs)
+      .filter((d) => !openPluginNames.has(d.pluginName))
+      .map((d) => ({
+        id: `app:${d.pluginName}`,
+        title: d.title || d.pluginName,
+        sub: `${d.pluginName} · ${modeLabel(d.mode)}`,
+        on: false,
+        run: () => {
+          openPluginWindow(d.pluginName);
+          closeShelf();
+        },
+        acts: [
+          {
+            label: '开',
+            run: () => {
+              openPluginWindow(d.pluginName);
+              closeShelf();
+            },
+          },
+        ],
+      }));
+
+    const panelRows: ShelfRow[] = panels.map((p) => {
+      const isOpen = dockOpen[p.id] === true;
+      const toggle = () => {
+        useDockStore.getState().togglePanel(p.id);
+        closeShelf();
+      };
+      return {
+        id: `panel:${p.id}`,
+        title: p.title,
+        sub: `${p.id} · ${p.side === 'left' ? '左侧面板' : '右侧面板'}`,
+        on: isOpen,
+        run: toggle,
+        acts: isOpen
+          ? [{ label: '关', run: () => useDockStore.getState().closePanel(p.id), quiet: true }]
+          : [{ label: '开', run: toggle }],
+      };
+    });
+
+    return [
+      { key: 'windows' as const, title: '在窗', rows: windowRows },
+      { key: 'apps' as const, title: '软件', rows: appRows },
+      { key: 'panels' as const, title: '面板', rows: panelRows },
+    ]
+      .map((s) => ({ ...s, rows: s.rows.filter((r) => matches(query, r.title, r.sub)) }))
+      .filter((s) => s.rows.length > 0);
+  }, [windows, defs, panels, openPluginNames, dockOpen, query, closeShelf]);
+
+  const appFlat = useMemo(() => appSections.flatMap((s) => s.rows), [appSections]);
+  const appTotal =
+    windows.length + Object.values(defs).filter((d) => !openPluginNames.has(d.pluginName)).length + panels.length;
+
+  /* ── 卡片页清单（过滤 → 分桶）────────────────────────────── */
+  const filteredCards = useMemo(() => (cards ?? []).filter((c) => matches(query, c.title, c.kind)), [cards, query]);
+  const buckets = useMemo(() => bucketCards(filteredCards), [filteredCards]);
+  const flatCards = useMemo(() => buckets.flatMap((b) => b.rows), [buckets]);
+  const cardTotal = cards?.length ?? 0;
+  const selected = useMemo(() => (cards ?? []).find((c) => c.cardId === selectedId) ?? null, [cards, selectedId]);
+  const cardIndex = useMemo(() => flatCards.findIndex((c) => c.cardId === selectedId), [flatCards, selectedId]);
+
+  // 选中项必须仍在当前清单里（过滤/删除之后）——否则选中第一张；空清单 = 不选。
   useEffect(() => {
-    if (editingId) editRef.current?.focus();
-  }, [editingId]);
+    if (!open || page !== 'card') return;
+    if (flatCards.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !flatCards.some((c) => c.cardId === selectedId)) {
+      setSelectedId(flatCards[0].cardId);
+    }
+  }, [open, page, flatCards, selectedId]);
 
-  const toast = useToastStore.getState().showToast;
+  // 游标越界夹取（过滤后行数变少）。
+  useEffect(() => {
+    setAppCursor((c) => {
+      if (appFlat.length === 0) return -1;
+      if (c < 0) return -1;
+      return Math.min(c, appFlat.length - 1);
+    });
+  }, [appFlat.length]);
 
-  const commitRename = (cardId: string) => {
-    const title = editValue.trim();
-    setEditingId(null);
-    renameCard(cardId, title)
-      .then(() => {
-        setCards((prev) => prev?.map((c) => (c.cardId === cardId ? { ...c, title } : c)) ?? prev);
-        toast(`已改名：${title || '（未命名）'}`, 'info', 2200, 'composer');
-      })
-      .catch((err: unknown) => toast(`改名失败：${String(err)}`, 'error', 4200, 'composer'));
-  };
+  // 键盘游标/选中行的滚动可见性（旧架阁的 ↑↓ 只改游标、不出视野）。
+  useEffect(() => {
+    const index = page === 'app' ? appCursor : cardIndex;
+    if (index < 0) return;
+    rowEls.current[index]?.scrollIntoView?.({ block: 'nearest' });
+  }, [page, appCursor, cardIndex]);
 
-  /** 删除 = 挪进卡片库的 .trash（可找回）——所以不做二次确认，只把后果说清楚。 */
-  const removeCard = (cardId: string, title: string) => {
-    deleteCard(cardId)
-      .then(() => {
-        setCards((prev) => prev?.filter((c) => c.cardId !== cardId) ?? prev);
-        toast(`已删除「${title || '未命名'}」——卡片库的回收站里可找回`, 'info', 3200, 'composer');
-      })
-      .catch((err: unknown) => toast(`删除失败：${String(err)}`, 'error', 4200, 'composer'));
-  };
+  const rowRef = useCallback(
+    (index: number) => (el: HTMLButtonElement | null) => {
+      rowEls.current[index] = el;
+    },
+    [],
+  );
 
-  /** **引用**（夹签，docs/plans/card-quote-plan.md §2.1 入口二）：把库里这张卡递进
-   *  **当前活跃卷**的夹签槽——引用是「给这一轮的通行证」，与「摊到画布」并列。
-   *
-   *  只取元数据（card.json 的 kind / title）——payload 不进槽（方案 §3.1）；
-   *  真内容在发送那一刻才按 cardId 从卡片库读出来落快照（§3.4）。 */
+  /* ── 卡片动作（摊 / 引 / 改名 / 删）────────────────────────── */
   const quoteCard = (cardId: string) => {
     const core = useCoreStore.getState().core;
     if (!core) {
@@ -247,7 +364,6 @@ export function ShelfOverlay() {
       return;
     }
     const input = getChatStore(core.panelId).input.getState();
-    // 没有归属（既无卷也无纸）= 这枚夹签没有地方可去：如实说清楚，不静默丢弃
     if (!input.liveOwner) {
       toast('先展开一卷或落一张纸', 'warn', 3200, 'composer');
       return;
@@ -273,11 +389,6 @@ export function ShelfOverlay() {
       .catch((err: unknown) => toast(`引用失败：${String(err)}`, 'error', 4200, 'composer'));
   };
 
-  /** **摊到画布**（架阁 B6，2026-12-08 用户拍板必做）：把库里的一张卡变成画布上的
-   *  一条**无源钉**（pins 容器原生支持——"无源 = 纯公共物快照"），落在视口中心。
-   *  摊上去就归画布管：能拖、能缩、能拔钉，坐标进 canvas.json（重开还在）。
-   *  内容取 card.json 的快照（拔钉前不依赖磁盘），状态仍走卡片库（见 HtmlBody 的
-   *  cardId 分路）——**改的永远是库里那一份**。 */
   const pinToCanvas = (cardId: string) => {
     const core = useCoreStore.getState().core;
     if (!core) {
@@ -306,302 +417,330 @@ export function ShelfOverlay() {
       .catch((err: unknown) => toast(`摊到画布失败：${String(err)}`, 'error', 4200, 'composer'));
   };
 
-  const openCard = (cardId: string) => {
-    setOpenError(null);
-    readCard(cardId)
-      .then((r) => {
-        const card = (r.card ?? {}) as { kind?: unknown; title?: unknown; payload?: unknown };
-        const kind = typeof card.kind === 'string' ? card.kind : '';
-        const payload = (card.payload ?? {}) as { code?: unknown };
-        setOpened({
-          cardId,
-          kind,
-          title: typeof card.title === 'string' ? card.title : '',
-          code: kind === 'html' && typeof payload.code === 'string' ? payload.code : null,
-        });
+  const commitRename = () => {
+    if (!selectedId) return;
+    const cardId = selectedId;
+    const title = renameValue.trim();
+    setRenaming(false);
+    renameCard(cardId, title)
+      .then(() => {
+        setCards((prev) => prev?.map((c) => (c.cardId === cardId ? { ...c, title } : c)) ?? prev);
+        setDoc((prev) => (prev ? { ...prev, title } : prev));
+        toast(`已改名：${title || '（未命名）'}`, 'info', 2200, 'composer');
       })
-      .catch((err: unknown) => setOpenError(`打不开这张卡：${String(err)}`));
+      .catch((err: unknown) => toast(`改名失败：${String(err)}`, 'error', 4200, 'composer'));
   };
 
-  /* ── 行清单（架阁升格批：软件页 = 插件窗口 ∪ **面板**）──
-   * 面板进架阁的依据（2026-11-21）：ctx.panels 此前只有注册端没有出口——插件注册了
-   * 面板，壳里既没有入口也没有盒子（见 docs/issues/lantai-plugin-panels-no-home）。
-   * 架阁本来就是「软件的门」，面板是同一件事的另一半（同一张皮、缺了整套宿主）。
-   *
-   * **两道过滤，各自一条理由**（2026-11-21 实机报「架阁里怎么还有书脊和案卷」）：
-   *   ① `side !== null`——side:null 的面板（纸 / 设置）语义是「不上轨道」，它们不是
-   *      「软件」，各有自己的开关（Ctrl+P / Ctrl+, 与它们的命令贡献）。
-   *   ② `frame !== 'self'`——书脊 / 案卷这类**家具**不是软件：它们自持定位与 chrome，
-   *      生命周期挂在纸上（canvas-nav 的 syncPanels：纸关 = 两者全关），而且只在有
-   *      工作区时才有意义。列进架阁 = 让用户在**首页**（纸关着、没有卷）把它点开，
-   *      出来一条空侧栏——所以「看着奇怪」底下是个真的状态 bug。
-   *      判据取 `frame`（'self' 的定义就是「家具型，自持定位与 chrome」），不另造字段。
-   * 判据读 panelDefs() 合流点（常量 + 插件贡献），壳里不重推「哪些 id 是面板」。 */
-  const panelTick = usePanelDefsStore((s) => s.panelDefsTick);
-  void panelTick; // 贡献热注册即时重进清单
-  const panelRows = panelDefs()
-    .filter((d) => d.side !== null)
-    .filter((d) => d.frame !== 'self')
-    .filter((d) => !query || d.title.toLowerCase().includes(query.toLowerCase()));
-  const appRows = Object.values(defs).filter(
-    (d) => !query || (d.title || d.pluginName).toLowerCase().includes(query.toLowerCase()),
-  );
-  const cardRows = (cards ?? []).filter((c) => {
-    if (!query) return true;
-    const title = typeof c.title === 'string' ? c.title : '';
-    return title.toLowerCase().includes(query.toLowerCase());
-  });
+  const requestDelete = (cardId: string) => {
+    if (deleteArmedId !== cardId) {
+      setDeleteArmedId(cardId);
+      return;
+    }
+    setDeleteArmedId(null);
+    const title = cardTitle(cards?.find((c) => c.cardId === cardId) ?? { title: '', kind: '' });
+    deleteCard(cardId)
+      .then(() => {
+        setCards((prev) => (prev ?? []).filter((c) => c.cardId !== cardId));
+        if (selectedId === cardId) setSelectedId(null);
+        toast(`已删除「${title || '未命名'}」——卡片库的回收站里可找回`, 'info', 3200, 'composer');
+      })
+      .catch((err: unknown) => toast(`删除失败：${String(err)}`, 'error', 4200, 'composer'));
+  };
 
-  /* 键盘行序（与渲染同序）：软件页 = 窗口行 → 面板行；卡片页 = 卡片行。
-   * 单一真源——渲染与 ↑↓/Enter 都读它，不各推一份。 */
-  const rows: Array<{ id: string; run: () => void }> =
-    page === 'app'
-      ? [
-          ...appRows.map((d) => ({
-            id: d.pluginName,
-            run: () => {
-              openPluginWindow(d.pluginName);
-              closeShelf();
-            },
-          })),
-          ...panelRows.map((p) => ({
-            id: p.id,
-            run: () => {
-              useDockStore.getState().togglePanel(p.id);
-              closeShelf();
-            },
-          })),
-        ]
-      : cardRows.map((c) => ({ id: c.cardId, run: () => openCard(c.cardId) }));
-  rowsRef.current = rows;
+  /* ── 键盘：↑↓ / ↵ / `/`（Enter 只接管搜索框，免得与行/按钮的原生激活打两次）── */
+  const moveCursor = (step: number) => {
+    if (page === 'app') {
+      if (appFlat.length === 0) return;
+      setAppCursor((c) => {
+        if (c < 0) return step > 0 ? 0 : appFlat.length - 1;
+        return (c + step + appFlat.length) % appFlat.length;
+      });
+      return;
+    }
+    if (flatCards.length === 0) return;
+    const cur = flatCards.findIndex((c) => c.cardId === selectedId);
+    const next = cur < 0 ? (step > 0 ? 0 : flatCards.length - 1) : (cur + step + flatCards.length) % flatCards.length;
+    setSelectedId(flatCards[next].cardId);
+    setRenaming(false);
+    setDeleteArmedId(null);
+  };
 
-  /** 「在画布里」= 纸开着（纸关 = 回首页）。卡片行的「引」「摊」只在此时成立——
-   *  见行内注释：没有画布就没有落点，摆出来的只能是无效操作。 */
-  const inCanvas = useDockStore((s) => s.open.paper) === true;
+  const runActive = () => {
+    if (page === 'app') {
+      appFlat[appCursor]?.run();
+      return;
+    }
+    if (inCanvas && selectedId) pinToCanvas(selectedId);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    // 改名输入自持按键（Esc 由 document 的逐层关闭处理）。
+    if (renaming) return;
+    const inInput = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+    if (e.key === '/' && !inInput) {
+      e.preventDefault();
+      searchRef.current?.focus();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveCursor(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (e.key === 'Enter' && (target === searchRef.current || target.getAttribute('role') === 'listbox')) {
+      e.preventDefault();
+      runActive();
+    }
+  };
 
   if (!open) return null;
 
-  const openedSet = new Set(windows.map((w) => w.pluginName));
+  const totalHits = appFlat.length + flatCards.length;
+  const appHint = query && flatCards.length > 0 ? `卡片页有 ${flatCards.length} 条命中` : '';
+  const cardHint = query && appFlat.length > 0 ? `器物页有 ${appFlat.length} 条命中` : '';
+
+  const appEmpty = (
+    <>
+      <h2 className="shf-empty-t">{query ? '器物页没有匹配' : '架还是空的'}</h2>
+      <p className="shf-empty-d">
+        {query ? '换个词试试——卡片页也许有。' : '装进来的软件和面板会住在这里；装一个就有了。'}
+      </p>
+      {query && flatCards.length > 0 ? (
+        <button type="button" className="shf-empty-b" onClick={() => setPage('card')}>
+          卡片页有 {flatCards.length} 条命中
+        </button>
+      ) : null}
+      {!query ? (
+        <button
+          type="button"
+          className="shf-empty-b"
+          onClick={() => {
+            closeShelf();
+            useDockStore.getState().openPanel('settings');
+          }}
+        >
+          去「设置 → 插件」装一个
+        </button>
+      ) : null}
+    </>
+  );
+
+  const cardEmpty = (
+    <>
+      <h2 className="shf-empty-t">{query ? '卡片页没有匹配' : '架还是空的'}</h2>
+      <p className="shf-empty-d">
+        {query
+          ? '换个词试试——器物页也许有。'
+          : inCanvas
+            ? '在会话里的卡片上点「入阁」，就收进来了。'
+            : '展开一卷，让兰台先造一张卡；卡片右上角点「入阁」，就收进来了。'}
+      </p>
+      {query && appFlat.length > 0 ? (
+        <button type="button" className="shf-empty-b" onClick={() => setPage('app')}>
+          器物页有 {appFlat.length} 条命中
+        </button>
+      ) : null}
+    </>
+  );
+
+  const hints = (
+    <>
+      <span>
+        <kbd>↑↓</kbd>
+        {page === 'app' ? '选择' : '换一张'}
+      </span>
+      {page === 'app' ? (
+        <span>
+          <kbd>↵</kbd>打开
+        </span>
+      ) : inCanvas ? (
+        <span>
+          <kbd>↵</kbd>摊到画布
+        </span>
+      ) : null}
+      <span>
+        <kbd>/</kbd>搜索
+      </span>
+      <span>
+        <kbd>esc</kbd>
+        {query ? '清查询' : '关闭'}
+      </span>
+    </>
+  );
 
   return (
-    <div className="pp-shelf-mask" onPointerDown={closeShelf}>
-      <div className="pp-shelf" role="dialog" aria-label="架阁" onPointerDown={(e) => e.stopPropagation()}>
-        <header className="pp-shelf-head">
-          <span className="pp-shelf-title">架阁</span>
-          <nav className="pp-shelf-tabs">
-            {(Object.keys(PAGE_LABEL) as Page[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={`pp-shelf-tab${page === key ? ' is-on' : ''}`}
-                onClick={() => {
-                  setPage(key);
-                  setOpened(null);
-                  setCursor(-1);
-                }}
-              >
-                {PAGE_LABEL[key]}
-              </button>
-            ))}
-          </nav>
-          <button type="button" className="pp-shelf-close" aria-label="关闭" onClick={closeShelf}>
+    <div className="shf-veil">
+      <div
+        ref={dialogRef}
+        className="shf-shelf"
+        role="dialog"
+        aria-modal="true"
+        aria-label="架阁"
+        onKeyDown={onKeyDown}
+      >
+        <header className="shf-head">
+          <h1 className="shf-title">架阁</h1>
+          <div className="shf-tabs" role="tablist" aria-label="架阁分页">
+            {(Object.keys(PAGE_LABEL) as Array<keyof typeof PAGE_LABEL>).map((key) => {
+              const count = query
+                ? key === 'app'
+                  ? appFlat.length
+                  : flatCards.length
+                : key === 'app'
+                  ? appTotal
+                  : cardTotal;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={page === key}
+                  className={`shf-tab${page === key ? ' is-on' : ''}`}
+                  onClick={() => {
+                    setPage(key);
+                    setRenaming(false);
+                    setDeleteArmedId(null);
+                    setAppCursor(-1);
+                  }}
+                >
+                  {PAGE_LABEL[key]}
+                  <span className="shf-tab-n">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" className="shf-x" aria-label="关闭架阁" onClick={closeShelf}>
             ×
           </button>
         </header>
 
-        {/* 搜索（架阁升格批）：两页共用一条查询，切页不重置。空查询 = 全列——
-            架阁是查询面不是信息流，不做默认截断。 */}
-        {opened ? null : (
-          <div className="pp-shelf-search">
-            <input
-              className="pp-shelf-search-input"
-              type="search"
-              value={query}
-              placeholder="搜软件 / 面板 / 卡片"
-              aria-label="搜索架阁"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setCursor(-1);
-              }}
-            />
-          </div>
-        )}
+        <div className="shf-search">
+          <span className="shf-search-p" aria-hidden="true">
+            ❯
+          </span>
+          <input
+            ref={searchRef}
+            className="shf-search-input"
+            type="search"
+            value={query}
+            placeholder="搜器物、面板、卡片"
+            aria-label="搜索架阁"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setAppCursor(-1);
+            }}
+          />
+          {query ? <span className="shf-hit">命中 {totalHits}</span> : null}
+        </div>
 
-        {opened ? (
-          <div className="pp-shelf-detail">
-            <div className="pp-shelf-detail-head">
-              <button type="button" className="pp-shelf-back" onClick={() => setOpened(null)}>
-                返回
-              </button>
-              <span className="pp-shelf-detail-title">{opened.title || '未命名卡片'}</span>
-              <span className="pp-shelf-meta">{opened.kind}</span>
+        <div className="shf-body">
+          {page === 'app' ? (
+            <ShelfApps
+              sections={appSections}
+              cursor={appCursor}
+              onRun={(row) => row.run()}
+              rowRef={rowRef}
+              empty={appEmpty}
+              footnote={
+                appHint ? (
+                  <div className="shf-elsewhere">
+                    <span>{appHint}</span>
+                    <button type="button" onClick={() => setPage('card')}>
+                      切到卡片页
+                    </button>
+                  </div>
+                ) : null
+              }
+            />
+          ) : loadError ? (
+            <>
+              <div className="shf-err">
+                <span>卡片库读取失败：{loadError}</span>
+                <button type="button" className="shf-err-r" onClick={() => setReloadTick((t) => t + 1)}>
+                  重试
+                </button>
+              </div>
+              <div className="shf-empty">
+                <p className="shf-empty-d">这一页暂时读不出——先修好卡片目录再重试。</p>
+              </div>
+            </>
+          ) : cards === null ? (
+            <div className="shf-empty">
+              <p className="shf-empty-d">正在读卡片库…</p>
             </div>
-            {opened.code ? (
-              <iframe
-                ref={frameRef}
-                className="pp-shelf-card-frame"
-                sandbox="allow-scripts"
-                srcDoc={buildShelfCardDocument(opened.code)}
-                title={opened.title || '卡片'}
+          ) : (
+            <>
+              {skipped.length > 0 ? (
+                <div className="shf-skipped">
+                  {skipped.length} 张卡片读不出（已跳过，未计入架内）
+                  <button type="button" onClick={() => setShowSkipped((v) => !v)}>
+                    {showSkipped ? '收起' : '看详情'}
+                  </button>
+                  {showSkipped ? (
+                    <ul>
+                      {skipped.map((s) => (
+                        <li key={s.cardId}>
+                          {s.cardId}：{s.error}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+              <ShelfCards
+                buckets={buckets}
+                cursor={cardIndex}
+                selectedId={selectedId}
+                selected={selected}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  setRenaming(false);
+                  setDeleteArmedId(null);
+                }}
+                rowRef={rowRef}
+                doc={doc}
+                docError={docError}
+                reading={reading}
+                onRetryRead={() => setReadTick((t) => t + 1)}
+                inCanvas={inCanvas}
+                onPin={() => selectedId && pinToCanvas(selectedId)}
+                onQuote={() => selectedId && quoteCard(selectedId)}
+                onOpenFile={openFileFromShelf}
+                renaming={renaming}
+                renameValue={renameValue}
+                renameRef={renameRef}
+                onRenameStart={() => {
+                  setRenameValue(selected ? cardTitle(selected) : '');
+                  setRenaming(true);
+                }}
+                onRenameChange={setRenameValue}
+                onRenameCommit={commitRename}
+                onRenameCancel={() => setRenaming(false)}
+                deleteArmed={deleteArmedId !== null && deleteArmedId === selectedId}
+                onDelete={() => selectedId && requestDelete(selectedId)}
+                empty={cardEmpty}
+                elsewhere={
+                  cardHint ? (
+                    <div className="shf-elsewhere">
+                      <span>{cardHint}</span>
+                      <button type="button" onClick={() => setPage('app')}>
+                        切到器物页
+                      </button>
+                    </div>
+                  ) : null
+                }
               />
-            ) : (
-              <p className="pp-shelf-empty">
-                这一类卡片（{opened.kind || '未知类型'}）没有可交互的界面，暂时还不能在这里展开。
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="pp-shelf-body">
-            {openError ? <p className="pp-shelf-error">{openError}</p> : null}
-            {page === 'app' ? (
-              appRows.length === 0 && panelRows.length === 0 ? (
-                <p className="pp-shelf-empty">
-                  {query
-                    ? '没有匹配的软件或面板。'
-                    : '还没有装软件。装进来的软件会住在这里——去「设置 → 插件」安装一个试试。'}
-                </p>
-              ) : (
-                <ul className="pp-shelf-list">
-                  {appRows.map((def, i) => (
-                    <li key={def.pluginName}>
-                      <button
-                        type="button"
-                        className="pp-shelf-item"
-                        data-cursor={cursor === i ? 'on' : undefined}
-                        onClick={() => {
-                          /* **必须走窗口设施**（不是裸 store）：设施会通知受治进程
-                             治理器，lazy / with-window 档的后端据此才被拉起。
-                             2026-12-08 实机事故：裸 store 开窗 ⇒ 窗画出来了、后端没起
-                             ⇒ 便签报「port.json 不可读」，关窗也因计数对不上而失灵。 */
-                          openPluginWindow(def.pluginName);
-                          closeShelf();
-                        }}
-                      >
-                        <span className="pp-shelf-name">{def.title || def.pluginName}</span>
-                        <span className="pp-shelf-meta">
-                          {def.mode === 'dock' ? '停靠' : def.mode === 'fullscreen' ? '全屏' : '浮动'}
-                          {openedSet.has(def.pluginName) ? ' · 已开' : ''}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                  {/* 面板行（架阁升格批）：与软件行同规格——对用户就是同一种「装进来的东西」。
-                      点击走 dock-store（开合由壳面板自己渲染），关浮层收尾与软件行一致。 */}
-                  {panelRows.map((p, i) => (
-                    <li key={'panel-' + p.id}>
-                      <button
-                        type="button"
-                        className="pp-shelf-item"
-                        data-cursor={cursor === appRows.length + i ? 'on' : undefined}
-                        onClick={() => {
-                          useDockStore.getState().togglePanel(p.id);
-                          closeShelf();
-                        }}
-                      >
-                        <span className="pp-shelf-name">{p.title}</span>
-                        <span className="pp-shelf-meta">
-                          面板 · {p.side === 'left' ? '左' : '右'}
-                          {useDockStore.getState().open[p.id] ? ' · 已开' : ''}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : loadError ? (
-              <p className="pp-shelf-error">卡片库读取失败：{loadError}</p>
-            ) : cards === null ? (
-              <p className="pp-shelf-empty">正在读卡片库…</p>
-            ) : cardRows.length === 0 ? (
-              <p className="pp-shelf-empty">
-                {query ? '没有匹配的卡片。' : '还没有入阁的卡片。把鼠标移到任意一张卡上，点「入阁」就收进来了。'}
-              </p>
-            ) : (
-              <ul className="pp-shelf-list">
-                {cardRows.map((c, i) => {
-                  const title = typeof c.title === 'string' ? c.title : '';
-                  return (
-                    <li key={c.cardId} className="pp-shelf-row">
-                      {editingId === c.cardId ? (
-                        <input
-                          ref={editRef}
-                          className="pp-shelf-edit"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onBlur={() => commitRename(c.cardId)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') commitRename(c.cardId);
-                            if (e.key === 'Escape') setEditingId(null);
-                          }}
-                          aria-label="卡片标题"
-                        />
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="pp-shelf-item"
-                            data-cursor={cursor === i ? 'on' : undefined}
-                            onClick={() => openCard(c.cardId)}
-                          >
-                            <span className="pp-shelf-name">
-                              {title || (typeof c.kind === 'string' ? `${c.kind}（未命名）` : '未命名卡片')}
-                            </span>
-                            <span className="pp-shelf-meta">
-                              {typeof c.kind === 'string' ? c.kind : ''}
-                              {formatAt(c.shelvedAt) ? ` · ${formatAt(c.shelvedAt)}` : ''}
-                            </span>
-                          </button>
-                          <span className="pp-shelf-actions">
-                            {/* 文件卡：直接开门（2026-11-23 记文件式）——宿主桥的 openWith 去找
-                                声明了 app.documents 的软件插件开窗；没有就状态栏具名提示。 */}
-                            {typeof c.file === 'string' && c.file ? (
-                              <button
-                                type="button"
-                                data-tip={`打开 ${c.file}`}
-                                onClick={() => openFileFromShelf(c.file as string)}
-                              >
-                                开
-                              </button>
-                            ) : null}
-                            {/* 「引」「摊」只在**画布里**才有意义（2026-11-21 实机报
-                                「首页点架阁，摊是无效的」）：两者都要落在一卷/一张纸上——
-                                没有纸就没有画布、也没有夹签槽，点下去只能弹一句
-                                「画布还没准备好」，那是把无效操作摆出来再解释。
-                                判据取 `open.paper`（纸在 = 画布在；纸关 = 回首页，
-                                这是纸壳唯一的主界面语义），不另造 readiness 状态。
-                                「改」「删」是卡片库自己的操作，任何界面状态都成立 —— 保留。 */}
-                            {inCanvas ? (
-                              <>
-                                <button type="button" data-tip="引用到本卷" onClick={() => quoteCard(c.cardId)}>
-                                  引
-                                </button>
-                                <button type="button" data-tip="摊到画布" onClick={() => pinToCanvas(c.cardId)}>
-                                  摊
-                                </button>
-                              </>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingId(c.cardId);
-                                setEditValue(title);
-                              }}
-                            >
-                              改
-                            </button>
-                            <button type="button" onClick={() => removeCard(c.cardId, title)}>
-                              删
-                            </button>
-                          </span>
-                        </>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
+
+        <footer className="shf-foot">
+          {hints}
+          <span className="shf-foot-r">
+            器物 {appTotal} · 卡片 {cardTotal}
+          </span>
+        </footer>
       </div>
     </div>
   );

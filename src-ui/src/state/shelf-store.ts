@@ -12,13 +12,10 @@
 
 import { create } from 'zustand';
 
-/** 两页（用户 2026-12-08 拍板：软件型 / 卡片型）。 */
+/** 两页（2026-12-08 拍板两页；2026-11-24 页签口径改为「器物 / 卡片」）。
+ *  页签文案住在产物侧（ShelfOverlay 的 PAGE_LABEL）——本 store 只管开合与停在哪页，
+ *  不为展示文案背第二份真源。 */
 export type ShelfPage = 'app' | 'card';
-
-export const SHELF_PAGE_LABEL: Record<ShelfPage, string> = {
-  app: '软件型',
-  card: '卡片型',
-};
 
 interface ShelfState {
   open: boolean;

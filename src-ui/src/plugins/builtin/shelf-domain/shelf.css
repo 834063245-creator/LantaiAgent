@@ -1,106 +1,377 @@
 @import "../../../app/type-scale.css";
 
-/* 架阁浮层（docs/plans/entity-shelf-plan.md B3）——纸片规格**照 `.pp-toc-card` 取**：
-   纸底 / 强线 / 菜单落影 / 宋体位，**刻意不透明**（半透明会与底下正文糊字，
-   app/tip/tip.css 头注已立此判据）。不新造色、不新造动效、不加图标。 */
+/* 架阁浮层（docs/plans/shelf-ui-iteration-plan.md · 2026-11-24 全量迭代）
+ *
+ * 形态：**固定册页**（880 × 640，头 56 / 搜索 46 / 脚 38），不是随内容伸缩的下拉框。
+ * 法度：§11 层次法的**模态**档——`--veil` 遮罩 + `--elev-raise` 压印 + 头线
+ *       （`--rule-head`）+ 入场 `veil-in` / `pop-down`（时长走 `--m-ink`）。
+ * 层级：z = var(--z-shelf-modal, 485)——**盖过插件窗 460 / 提示 480，让位于牒卡 500 /
+ *       命令面板 510**（旧值 400 在插件窗之下，实测「开着文卷点架阁，架阁被压住」）。
+ *       fallback 是给旧 exe 的：产物可热换而壳不重建，旧壳没有这个 token。
+ *
+ * 材质纪律：纸底 / 强线 / 宋体位 / 不新造色、不新造动效、不加图标；
+ * 选中语言照 §11「行型」= `--sel-wash` + 朱砂左脊；页签照「锚点型」= 600 + 2px 朱砂底线。
+ * 类名前缀 `shf-`（架阁）——旧 `pp-shelf-*` 规则仍留在**已编译的壳 bundle** 里，
+ * 换前缀 = 与那批旧规则彻底分家（删规则在产物热更下不生效，见 dev-workflow 三条边界）。 */
 
-.pp-shelf-mask {
+/* ── 遮罩与框体 ─────────────────────────────────────────────── */
+.shf-veil {
   position: fixed;
   inset: 0;
-  /* **必须高于 .pp-root 的 280**（paper-base.css）：纸壳根是 fixed + z-index 280，
-     本浮层挂在它**外面**（Provider 的兄弟，不是 .pp-root 的子节点）⇒ 同一层叠上下文里
-     260 会被整张纸盖住（2026-12-08 实机报「架阁点不开」的真相：它弹了，但在纸下面）。 */
-  z-index: 400;
+  z-index: var(--z-shelf-modal, 485);
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--ink-1) 16%, transparent);
+  background: var(--veil);
+  animation: veil-in var(--m-ink);
 }
 
-.pp-shelf {
-  width: min(680px, calc(100vw - 96px));
-  max-height: min(72vh, 620px);
+.shf-shelf {
+  width: min(880px, 92vw);
+  height: min(640px, 82vh);
   display: flex;
   flex-direction: column;
   background: var(--paper);
   border: var(--rule-strong);
+  border-top: var(--rule-head);
   border-radius: 0;
-  box-shadow: var(--elev-menu);
+  box-shadow: var(--elev-raise);
   font-family: var(--f-song);
   font-size: var(--fs-body);
   color: var(--ink-1);
   overflow: hidden;
+  animation: pop-down var(--m-ink);
 }
 
-.pp-shelf-head {
+/* ── 书眉：题 / 两页 / 关 ───────────────────────────────────── */
+.shf-head {
+  height: 56px;
+  flex: none;
   display: flex;
-  align-items: baseline;
-  gap: 18px;
-  padding: 14px 18px 10px;
-  border-bottom: var(--rule-strong);
+  align-items: center;
+  gap: 20px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--ink-4);
 }
 
-.pp-shelf-title {
-  font-size: calc(var(--fs-body) * 1.15);
-  letter-spacing: 0.08em;
+.shf-title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: 0.1em;
 }
 
-.pp-shelf-tabs {
-  display: flex;
-  gap: 14px;
+.shf-tabs {
   margin-left: auto;
+  align-self: stretch;
+  display: flex;
+  gap: 24px;
 }
 
-.pp-shelf-tab {
-  appearance: none;
+.shf-tab {
+  position: relative;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 4px;
   border: 0;
   background: none;
-  padding: 2px 0;
   font: inherit;
-  color: var(--ink-1);
-  opacity: 0.5;
+  font-size: var(--fs-body);
+  color: var(--ink-2);
   cursor: pointer;
-  border-bottom: 1px solid transparent;
+  transition: color var(--snap);
 }
 
-.pp-shelf-tab.is-on {
-  opacity: 1;
-  border-bottom-color: currentColor;
+.shf-tab:hover {
+  color: var(--ink-1);
 }
 
-.pp-shelf-close {
-  appearance: none;
+.shf-tab.is-on {
+  color: var(--ink-1);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--seal);
+}
+
+.shf-tab-n {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.shf-tab.is-on .shf-tab-n {
+  color: var(--seal);
+}
+
+.shf-x {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
   border: 0;
   background: none;
-  padding: 0 2px;
   font: inherit;
-  font-size: 1.1em;
+  font-size: 20px;
   line-height: 1;
-  color: var(--ink-1);
-  opacity: 0.55;
+  color: var(--ink-3);
   cursor: pointer;
+  transition: color var(--snap);
 }
 
-.pp-shelf-close:hover {
-  opacity: 1;
+.shf-x:hover {
+  color: var(--seal-deep);
 }
 
-.pp-shelf-body {
+/* ── 搜索：全册共用一条 ─────────────────────────────────────── */
+.shf-search {
+  height: 46px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--ink-4);
+}
+
+.shf-search:focus-within {
+  box-shadow: inset 0 -1px 0 var(--seal);
+}
+
+.shf-search-p {
+  font-family: var(--f-mono);
+  color: var(--seal);
+}
+
+.shf-search-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--fs-lead);
+  color: var(--ink-1);
+  outline: none;
+}
+
+.shf-search-input::placeholder {
+  color: var(--ink-3);
+}
+
+/* 焦点指示归**本行**（focus-within 的下缘朱砂线），输入件自身不再叠一枚全局 focus 环——
+ * 与命令面板 `.pal-input input` 同一判例：搜索是常驻聚焦件，双框只是噪声。
+ * 选择器必须带 `:focus-visible`（0,2,0）：foundation.css 的 `input:focus-visible`
+ * （0,1,1）会盖掉单类名写法。 */
+.shf-search-input:focus,
+.shf-search-input:focus-visible {
+  outline: none;
+}
+
+.shf-hit {
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+/* ── 册身 ───────────────────────────────────────────────────── */
+.shf-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── 器物页：名册（在窗 / 软件 / 面板） ─────────────────────── */
+.shf-apps-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shf-apps {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 6px 0 10px;
+  padding: 2px 0 10px;
 }
 
-.pp-shelf-list {
+.shf-apps:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+
+.shf-sec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 15px 22px 5px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--ink-2);
+}
+
+.shf-sec::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--ink-1);
+}
+
+.shf-sec-n {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.shf-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.pp-shelf-item {
+.shf-row-li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  padding-right: 16px;
+}
+
+.shf-row {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: center;
   gap: 12px;
+  padding: 10px 8px 10px 22px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
+}
+
+.shf-row:hover,
+.shf-row[data-cursor="on"] {
+  background: var(--sel-wash);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+
+.shf-dot {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ink-4);
+}
+
+.shf-dot[data-on="on"] {
+  background: var(--seal);
+  box-shadow: none;
+}
+
+.shf-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shf-name {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shf-sub {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shf-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shf-act {
+  border: 0;
+  background: none;
+  padding: 3px 2px;
+  font: inherit;
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  cursor: pointer;
+  min-width: 3.2em;
+  text-align: right;
+  transition: color var(--snap);
+}
+
+.shf-act:hover {
+  color: var(--seal-deep);
+}
+
+.shf-act.is-quiet {
+  color: var(--ink-3);
+}
+
+/* ── 卡片页：目录（左）+ 阅览（右） ────────────────────────── */
+.shf-cards {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+}
+
+.shf-cat-wrap {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ink-4);
+}
+
+.shf-cat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.shf-cat:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+
+.shf-bucket {
+  margin: 0;
+  padding: 14px 18px 4px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+}
+
+.shf-crow {
+  display: block;
   width: 100%;
-  box-sizing: border-box;
   padding: 9px 18px;
   border: 0;
   background: none;
@@ -108,156 +379,413 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
 }
 
-.pp-shelf-item.is-static {
-  cursor: default;
+.shf-crow:hover,
+.shf-crow[aria-selected="true"] {
+  background: var(--sel-wash);
+  box-shadow: inset 2px 0 0 var(--seal);
 }
 
-.pp-shelf-item:hover:not(.is-static) {
-  background: color-mix(in srgb, var(--ink-1) 6%, transparent);
-}
-
-.pp-shelf-name {
-  flex: 1 1 auto;
-  min-width: 0;
+.shf-crow-t {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.pp-shelf-meta {
-  flex: 0 0 auto;
+.shf-crow-m {
+  margin-top: 2px;
   font-family: var(--f-mono);
-  font-size: calc(var(--fs-body) * 0.86);
-  opacity: 0.55;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.pp-shelf-empty,
-.pp-shelf-error {
-  margin: 0;
-  padding: 22px 18px 26px;
-  line-height: 1.8;
-  opacity: 0.66;
-}
-
-/* 卡片行（改名 / 删除，2026-12-08 B5）：动作件 **hover / 聚焦才出**——架上读的是
-   名字，动作不该常驻抢读；触屏与键盘用 :focus-within 兜住（不做长按/右键菜单）。 */
-.pp-shelf-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-right: 12px;
-}
-
-.pp-shelf-row .pp-shelf-item {
-  flex: 1 1 auto;
+.shf-pane {
   min-width: 0;
-}
-
-.pp-shelf-actions {
-  flex: 0 0 auto;
+  min-height: 0;
   display: flex;
-  gap: 8px;
-  opacity: 0;
-  /* 2026-11-19：散写时长收进 token（--snap = 0.12s 态变轴，与 hover 同一支笔）——
-   * `tests/motion-contract` 的 §15 守卫此前一直红着（与本批题签重画无关，顺手清债）。 */
-  transition: opacity var(--snap);
+  flex-direction: column;
+  padding: 0 22px;
 }
 
-.pp-shelf-row:hover .pp-shelf-actions,
-.pp-shelf-row:focus-within .pp-shelf-actions {
-  opacity: 1;
+.shf-pane-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 15px 0 10px;
+  border-bottom: 1px solid var(--ink-4);
 }
 
-.pp-shelf-actions button {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 2px 4px;
-  font: inherit;
-  font-size: calc(var(--fs-body) * 0.88);
-  color: var(--ink-1);
-  opacity: 0.55;
-  cursor: pointer;
+.shf-pane-title {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.pp-shelf-actions button:hover {
-  opacity: 1;
-}
-
-/* 行内改名：同名行高、同一纸底与规线（换的是文字的可编辑态，不是另一件东西）。 */
-.pp-shelf-edit {
-  flex: 1 1 auto;
-  margin: 4px 18px;
-  padding: 6px 8px;
-  border: var(--rule-strong);
-  background: var(--paper);
-  font: inherit;
-  color: var(--ink-1);
-}
-
-.pp-shelf-error {
-  opacity: 1;
-  color: var(--fail);
-}
-
-/* ── 按下态（2026-11-17 反馈密度批 · 第一批 · 架阁浮层）──
- * 病灶：本面所有可点件只有 hover（"亮起来"），按下没有任何回响——
- * 全产品 22 条 :active / 412 个交互点，缺的正是这一档（体检
- * docs/plans/feedback-density-audit-2026-11-17.md）。
- * 两条纪律：
- *   ① 位移走**独立 translate**，不写 transform——本仓多处元素自带 transform
- *      （卡片上浮 / 拖拽跟手 / 图标位移），写 transform 会整表覆盖（同 pp-enter
- *      2026-09-03 事故的纪律延伸）；
- *   ② 压深用现成纸色三档（paper → paper-deep → paper-margin），不新造色值。
- */
-.pp-shelf-tab:active,
-.pp-shelf-close:active {
-  background: color-mix(in oklch, var(--ink-1) 7%, transparent);
-  translate: 0 1px;
-}
-.pp-shelf-item:active {
-  background: var(--paper-deep);
-  translate: 0 1px;
-}
-.pp-shelf-actions button:active {
-  translate: 0 1px;
-}
-
-/* ── 搜索（架阁升格批，2026-11-21）──
-   两页共用一条查询，切页不重置；空查询 = 全列（架阁是查询面不是信息流）。
-   **视觉精度另有立项**（用户 2026-11-21 拍板）——本片只给一个能用、不抢戏的输入件，
-   取既有的纸面件规格（下划线输入，见 settings-panel.css 的 .set-input 族）。 */
-.pp-shelf-search {
-  padding: 10px 18px;
-  border-bottom: var(--rule-soft);
-  flex: none;
-}
-
-.pp-shelf-search-input {
-  width: 100%;
-  appearance: none;
-  background: none;
+/* 行内改名：与题字同号同重，只换「可编辑」这一个事实（同名行高，不跳版）。 */
+.shf-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
   border: 0;
   border-bottom: var(--rule-strong);
   border-radius: 0;
-  padding: 4px 0;
-  font-family: inherit;
-  font-size: var(--fs-body);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-title);
+  font-weight: 600;
   color: var(--ink-1);
   outline: none;
 }
 
-.pp-shelf-search-input::placeholder {
-  color: var(--ink-3);
-}
-
-.pp-shelf-search-input:focus {
+.shf-rename:focus {
   border-bottom-color: var(--seal);
 }
 
-/* 键盘选中行（↑↓）：与 hover 同一档呈现——不自造第三态。 */
-.pp-shelf-item[data-cursor="on"] {
+.shf-pane-meta {
+  margin-left: auto;
+  flex: none;
+  max-width: 52%;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 阅览纸：与架阁同纸色，靠规线 + 落影读成「一张卡片纸」（§11 纸片件语汇）。 */
+.shf-pane-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin-top: 14px;
+  border: var(--rule-soft);
+  background: var(--paper);
+  box-shadow: var(--shadow-sheet);
+  overflow: hidden;
+}
+
+.shf-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+}
+
+.shf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-caption);
+}
+
+.shf-scroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.shf-table caption {
+  padding: 8px 10px;
+  text-align: left;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.shf-table th,
+.shf-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ink-4);
+  text-align: left;
+  vertical-align: top;
+}
+
+.shf-table th {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.shf-text {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 14px 18px;
+  overflow: auto;
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  line-height: 1.8;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.shf-file {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  word-break: break-all;
+}
+
+.shf-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-2);
+  line-height: 1.8;
+}
+
+.shf-pane-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 0 14px;
+}
+
+.shf-k {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color var(--snap);
+}
+
+.shf-k:hover {
+  color: var(--seal-deep);
+}
+
+.shf-k.is-danger {
+  margin-left: auto;
+  color: var(--ink-3);
+}
+
+.shf-k.is-danger:hover,
+.shf-k.is-danger[data-armed="on"] {
+  color: var(--seal);
+}
+
+/* ── 空态 / 读失败 ─────────────────────────────────────────── */
+.shf-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 32px 36px;
+}
+
+.shf-empty-t {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+}
+
+.shf-empty-d {
+  margin: 0;
+  max-width: 34em;
+  text-align: center;
+  font-size: var(--fs-body);
+  line-height: 1.8;
+  color: var(--ink-2);
+}
+
+.shf-empty-b {
+  margin-top: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--ink-2);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink-1);
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    border-color var(--snap);
+}
+
+.shf-empty-b:hover {
+  background: var(--paper-deep);
+  border-color: var(--ink-1);
+}
+
+.shf-err {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 22px 0;
+  padding: 9px 12px;
+  border-left: 2px solid var(--seal);
   background: var(--sel-wash);
+  font-size: var(--fs-caption);
+  color: var(--seal-deep);
+}
+
+.shf-err-r {
+  margin-left: auto;
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-caption);
+  color: var(--seal-deep);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.shf-skipped {
+  flex: none;
+  margin: 8px 22px 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  line-height: 1.8;
+}
+
+.shf-skipped button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink-3);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.shf-skipped ul {
+  margin: 4px 0 0;
+  padding: 0 0 0 14px;
+}
+
+/* ── 脚：键位 + 账 ─────────────────────────────────────────── */
+.shf-foot {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 22px;
+  border-top: 1px solid var(--ink-4);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.shf-foot kbd {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-2);
+  border: 1px solid var(--ink-4);
+  border-radius: 0;
+  padding: 0 4px;
+  margin-right: 4px;
+}
+
+.shf-foot-r {
+  margin-left: auto;
+  letter-spacing: 0.08em;
+}
+
+/* 跨页命中（搜索时另一页还有结果）：一句话 + 出口，不做静默丢弃。 */
+.shf-elsewhere {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 22px 0;
+  padding: 6px 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.shf-elsewhere button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--seal-deep);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── 按下态（沿用旧架阁的反馈密度判例）── */
+.shf-tab:active,
+.shf-x:active,
+.shf-act:active,
+.shf-k:active,
+.shf-empty-b:active {
+  translate: 0 1px;
+}
+
+.shf-row:active,
+.shf-crow:active {
+  background: var(--paper-deep);
+  translate: 0 1px;
+}
+
+.shf-tab:focus-visible,
+.shf-x:focus-visible,
+.shf-row:focus-visible,
+.shf-crow:focus-visible,
+.shf-act:focus-visible,
+.shf-k:focus-visible,
+.shf-empty-b:focus-visible,
+.shf-err-r:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+
+/* 窄窗：目录落到上半，阅览在下半（同一册，不变成两回事）。 */
+@media (max-width: 760px) {
+  .shf-cards {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(120px, 38%) 1fr;
+  }
+
+  .shf-cat-wrap {
+    border-right: 0;
+    border-bottom: 1px solid var(--ink-4);
+  }
+
+  .shf-pane {
+    padding: 0 18px;
+  }
 }

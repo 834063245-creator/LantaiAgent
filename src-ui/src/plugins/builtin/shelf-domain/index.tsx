@@ -45,8 +45,8 @@ export const shelfDomainPlugin = {
       () =>
         ctx.commands.register({
           id: 'shelf/open',
-          label: '架阁…（软件与卡片）',
-          description: '打开架阁：装进来的软件、入阁的卡片、插件面板',
+          label: '架阁…（器物与卡片）',
+          description: '打开架阁：装进来的器物、插件面板、入阁的卡片',
           group: '面板',
           slash: '/shelf',
           action: { type: 'local', handler: () => useShelfStore.getState().openShelf() },

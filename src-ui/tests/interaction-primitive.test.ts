@@ -57,7 +57,8 @@ const WITHOUT_COMMENTS = new Map(FILES.map((f) => [f.rel, stripComments(readFile
 const LISTENER_REGISTRY: Record<string, string> = {
   'src-ui/src/app/interaction/use-drag-gesture.ts':
     '手势核心本体：setPointerCapture / 回退窗口监听都住在这里，其余全部经它',
-  'src-ui/src/app/overlay.tsx': '外点关闭（useOutsideClose）与 Escape 的唯一实现',
+  'src-ui/src/app/overlay-hooks.ts':
+    '外点关闭（useOutsideClose）与 Escape 的唯一实现（2026-11-24 自 overlay.tsx 拆出，容器面不再挂监听）',
   'src-ui/src/app/tip/tip-host.tsx':
     '窗口切回的可信判据：只读 mousemove/pointerdown 判断用户是否真的动了（不接管手势、不 preventDefault）',
   'src-ui/src/app/window-drag.ts': 'OS 标题栏拖动热区（另一范畴：原生窗口移动）',
@@ -156,14 +157,17 @@ describe('交互原语守卫（plan 批 E）', () => {
     const offenders: string[] = [];
     for (const f of FILES) {
       const src = WITHOUT_COMMENTS.get(f.rel) ?? '';
-      if (f.rel === 'src-ui/src/app/overlay.tsx') continue;
+      if (f.rel === 'src-ui/src/app/overlay-hooks.ts') continue;
       /* 判据：同一文件里既有 document 级 mousedown/pointerdown 注册，又有 contains( ——
        * 那几乎必然是「点外面就关」的手写实现（四条原本就是这么写的）。 */
       const hasDocDown = /document\.addEventListener\(\s*['"](?:mousedown|pointerdown)['"]/.test(src);
       const hasContains = /\.contains\(\s*(?:e|ev|event)\.target/.test(src);
       if (hasDocDown && hasContains) offenders.push(f.rel);
     }
-    expect(offenders, '外点关闭必须走 overlay.tsx 的 useOutsideClose（同一份实现、同一个 Escape 门）：').toEqual([]);
+    expect(
+      offenders,
+      '外点关闭必须走 app/overlay-hooks.ts 的 useOutsideClose（同一份实现、同一个 Escape 门）：',
+    ).toEqual([]);
   });
 
   it('E3：setTimeout 的毫秒字面量只许出现在登记文件（交互面）', () => {

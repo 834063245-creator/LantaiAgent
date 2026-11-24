@@ -55,7 +55,7 @@
   );
   width: min(680px, 92vw);
   transform: translateX(-50%);
-  z-index: var(--z-shelf, 500);
+  z-index: var(--z-prompt, 500);
   pointer-events: none;
 }
 .psh-host > .prompt-shelf {
