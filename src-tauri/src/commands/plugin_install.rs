@@ -47,6 +47,9 @@ pub(crate) enum PluginSource {
     Tarball(String),
     /// 本地插件目录——复制进 plugins 根。
     LocalDir(PathBuf),
+    /// 链接安装（dev link）——plugins 根下建目录链接指向源码目录，
+    /// 改源码后「重新加载」即生效；卸载只删链接，源码原样保留。
+    Link(PathBuf),
 }
 
 impl PluginSource {
@@ -118,6 +121,30 @@ impl PluginSource {
                     ));
                 }
                 Ok(PluginSource::LocalDir(path))
+            }
+            "link" => {
+                let loc = params
+                    .get("location")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "link 源需要参数 'location'（本地目录）".to_string())?
+                    .to_string();
+                let path = PathBuf::from(&loc);
+                if !path.is_dir() {
+                    return Err(format!("link 源目录不存在或不是目录: {loc}"));
+                }
+                // 链接源同样不能位于安装根内（链自己）
+                let root = crate::plugin_assets::plugins_root();
+                let _ = std::fs::create_dir_all(&root);
+                let root_canon = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+                let path_canon = std::fs::canonicalize(&path)
+                    .map_err(|e| format!("link 源路径不可解析（{loc}）: {e}"))?;
+                if path_canon.starts_with(&root_canon) {
+                    return Err(format!(
+                        "link 源不能位于插件安装根内（{}）——链接安装请指向根外的源码目录",
+                        root_canon.display()
+                    ));
+                }
+                Ok(PluginSource::Link(path))
             }
             _ => Err(format!(
                 "未知 source_kind: {kind}（允许: registry | tarball | local_dir）"
@@ -212,6 +239,7 @@ async fn fetch_source_bytes(source: &PluginSource) -> Result<Vec<u8>, String> {
         PluginSource::LocalDir(_) => {
             Err("内部错误：LocalDir 源不走 fetch_source_bytes".to_string())
         }
+        PluginSource::Link(_) => Err("内部错误：Link 源不走 fetch_source_bytes".to_string()),
     }
 }
 
@@ -360,6 +388,93 @@ fn install_from_local_dir(
         InstallPlan::Replace => replace_existing(&tmp, &target)?,
     }
     Ok(manifest_name)
+}
+
+/// 链接安装（dev link）：plugins/<名> 建目录链接指向源码目录。改源码后
+/// 点「重新加载」即生效，不用反复卸载/装。卸载只删链接，源码原样保留。
+fn install_from_link(dir: &Path, expect_name: Option<String>) -> Result<String, String> {
+    let manifest_path = dir.join("manifest.json");
+    if !manifest_path.is_file() {
+        return Err(format!("链接源缺 manifest.json: {}", dir.display()));
+    }
+    let manifest = std::fs::read(&manifest_path).map_err(|e| format!("读取 manifest 失败: {e}"))?;
+    let manifest_name = parse_manifest_name(&manifest)?;
+    if let Some(expected) = &expect_name {
+        if &manifest_name != expected {
+            return Err(format!(
+                "manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"
+            ));
+        }
+    }
+    let plugins_root = crate::plugin_assets::plugins_root();
+    std::fs::create_dir_all(&plugins_root).map_err(|e| format!("创建插件根失败: {e}"))?;
+    let target = plugins_root.join(&manifest_name);
+    if std::fs::symlink_metadata(&target).is_ok() {
+        let existing = read_install_meta(&manifest_name);
+        let is_link = existing
+            .as_ref()
+            .and_then(|m| m.get("source_kind"))
+            .and_then(|v| v.as_str())
+            == Some("link");
+        if !is_link {
+            return Err(format!(
+                "{manifest_name} 已作为普通安装存在——先卸载它，再改用链接安装"
+            ));
+        }
+        remove_dir_link(&target)?;
+    }
+    create_dir_link(&target, dir)?;
+    // meta 由本函数自己写（测试/非 RPC 路径也必须让卸载认得出是链接）
+    write_install_meta(&manifest_name, &PluginSource::Link(dir.to_path_buf()))?;
+    Ok(manifest_name)
+}
+
+/// 链接安装的 async 外壳（RPC 调用面，阻塞 IO 走 spawn_blocking）。
+pub(crate) async fn plugin_install_link(
+    dir: PathBuf,
+    expect_name: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || install_from_link(&dir, expect_name))
+        .await
+        .map_err(|e| format!("plugin_install_link 任务失败: {e}"))?
+}
+
+#[cfg(windows)]
+fn create_dir_link(target: &Path, source: &Path) -> Result<(), String> {
+    // junction（mklink /J）不需要符号链接特权（开发者模式/管理员）——
+    // Windows 上裸 symlink_dir 在普通账户会失败。
+    let out = std::process::Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(target)
+        .arg(source)
+        .output()
+        .map_err(|e| format!("创建目录链接失败: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "mklink /J 失败: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn create_dir_link(target: &Path, source: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(source, target).map_err(|e| format!("创建目录链接失败: {e}"))
+}
+
+#[cfg(windows)]
+fn remove_dir_link(target: &Path) -> Result<(), String> {
+    // 重解析点（junction）：remove_dir 只删链接本身；remove_dir_all 会跟随
+    // 删进目标目录（dev link 下 = 删源码）——这里绝不能用递归删除。
+    std::fs::remove_dir(target).map_err(|e| format!("删除目录链接失败: {e}"))
+}
+
+#[cfg(not(windows))]
+fn remove_dir_link(target: &Path) -> Result<(), String> {
+    std::fs::remove_file(target).map_err(|e| format!("删除目录链接失败: {e}"))
 }
 
 /// 单条 entry 路径的 tar-slip 围栏（raw 与剥前缀后的 rel 都要过——
@@ -644,13 +759,30 @@ pub(crate) fn plugin_uninstall(name: &str) -> Result<(), String> {
     }
     let plugins_root = crate::plugin_assets::plugins_root();
     let dir = plugins_root.join(name);
+    // dev link：插件目录只是指向源码的链接——只删链接本身，源码原样保留。
+    // 绝不能落到下面的递归删除（Windows 上 remove_dir_all 会跟随 junction）。
+    let is_link = read_install_meta(name)
+        .as_ref()
+        .and_then(|m| m.get("source_kind"))
+        .and_then(|v| v.as_str())
+        == Some("link");
+    if is_link {
+        if std::fs::symlink_metadata(&dir).is_err() {
+            clear_install_meta(name);
+            return Ok(()); // 链接已不在——幂等
+        }
+        let r = remove_dir_link(&dir);
+        clear_install_meta(name);
+        return r;
+    }
     if !dir.exists() {
+        clear_install_meta(name);
         return Ok(()); // 幂等
     }
     // 代码目录也进 .trash（2026-11-24）：卸载删代码不可逆，与数据回收同根
     // （前缀 plugin- 区分）。回收失败降级为直接删除——卸载不因回收入口
     // 失败而阻断（目录残留比卸载假装成功更糟）。
-    match crate::commands::plugin_data::recycle_plugin_dir_on_uninstall(name, &dir) {
+    let r = match crate::commands::plugin_data::recycle_plugin_dir_on_uninstall(name, &dir) {
         Ok(dest) => {
             eprintln!("[plugin_uninstall] 插件目录已回收: {}", dest.display());
             Ok(())
@@ -659,7 +791,9 @@ pub(crate) fn plugin_uninstall(name: &str) -> Result<(), String> {
             eprintln!("[plugin_uninstall] 目录回收失败，降级为直接删除: {e}");
             std::fs::remove_dir_all(&dir).map_err(|e| format!("删除 {dir:?} 失败: {e}"))
         }
-    }
+    };
+    clear_install_meta(name);
+    r
 }
 
 /// 插件目录绝对路径（S4-4 乙机器桥）：manifest.mcpServers 的 stdio command
@@ -677,6 +811,72 @@ pub(crate) fn plugin_dir(name: &str) -> Result<String, String> {
         return Err(format!("插件目录不存在: {name}"));
     }
     Ok(dir.to_string_lossy().into_owned())
+}
+
+/// 安装来源记录（2026-11-24）：plugins/<安装根>/.meta/<名>.json。
+/// 卸载删目录前，诊断面要能回答「这份装自哪里」——源目录 / tarball / registry。
+fn install_meta_file(name: &str) -> PathBuf {
+    // 安装根下的 .meta/<名>.json（scope 名含 '/'，转义成 __）——不写进插件
+    // 目录本身：链接安装的"插件目录"就是源码目录，写进去会污染源码。
+    crate::plugin_assets::plugins_root()
+        .join(".meta")
+        .join(format!("{}.json", name.replace('/', "__")))
+}
+
+pub(crate) fn write_install_meta(name: &str, source: &PluginSource) -> Result<(), String> {
+    let (kind, location) = match source {
+        PluginSource::Registry {
+            name: n,
+            version,
+            registry,
+        } => {
+            let mut loc = n.clone();
+            if let Some(v) = version {
+                loc.push('@');
+                loc.push_str(v);
+            }
+            if let Some(reg) = registry {
+                loc.push_str(" via ");
+                loc.push_str(reg);
+            }
+            ("registry", loc)
+        }
+        PluginSource::Tarball(s) => ("tarball", s.clone()),
+        PluginSource::LocalDir(p) => ("local_dir", p.display().to_string()),
+        PluginSource::Link(p) => ("link", p.display().to_string()),
+    };
+    let meta = serde_json::json!({
+        "source_kind": kind,
+        "location": location,
+        "installed_at": chrono::Utc::now().to_rfc3339(),
+    });
+    let text =
+        serde_json::to_string_pretty(&meta).map_err(|e| format!("序列化安装来源失败: {e}"))?;
+    let file = install_meta_file(name);
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建安装来源目录失败: {e}"))?;
+    }
+    crate::utils::write_atomic(&file.to_string_lossy(), &text)
+}
+
+/// 清掉安装来源记录（卸载时调用；不存在 = no-op）。
+pub(crate) fn clear_install_meta(name: &str) {
+    let _ = std::fs::remove_file(install_meta_file(name));
+}
+
+/// 读安装来源（诊断面）。不存在 = None——内置插件/旧版安装/手动放置都没有记录。
+pub(crate) fn read_install_meta(name: &str) -> Option<serde_json::Value> {
+    if name.trim().is_empty()
+        || name.contains("..")
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains(':')
+    {
+        return None;
+    }
+    let file = install_meta_file(name);
+    let text = std::fs::read_to_string(file).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 /// 启用/禁用：plugins.json 读改写（{"disabled": [...]}——S0 文件形状；
@@ -773,8 +973,19 @@ mod tests {
 
     /// 测试隔离辅助：持跨模块 PLUGINS_ROOT 锁（plugin_assets HTTP e2e 同锁
     /// 串行——env 变量进程级，并行 clobber 间歇红）+ 设置 env + 返回临时根。 */
-    fn with_plugins_root(tag: &str) -> (std::sync::MutexGuard<'static, ()>, std::path::PathBuf) {
+    fn with_plugins_root(
+        tag: &str,
+    ) -> (
+        std::sync::MutexGuard<'static, ()>,
+        std::sync::MutexGuard<'static, ()>,
+        std::path::PathBuf,
+    ) {
         let guard = crate::plugin_assets::PLUGINS_ROOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // 卸载回收会写 HOLOGRAM_PLUGIN_DATA_ROOT —— 与 plugin_data 测试共用
+        // 一把锁串行，避免 env 被并发改写导致「数据目录未分配」。
+        let data_guard = crate::commands::plugin_data::PLUGIN_DATA_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join(format!(
@@ -791,7 +1002,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data_root);
         std::fs::create_dir_all(&data_root).unwrap();
         std::env::set_var("HOLOGRAM_PLUGIN_DATA_ROOT", &data_root);
-        (guard, tmp)
+        (guard, data_guard, tmp)
     }
 
     /// 造一个 npm 形态 tarball（package/ 前缀 + manifest.json + entry.js）。
@@ -910,7 +1121,7 @@ mod tests {
     /// local_dir 源位于插件安装根内 → 拒绝（防「卸载删掉唯一一份源码」）。
     #[test]
     fn rejects_local_dir_source_inside_plugins_root() {
-        let (_guard, tmp) = with_plugins_root("src_fence");
+        let (_guard, _dguard, tmp) = with_plugins_root("src_fence");
         let inside = tmp.join("would-be-plugin");
         std::fs::create_dir_all(&inside).unwrap();
         std::fs::write(
@@ -926,10 +1137,45 @@ mod tests {
         assert!(err.contains("安装根"), "应拒绝就地安装: {err}");
     }
 
+    /// dev link 安装：plugins 根下建目录链接；卸载只删链接，源码原样保留。
+    #[test]
+    fn install_link_and_uninstall_keeps_source() {
+        let (_guard, _dguard, tmp) = with_plugins_root("link");
+        let src =
+            std::env::temp_dir().join(format!("hologram_plugin_link_src_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&src);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("manifest.json"),
+            br#"{"name":"linked","version":"1.0.0","entry":"entry.js"}"#,
+        )
+        .unwrap();
+        std::fs::write(src.join("entry.js"), b"export default {}").unwrap();
+
+        let name = install_from_link(&src, Some("linked".to_string())).unwrap();
+        assert_eq!(name, "linked");
+        let target = tmp.join("linked");
+        assert!(
+            target.join("manifest.json").is_file(),
+            "链接安装后应能通过链接读到源码 manifest"
+        );
+
+        plugin_uninstall("linked").unwrap();
+        assert!(
+            std::fs::symlink_metadata(&target).is_err(),
+            "卸载应删掉链接本身"
+        );
+        assert!(
+            src.join("entry.js").is_file(),
+            "卸载绝不能删掉源码目录里的文件"
+        );
+        let _ = std::fs::remove_dir_all(&src);
+    }
+
     /// 本地目录安装 + 卸载 + 禁用读改写（HOLOGRAM_PLUGINS_ROOT 隔离）。
     #[test]
     fn install_uninstall_set_enabled_roundtrip() {
-        let (_guard, tmp) = with_plugins_root("roundtrip");
+        let (_guard, _dguard, tmp) = with_plugins_root("roundtrip");
         // 源目录（插件形态）
         let src = tmp.join("src/hello");
         std::fs::create_dir_all(src.join("assets")).unwrap();
@@ -1021,7 +1267,7 @@ mod tests {
     /// plugin_dir（S4-4 乙机器桥）：存在目录返回绝对路径；不存在/非法名拒绝。
     #[test]
     fn plugin_dir_resolves_and_fences() {
-        let (_guard, tmp) = with_plugins_root("plugindir");
+        let (_guard, _dguard, tmp) = with_plugins_root("plugindir");
         let src = tmp.join("src/hello");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(
@@ -1053,7 +1299,7 @@ mod tests {
     /// tarball 字节安装端到端（内存构造 → 原子落盘 → 重名拒绝）。
     #[test]
     fn install_from_tarball_bytes_atomic() {
-        let (_guard, tmp) = with_plugins_root("tarball");
+        let (_guard, _dguard, tmp) = with_plugins_root("tarball");
 
         let tarball = gz(make_tarball("acme-tools", &[]));
         let name =
@@ -1260,7 +1506,7 @@ mod tests {
     /// 本地目录升级 = 原子换装；降级/同版本拒绝；force 逃生。
     #[test]
     fn install_version_guard_upgrade_downgrade_force() {
-        let (_guard, tmp) = with_plugins_root("version-guard");
+        let (_guard, _dguard, tmp) = with_plugins_root("version-guard");
         let root = tmp.clone();
         let make_src = |ver: &str| {
             let dir = tmp.join(format!("src-{ver}"));
@@ -1321,7 +1567,7 @@ mod tests {
     /// tarball 路径同守卫：升级换装 + 降级拒绝；manifest 缺 version = 拒绝。
     #[test]
     fn install_version_guard_tarball_path() {
-        let (_guard, tmp) = with_plugins_root("version-guard-tarball");
+        let (_guard, _dguard, tmp) = with_plugins_root("version-guard-tarball");
         let root = tmp.clone();
         let v1 = gz(make_tarball_versioned("acme-tools", "1.0.0", &[]));
         install_from_tarball_bytes(&v1, Some("acme-tools".to_string()), false).unwrap();

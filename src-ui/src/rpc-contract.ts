@@ -515,7 +515,7 @@ export interface RpcContract {
    *  生效时机：重启（Phase 4 改运行时生效）。 */
   plugin_install: {
     params: {
-      source_kind: 'registry' | 'tarball' | 'local_dir';
+      source_kind: 'registry' | 'tarball' | 'local_dir' | 'link';
       name?: string;
       version?: string;
       registry?: string;
@@ -531,6 +531,10 @@ export interface RpcContract {
   plugin_set_enabled: { params: { name: string; enabled: boolean }; result: string }; // "null"
   /** 插件目录绝对路径（S4-4 乙机器桥：manifest mcpServers 的 stdio command
    *  相对插件目录解析）。名字围栏同 uninstall；目录不存在 = 错误。 */
+  plugin_install_meta: {
+    params: { name: string };
+    result: { source_kind: string; location: string; installed_at: string } | null;
+  };
   plugin_dir: { params: { name: string }; result: string }; // 绝对路径（**裸串**——别改回 ok_json，否则 mcp-bridge 会把带引号的串当目录锚点）
   /** 随包图谱引擎信息（engine-bundled-mcp-distribution，2026-09-16）：探测
    *  安装目录里的 `hologram-engine.exe`（多候选：env `LANTAI_ENGINE_EXE` →

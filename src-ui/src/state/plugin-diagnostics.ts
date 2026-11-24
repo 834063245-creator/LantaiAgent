@@ -23,12 +23,21 @@ import { typedRpc } from '../rpc-contract';
 import type { PluginRecord } from './plugin-store';
 import { usePluginWindowStore } from './plugin-window-store';
 
+/** 安装来源（plugins/<名>/.lantai-install.json 的读面；旧版安装/内置 = null）。 */
+export interface InstallSource {
+  source_kind: string;
+  location: string;
+  installed_at: string;
+}
+
 /** 路径读面（生产 = RPC；测试注入——读面不制造第二条通路）。 */
 export interface DiagnosticsPaths {
   /** 插件目录绝对路径（不可得 = null，例如内置）。 */
   pluginDir: (name: string) => Promise<string | null>;
   /** 数据地盘绝对路径（只对声明 dataDir 的插件调用；ensure 幂等）。 */
   dataDir: (name: string) => Promise<string | null>;
+  /** 安装来源（可选读面——注入 fake 不提供时诊断显示「未记录」）。 */
+  installMeta?: (name: string) => Promise<InstallSource | null>;
 }
 
 const rpcPaths: DiagnosticsPaths = {
@@ -45,6 +54,14 @@ const rpcPaths: DiagnosticsPaths = {
       return await ensurePluginDataDir(name);
     } catch {
       return null;
+    }
+  },
+  installMeta: async (name) => {
+    try {
+      const meta = await typedRpc('plugin_install_meta', { name });
+      return meta && typeof meta === 'object' ? (meta as InstallSource) : null;
+    } catch {
+      return null; // 内置 / 旧版安装 / 未落盘——读面不制造错误
     }
   },
 };
@@ -67,6 +84,8 @@ export interface PluginDiagnostics {
   pluginDir: string | null;
   /** 数据地盘（null = 未声明 dataDir 或取不到）。 */
   dataDir: string | null;
+  /** 安装来源（null = 内置 / 旧版安装 / 手动放置）。 */
+  installSource: InstallSource | null;
   tools: {
     /** 声明式工具名（manifest.tools）。 */
     declared: string[];
@@ -114,6 +133,7 @@ export async function collectPluginDiagnostics(
     // 内核插件（builtin 且无 manifest）没有磁盘目录——不问 RPC，直接 null
     pluginDir: record.builtin === true && manifest === null ? null : await paths.pluginDir(name),
     dataDir: manifest?.dataDir === true ? await paths.dataDir(name) : null,
+    installSource: record.builtin === true || paths.installMeta === undefined ? null : await paths.installMeta(name),
     tools: {
       declared: (manifest?.tools ?? []).map((t) => t.name),
       mcp: governorStatesFor(name),

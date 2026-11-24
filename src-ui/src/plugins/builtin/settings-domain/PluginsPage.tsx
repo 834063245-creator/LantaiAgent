@@ -42,6 +42,11 @@ async function copyText(text: string): Promise<boolean> {
 
 /** 插件医生展开面（只读快照：字段表 + 复制 JSON）。
  *  数据全由 `collectPluginDiagnostics` 拼装（单一入口）——这里只管摆放。 */
+function describeInstallSource(diag: PluginDiagnostics): string {
+  if (diag.installSource) return `${diag.installSource.source_kind} · ${diag.installSource.location}`;
+  return diag.builtin ? '内置' : '未记录（旧版安装或手动放置）';
+}
+
 function PluginDiagnosticsView({ diag }: { diag: PluginDiagnostics }) {
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
   const rows: Array<[string, string]> = [
@@ -53,6 +58,7 @@ function PluginDiagnosticsView({ diag }: { diag: PluginDiagnostics }) {
     ['契约版本', `v${diag.contractVersion}`],
     ['插件目录', diag.pluginDir ?? (diag.builtin ? '内置（无磁盘目录）' : '不可得')],
     ['数据目录', diag.dataDir ?? (diag.manifest ? '未声明 dataDir' : '—')],
+    ['安装来源', describeInstallSource(diag)],
     ['声明工具', diag.tools.declared.length > 0 ? diag.tools.declared.join(' · ') : '未声明 tools'],
     [
       '受治进程',
@@ -395,8 +401,12 @@ export function PluginsPage() {
   ):
     | { source_kind: 'registry'; name: string }
     | { source_kind: 'tarball'; location: string }
-    | { source_kind: 'local_dir'; location: string } {
+    | { source_kind: 'local_dir'; location: string }
+    | { source_kind: 'link'; location: string } {
     const t = raw.trim();
+    // dev link：显式 link: 前缀 → 链接安装（plugins 根下建目录链接指向源码，
+    // 改代码后「重新加载」即生效；卸载只删链接，源码不动）。
+    if (/^link:/i.test(t)) return { source_kind: 'link', location: t.slice(5).trim() };
     if (t.startsWith('http://') || t.startsWith('https://')) return { source_kind: 'tarball', location: t };
     if (/\.t(ar\.)?gz$/i.test(t)) return { source_kind: 'tarball', location: t };
     // 本地目录形态：Windows 盘符路径（D:\... 或 D:/...）或 POSIX 绝对路径
@@ -429,7 +439,7 @@ export function PluginsPage() {
           <input
             className="sp-input"
             style={{ flex: 1, minWidth: 0 }}
-            placeholder="npm 包名 / tarball URL 或 .tgz 路径 / 本地插件目录"
+            placeholder="npm 包名 / tarball URL 或 .tgz 路径 / 本地插件目录 / link:源码目录"
             value={input}
             disabled={busyKey === 'install'}
             onChange={(e) => setInput(e.target.value)}
@@ -454,8 +464,9 @@ export function PluginsPage() {
           </button>
         </div>
         <div className="sp-hint-sub">
-          三种源：npm 包名（缺省 registry.npmjs.org）、tarball URL 或本地路径（npm pack 产物）、
-          本地插件目录（复制进插件根）。装/卸/启用/禁用均运行时生效（D6）。
+          四种源：npm 包名（缺省 registry.npmjs.org）、tarball URL 或本地路径（npm pack 产物）、
+          本地插件目录（复制进插件根）、<code>link:</code> 源码目录（建目录链接，改代码后「重新加载」即生效，
+          卸载只删链接不动源码）。装/卸/启用/禁用均运行时生效（D6）。
         </div>
         {message && (
           <div className="sp-hint-sub" style={{ color: message.kind === 'ok' ? 'var(--pass)' : 'var(--warn)' }}>

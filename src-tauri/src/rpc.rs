@@ -230,12 +230,13 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // ensure：ok_json({path}) 恒 JSON 对象；list：ok_json({entries}) 恒 JSON。
         // read = 文件内容文本 / write/delete = ok_unit "null"——Text（默认臂）。
         "plugin_data_ensure" | "plugin_data_list" => RpcResultShape::JsonValue,
+        // plugin_install_meta：安装来源记录（对象或 null）——ok_json 恒 JSON。
+        "plugin_install_meta" => RpcResultShape::JsonValue,
 
         // ── 卡片库（架阁存储底座，entity-shelf-plan B1）──
         // shelve/list/read/state_write/delete 全部 ok_json（对象或数组）⇒ JsonValue。
-        "card_shelve" | "card_list" | "card_read" | "card_state_write" | "card_delete" | "card_rename" => {
-            RpcResultShape::JsonValue
-        }
+        "card_shelve" | "card_list" | "card_read" | "card_state_write" | "card_delete"
+        | "card_rename" => RpcResultShape::JsonValue,
 
         // ── 随包图谱引擎探测（engine-bundled-mcp-distribution）──
         // engine_bundled_info：serde_json::json!({path,dir,available}) 恒合法 JSON。
@@ -832,7 +833,7 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 插件安装通道（3 个命令，S4-3）：npm tarball 源 / 本地目录 → 下载/解包/
+        // 插件安装通道（4 个命令，S4-3）：npm tarball 源 / 本地目录 / 链接（dev link）→ 下载/解包/
         // tar-slip 防护/原子落盘；卸载/禁用走 plugins.json 读改写。
         // 生效时机（D6，2026-08-27）：Rust 侧只管盘面与进程；前端在 RPC 落盘
         // 成功后即时装卸插件 fiber——装/卸/启/禁运行时生效（工具面下次装配）。
@@ -843,15 +844,22 @@ async fn dispatch_rpc(
             // force = true 跳过版本守卫（降级/同版本覆盖安装——显式逃生门，P3）
             let force = opt_bool(&params, "force").unwrap_or(false);
             // 本地目录源走复制路径；registry/tarball 走下载+解包路径
-            let name = match source {
+            let name = match source.clone() {
                 commands::plugin_install::PluginSource::LocalDir(dir) => {
                     commands::plugin_install::plugin_install_local_dir(dir, expect_name, force)
                         .await?
+                }
+                commands::plugin_install::PluginSource::Link(dir) => {
+                    commands::plugin_install::plugin_install_link(dir, expect_name).await?
                 }
                 other => {
                     commands::plugin_install::plugin_install(other, expect_name, force).await?
                 }
             };
+            // 安装来源落盘（诊断面「装自哪里」）——写失败不阻断安装
+            if let Err(e) = commands::plugin_install::write_install_meta(&name, &source) {
+                eprintln!("[plugin_install] 安装来源记录写入失败（不阻断）: {e}");
+            }
             // ⚠ 裸名返回（2026-11-18 真机修，同 `composition_dir`）：`ok_json` 会把
             // String 序列化成带引号的 JSON 文本，而契约声明 `result: string`、
             // PluginsPage 直接拿它当插件名 ⇒ 安装成功后激活的是 `"hello"`，
@@ -866,6 +874,15 @@ async fn dispatch_rpc(
             .await
             .map_err(|e| format!("plugin_uninstall 任务失败: {e}"))?;
             ok_unit(r)
+        }
+        "plugin_install_meta" => {
+            let name = req_str(&params, "name", "plugin_install_meta")?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_install::read_install_meta(&name)
+            })
+            .await
+            .map_err(|e| format!("plugin_install_meta 任务失败: {e}"))?;
+            ok_json(Ok(r))
         }
         "plugin_dir" => {
             let name = req_str(&params, "name", "plugin_dir")?;
@@ -969,11 +986,9 @@ async fn dispatch_rpc(
         }
         "card_read" => {
             let card_id = req_str(&params, "card_id", "card_read")?;
-            let r = tokio::task::spawn_blocking(move || {
-                commands::card_store::card_read(&card_id)
-            })
-            .await
-            .map_err(|e| format!("card_read 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || commands::card_store::card_read(&card_id))
+                .await
+                .map_err(|e| format!("card_read 任务失败: {e}"))?;
             ok_json(r)
         }
         "card_state_write" => {
@@ -988,11 +1003,10 @@ async fn dispatch_rpc(
         }
         "card_delete" => {
             let card_id = req_str(&params, "card_id", "card_delete")?;
-            let r = tokio::task::spawn_blocking(move || {
-                commands::card_store::card_delete(&card_id)
-            })
-            .await
-            .map_err(|e| format!("card_delete 任务失败: {e}"))?;
+            let r =
+                tokio::task::spawn_blocking(move || commands::card_store::card_delete(&card_id))
+                    .await
+                    .map_err(|e| format!("card_delete 任务失败: {e}"))?;
             ok_json(r)
         }
         "card_rename" => {

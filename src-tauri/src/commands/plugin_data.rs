@@ -27,6 +27,12 @@ use std::path::{Path, PathBuf};
 /// 单文件读写上限（防无界内存读入——镜像 MAX_PLUGIN_FILE_BYTES 量级）。
 const MAX_PLUGIN_DATA_BYTES: u64 = 32 * 1024 * 1024;
 
+/// HOLOGRAM_PLUGIN_DATA_ROOT 测试锁（env 变量进程级——plugin_data 与
+/// plugin_install 两批用例串行，防互相 clobber；plugin_install 的
+/// with_plugins_root 也拿这把）。
+#[cfg(test)]
+pub(crate) static PLUGIN_DATA_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 数据根：用户主目录 `.lantai/plugins-data/`（与代码安装根 `.lantai/plugins`
 /// 分立——卸载删代码、数据走 .trash，互不牵连）。`HOLOGRAM_PLUGIN_DATA_ROOT`
 /// 可覆盖（测试隔离/目录重定位，镜像 HOLOGRAM_PLUGINS_ROOT 语义）。
@@ -286,10 +292,6 @@ pub(crate) fn recycle_plugin_dir_on_uninstall(name: &str, dir: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// HOLOGRAM_PLUGIN_DATA_ROOT 测试锁（env 变量进程级——本模块并行用例
-    /// 串行防互相 clobber；plugin_install 的 with_plugins_root 同款纪律）。
-    static PLUGIN_DATA_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn with_data_root(tag: &str) -> (std::sync::MutexGuard<'static, ()>, std::path::PathBuf) {
         let guard = PLUGIN_DATA_TEST_LOCK

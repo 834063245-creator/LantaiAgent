@@ -101,7 +101,7 @@ const DEBT: Record<string, number> = {
   'src-tauri/src/uia/com.rs': 1600, // 现 1544
   'src-tauri/src/permissions/bash.rs': 1400, // 现 1365
   'engine/src/graph/resolver.rs': 1400, // 现 1380
-  'src-tauri/src/commands/plugin_install.rs': 1400, // 现 1306
+  'src-tauri/src/commands/plugin_install.rs': 1700, // 现 1612；2026-11-24 加 dev link（junction 安装 + 卸载只删链接）与安装来源记录——commands/mod.rs 模块清单被平台边界测试冻结，只能原文件长
   'engine/src/main.rs': 1400, // 现 1317
   'src-tauri/src/plugin_assets.rs': 1400, // 现 1325
   'engine/src/stress.rs': 1400, // 现 1358
