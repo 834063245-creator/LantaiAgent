@@ -114,7 +114,12 @@ const DEBT: Record<string, number> = {
   // （归属收口：使用它的全是产物组件）。旧账那条随之销账、新址按现行行数登记；
   // 2026-11-19 补了漏掉的 type-scale @import（与本批题签重画无关，顺手清债）。
   'src-ui/src/plugins/builtin/settings-domain/provider-console.css': 1400, // 现 1319
-  'src-tauri/src/confined_fs.rs': 1300, // 现 1278
+  /* 2026-11-24 跨档（1300 → 1400，现 1363）：fs(list) 的忽略过滤改「相对请求根」
+   * （B+C 批的 C）——判据语义进了函数头注，另加三条 Rust 用例（显式根豁免 /
+   * 根之下仍过滤 / glob 同语义）。用例内联在本模块是本仓 Rust 惯例（confined_fs
+   * 的测试一直同文件）；要拆成 tests 模块得先把它改成目录模块（confined_fs/mod.rs），
+   * 属另一批的活，不为了省档位在本批动结构。 */
+  'src-tauri/src/confined_fs.rs': 1400, // 现 1363
   'engine/src/analysis/explore.rs': 1300, // 现 1225
   // 架阁底座 B1（entity-shelf-plan §5.1）：card_* 五命令分派 + shape 登记跨了 1300 档
   // ⇒ 抬到 1400（实测 1312；跨档 = 一次显式决策，本行为该决策记录）。
@@ -124,7 +129,7 @@ const DEBT: Record<string, number> = {
   // 架阁底座 B1：卡片库 5 条契约 + 5 条 result schema 跨了 1200 档 ⇒ 抬到 1300（实测 1219）。
   'src-ui/src/rpc-contract.ts': 1300, // 现 1219
   'src-ui/src/workspace.ts': 1200, // 现 1164
-  'src-ui/src/paper/tool-present.ts': 1200, // 现 1104
+  'src-ui/src/paper/tool-present.ts': 1200, // 现 1100
   'src-tauri/src/permissions/mod.rs': 1200, // 现 1120
   'src-tauri/src/cdp/e2e.rs': 1200, // 现 1188
   /* 2026-11-19 用户定调：档位直接抬到 2500（跨两档，不是按 1200 逐档追）。

@@ -17,9 +17,14 @@
 // 双表职责：
 //   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射；
 //   edit 分支在本文件内直呼 editor_cap。
+//
+// list 动作有模型面整形（2026-11-24 B 案）：fs_cap 的 {entries} 单行 JSON 换成
+// 逐行文本树（见 ./list-format.ts 头注的实测病灶与形状纪律）。协议不动——
+// UI 的 kernelListDirectory 仍直接吃 {entries}。
 
 import type { FsAction, FsProvider } from '../../../composition/fs-service';
 import type { Context } from '../../../cordis';
+import { formatListPayload } from './list-format';
 
 // （FS_PLUGIN_TOOL_BY_ACTION 信封目标表已随 R4-4b builtin.editor 退役删除——
 //  edit 动作换 editor_cap 直呼（见 execute 分支）；tool_call 信封的 TS 消费面
@@ -114,6 +119,12 @@ export const builtinFsProvider: FsProvider = {
       }
       return raw;
     }
+    // list：{entries} 单行 JSON → 逐行文本树（B 案）。线格式违形返回 null ⇒
+    // 原文直通（违形可见，不静默改写）。
+    if (action === 'list') {
+      const formatted = formatListPayload(raw, typeof args.path === 'string' ? args.path : undefined);
+      return formatted ?? raw;
+    }
     // write：补回执读数（2026-09-16 反馈回路审计）。本文件头 72-74 行早就写明
     // 「write 回执含预览」，但实现只 `{path}` 结构化透传 = 零信息：模型写完看不到
     // "写进去的是什么"，只能靠重复写来确认（而重复写是幂等的，所以危害是空转而非
@@ -131,7 +142,7 @@ export const builtinFsProvider: FsProvider = {
         // 非 JSON（异常文本）——直通
       }
     }
-    // 其余动作直通（list/glob 的 JSON 字符串；write 已在上方补读数）。
+    // 其余动作直通（glob 的 JSON 字符串；list 已在上方整形，write 已在上方补读数）。
     return raw;
   },
 };

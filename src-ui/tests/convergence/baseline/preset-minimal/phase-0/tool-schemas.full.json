@@ -310,7 +310,7 @@
       }
     },
     {
-      "description": "File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. Path params accept workspace-root-relative paths (e.g. \"src/agent/tool.ts\"); fs(list)/fs(glob) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed).",
+      "description": "File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. Path params accept workspace-root-relative paths (e.g. \"src/agent/tool.ts\"); fs(list)/fs(glob) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed). fs(list) returns an indented tree headed by \"<path> — N 项\" (directories end with \"/\", names are relative to that path). VCS/dependency/build dirs (node_modules / .git / dist / build / target / ...) are hidden unless one of them is the path you asked for, and very large trees are narrowed to two levels — pass a narrower path to expand.",
       "name": "fs",
       "parameters": {
         "properties": {

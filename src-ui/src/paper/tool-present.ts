@@ -16,6 +16,8 @@
 //      （path 还是 `\\?\D:\…` 扩展前缀）、`search(content)` 的 {results:[{file,
 //      match_line,match_content,context_block:[{line,content,is_match}]}]}。
 //      键名、布尔、转义路径全是程序语汇，人读到的是「格式」不是「事」。
+//      （2026-11-24 B 案起 `fs(list)` 的载荷已改逐行文本树（fs-builtin/list-format.ts）：
+//      本条对 tree 只是「原样上纸」，JSON 分支只剩旧卷回放。）
 //
 // 裁定（施工单 .lantai/plans/plan-1793253129747-xi5o.md）：做**纯变换**，不做每工具一套
 // React 组件。理由：纸面测高（paper-shell/measure.ts）按**文本行**算——任何新 DOM 结构
@@ -521,49 +523,27 @@ function editSummary(output: string | undefined): string | null {
   return `+${add} −${del}`;
 }
 
-/** 目录树：`dir/`（N 项）+ 缩进子项。名字来自 entry.name（不秀 `\\?\` 全路径）。 */
+/** 目录树首行契约：`<root> — <N> 项`（载荷由 fs-builtin/list-format.ts 产出，
+ *  2026-11-24 B 案起 fs(list) 不再回 {entries} JSON）。缺省根时首行退化为 `<N> 项`。 */
+const LIST_HEAD_RE = /^(?:.*— )?(\d+) 项$/;
+
+/** 目录树：载荷**本身就是**逐行树（目录尾 `/`、两空格缩进）——首行（根路径 +
+ *  项数）已在参数面与折叠读数里，正文只印树，不再二次解析/重排。
+ *  旧卷的 {entries} JSON 不认首行 ⇒ 整段交回兜底（历史数据不迁移）。 */
 function listResult(output: string | undefined): PresentedSection[] | null {
-  const parsed = rec(tryJson(output));
-  const entries = arrOf(parsed?.entries);
-  if (!entries) return null;
-  const lines: ToolLine[] = [];
-  const walk = (items: unknown[], level: number, depth: number): void => {
-    if (depth > 12) return; // 深链防御（渲染与测高都按行，不炸栈）
-    for (const item of items) {
-      const e = rec(item);
-      if (!e) continue;
-      const name = typeof e.name === 'string' ? e.name : '';
-      const children = arrOf(e.children);
-      if (e.is_dir === true) {
-        const parts: ToolSpan[] = [sp(`${name}/`, 'key')];
-        if (children?.length) parts.push(sp(` ${children.length} 项`, 'note'));
-        lines.push(tl(level, parts));
-        if (children?.length) walk(children, level + 1, depth + 1);
-      } else {
-        lines.push(tl(level, [sp(name)]));
-      }
-    }
-  };
-  walk(entries, 0, 0);
-  if (lines.length === 0) return null;
-  return [{ label: '结构', display: toolDisplayFromLines(lines) }];
+  if (!hasPayloadToShow(output)) return null;
+  const rows = (output ?? '').split('\n');
+  const isTree = LIST_HEAD_RE.test((rows[0] ?? '').trim());
+  const text = (isTree ? rows.slice(1) : rows).join('\n').trimEnd();
+  if (text === '') return null;
+  return [{ label: '结构', display: toolDisplay(text) }];
 }
 
-/** 目录读数：条目总数（顶层目录 + 其下文件各算一项——「这棵树有多大」）。 */
+/** 目录读数：首行的 `— N 项`（树过大时末行另有「已列 X / N」的说明，各读各的）。 */
 function listSummary(output: string | undefined): string | null {
-  const entries = arrOf(rec(tryJson(output))?.entries);
-  if (!entries) return null;
-  let n = 0;
-  const walk = (items: unknown[], depth: number): void => {
-    if (depth > 12) return;
-    for (const item of items) {
-      n += 1;
-      const children = arrOf(rec(item)?.children);
-      if (children?.length) walk(children, depth + 1);
-    }
-  };
-  walk(entries, 0);
-  return n > 0 ? `${n} 项` : null;
+  const head = (output ?? '').split('\n', 1)[0]?.trim() ?? '';
+  const m = LIST_HEAD_RE.exec(head);
+  return m ? `${m[1]} 项` : null;
 }
 
 /** glob：`共 N 个文件` + 一行一文件（按公共根显示相对路径）。 */

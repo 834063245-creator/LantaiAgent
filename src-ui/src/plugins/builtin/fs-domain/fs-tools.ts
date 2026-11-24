@@ -160,7 +160,7 @@ const FS_CAP_DESCRIPTION: Record<string, string> = {
   read: 'Read the content of a file on disk. Returns the raw file text (byte-exact, no line-number prefixes — safe for string matching). Use offset and limit to read a specific range of lines (0-indexed). Set lineNumbers: true when you need cat -n style line numbers for quoting line addresses. Use to inspect source code files when analyzing dependencies or investigating violations.',
   write:
     'Create or overwrite a file with the given content. Creates parent directories if needed. Use to write new files or modify existing ones.',
-  list: 'List files and subdirectories in a directory (recursive up to 4 levels deep). Returns name, path, type (file/dir), and size for each entry.',
+  list: 'List files and subdirectories in a directory (recursive up to 4 levels deep). Returns an indented text tree: the first line is `<path> — N 项`, directories end with "/", two spaces indent each level, and names are relative to that path. VCS/dependency/build directories (node_modules, .git, dist, build, target, ...) are skipped unless that directory is the path you asked for. Very large trees are narrowed to two levels — pass a narrower path to expand.',
   glob: 'Fast file pattern matching using glob patterns. Returns matching file paths sorted by modification time. Supports ** for recursive matching (e.g. "**/*.rs", "src/**/*.ts", "*.json"). Use this instead of run_shell to find files by name pattern — it is faster and respects .gitignore-style exclusions.',
   mkdir:
     'Create a new directory (and any missing parent directories). Use before writing new files into a directory that may not exist yet.',

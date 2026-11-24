@@ -352,9 +352,17 @@ pub(crate) struct DirEntry {
     pub(crate) truncated: Option<bool>,
 }
 
-/// 递归列出目录内容（深度受限）。filter_ignored 用 hologram-graph 排除规则。
+/// 递归列出目录内容（深度受限）。
+///
+/// 忽略过滤的判据是**相对请求根**的路径分量（2026-11-24 C 案）：`tests/`、`.lantai/`
+/// 这类名单条目只在该目录**位于请求根之下**时生效，**根自身豁免**——`fs(list,
+/// "…/tests")` 必须列得出来。旧实现拿**绝对路径**跑 `is_ignored_path`，祖先分量
+/// （`.lantai` / `.git` / `tests` / `build` …）会把它下面的一切整片滤掉：请求
+/// `…/.lantai/skills` 得到 `{"entries": []}`，与真空目录不可分辨（2026-07 审计 R1
+/// 的模型面残留——当时只修了 inbox 恢复的 `filter_ignored:false`）。
 pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -> Vec<DirEntry> {
     fn recurse(
+        base: &std::path::Path,
         dir: &std::path::Path,
         depth: usize,
         entries: &mut Vec<DirEntry>,
@@ -381,15 +389,18 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             let is_dir = path.is_dir();
-            if filter_ignored
-                && is_dir
-                && crate::ignored_paths::is_ignored_path(&path.to_string_lossy().replace('\\', "/"))
-            {
-                continue;
+            if filter_ignored && is_dir {
+                // 相对根的路径分量（根自身豁免）——见函数头注。
+                let rel = path.strip_prefix(base).unwrap_or(path.as_path());
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                if crate::ignored_paths::is_ignored_path(&rel) {
+                    continue;
+                }
             }
             let children = if is_dir {
                 let mut child_entries = Vec::new();
                 recurse(
+                    base,
                     &path,
                     depth + 1,
                     &mut child_entries,
@@ -420,6 +431,7 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
     let mut entry_count = 0usize;
     let mut truncated = false;
     recurse(
+        root,
         root,
         0,
         &mut entries,
@@ -817,6 +829,80 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// C 案（2026-11-24）：过滤判据是**相对请求根**的路径分量——根自身豁免。
+    /// 旧实现拿绝对路径跑 is_ignored_path，`tests` / `.lantai` 等祖先分量会把
+    /// 显式请求的根整片滤空（`fs(list, "…/tests")` → `{"entries":[]}`）。
+    #[test]
+    fn list_dir_recursive_lists_explicitly_requested_ignored_root() {
+        let tmp = make_tree("ignroot");
+        let tree = tmp.join("tests");
+        std::fs::create_dir_all(tree.join("nested")).unwrap();
+        std::fs::write(tree.join("a_test.rs"), "x").unwrap();
+        std::fs::write(tree.join("nested").join("b_test.rs"), "x").unwrap();
+
+        let entries = list_dir_recursive(&tree, true);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"a_test.rs"),
+            "显式请求的根不应被自身的名字过滤: {names:?}"
+        );
+        assert!(names.contains(&"nested"));
+
+        // 上一级仍按名单隐藏 tests/（根级噪音照旧）
+        let parent = list_dir_recursive(&tmp, true);
+        assert!(!parent.iter().any(|e| e.name == "tests"), "根级 tests/ 仍应隐藏");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// 过滤仍然生效于**根之下**（相对分量），不是「根豁免 ⇒ 全树不过滤」。
+    #[test]
+    fn list_dir_recursive_filters_ignored_dir_below_root() {
+        let tmp = make_tree("ignbelow");
+        let deps = tmp.join("sub").join("node_modules");
+        std::fs::create_dir_all(&deps).unwrap();
+        std::fs::write(deps.join("dep.js"), "x").unwrap();
+
+        let entries = list_dir_recursive(&tmp, true);
+        let mut names: Vec<String> = Vec::new();
+        fn walk(e: &DirEntry, out: &mut Vec<String>) {
+            out.push(e.name.clone());
+            if let Some(ch) = &e.children {
+                for c in ch {
+                    walk(c, out);
+                }
+            }
+        }
+        for e in &entries {
+            walk(e, &mut names);
+        }
+        assert!(
+            !names.iter().any(|n| n == "dep.js"),
+            "根之下的 node_modules 仍应被过滤: {names:?}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// glob 同语义：根落在被排除目录里时，该根自身的文件必须列得出来。
+    #[test]
+    fn glob_entries_root_inside_ignored_dir_is_exempt() {
+        let tmp = make_tree("globign");
+        std::fs::create_dir_all(tmp.join(".git").join("nested")).unwrap();
+        std::fs::write(tmp.join(".git").join("nested").join("config"), "x").unwrap();
+        let pat = vec!["**/config".to_string()];
+
+        let from_git = glob_entries(&tmp.join(".git").to_string_lossy(), &pat).unwrap();
+        assert!(
+            from_git
+                .iter()
+                .any(|e| e.path.ends_with("nested/config") || e.path.ends_with("nested\\config")),
+            "根自身豁免：.git 下的文件必须列得出来: {from_git:?}"
+        );
+
+        let from_root = glob_entries(&tmp.to_string_lossy(), &pat).unwrap();
+        assert!(from_root.is_empty(), "仓库根仍应跳过 .git: {from_root:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn glob_invalid_pattern_errors() {
         let tmp = make_tree("globerr");
@@ -887,6 +973,11 @@ fn expand_braces(pattern: &str) -> Vec<String> {
 }
 
 /// 目录遍历 + glob 匹配（root 已裁决）。
+///
+/// 排除判据按**相对请求根**匹配（2026-11-24 C 案，与 `list_dir_recursive` 同语义）：
+/// 旧实现拿绝对路径 `contains("/.lantai/")`，根落在 `.lantai` / `target` / `build`
+/// 等目录里时整棵子树被自己的祖先滤空。前后各包一个 `/`，让首尾分量同样参与匹配
+/// （原实现的两套 `/` 与 `\` 写法在归一成 `/` 后合并为一套）。
 pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEntry>, String> {
     let p = std::path::Path::new(root);
     if !p.is_dir() {
@@ -911,24 +1002,18 @@ pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEn
             continue;
         }
         let entry_path = entry.path();
-        let eps = entry_path.to_string_lossy();
-        if eps.contains("/.git/")
-            || eps.contains("\\.git\\")
-            || eps.contains("/node_modules/")
-            || eps.contains("\\node_modules\\")
-            || eps.contains("/target/")
-            || eps.contains("\\target\\")
-            || eps.contains("/dist/")
-            || eps.contains("\\dist\\")
-            || eps.contains("/build/")
-            || eps.contains("\\build\\")
-            || eps.contains("/.lantai/")
-            || eps.contains("\\.lantai\\")
+        let rel = entry_path.strip_prefix(p).unwrap_or(entry_path);
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        let guard = format!("/{rel_str}/");
+        if guard.contains("/.git/")
+            || guard.contains("/node_modules/")
+            || guard.contains("/target/")
+            || guard.contains("/dist/")
+            || guard.contains("/build/")
+            || guard.contains("/.lantai/")
         {
             continue;
         }
-        let rel = entry_path.strip_prefix(p).unwrap_or(entry_path);
-        let rel_str = rel.to_string_lossy().replace('\\', "/");
         if compiled.iter().any(|gp| gp.matches(&rel_str)) {
             results.push(GlobEntry {
                 path: entry_path.to_string_lossy().to_string(),

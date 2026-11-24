@@ -1,3 +1,54 @@
+# baseline change request — fs(list) 载荷改逐行文本树 + 忽略过滤改相对请求根（B+C，2026-11-24）
+
+- **日期**: 2026-11-24
+- **请求 Agent**: 根会话 lead（用户拍板「B+C」：B = `fs(list)` 模型面载荷改逐行文本树；C = 忽略过滤判据改相对请求根）
+- **涉及快照**: `baseline/phase-0/tool-schemas.full.json` + `baseline/phase-0/tool-schemas.plan.json`（standard 轨）、`baseline/preset-minimal/phase-0/` 同名两份（minimal 轨）——漂移点**只有 `fs` 工具的 `description` 一行**
+- **状态**: **已批准（2026-11-24 用户明确选择 B+C）**——两轨重录后 `verify:convergence` exit 0
+
+## 变更内容
+
+`fs` 域工具 `description` 末尾追加一句（**参数面零变化**，`parameters` 逐字节不变）：
+
+```diff
+  ... fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent
+  fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed).
++ fs(list) returns an indented tree headed by "<path> — N 项" (directories end with "/",
++ names are relative to that path). VCS/dependency/build dirs (node_modules / .git / dist /
++ build / target / ...) are hidden unless one of them is the path you asked for, and very
++ large trees are narrowed to two levels — pass a narrower path to expand.
+```
+
+## 为什么变
+
+**B（载荷形态）**：旧 `fs(list)` 载荷是**单行紧凑 JSON**，每个条目重复一遍绝对路径——实测
+research-system 根 1349 条 = 192 KB **一行**（`src-ui` 侧复刻计数一致）。工具结果截断器对「首行超
+50 KB」的处理是 `content: ''`（`agent/truncate.ts` 的 `firstLineExceedsLimit`），于是任何 >350 条的
+目录，模型收到只有一句 `[Output truncated: first line exceeds 50.0KB limit.]`——**零信息**，会话日志
+里记的也是这一句（原文不可追溯）。该现象在本机 `research-system` 会话日志里已发生 7 次，模型当场
+写「odd… let me use shell ls instead」改道。逐行树把同一棵树压到 ~1/5 字节，且逐行正是既有截断器
+（50 KB / 2000 行）的原生粒度——截断边界不再是悬崖。
+
+**C（过滤判据）**：`list_dir_recursive` / `glob_entries` 此前拿**绝对路径**跑 `is_ignored_path`，
+祖先分量（`.lantai` / `tests` / `build` …）会把**显式请求的根**整片滤空：`fs(list, "…/.lantai/skills")`
+返回 `{"entries":[]}`，与真空目录不可分辨（2026-07 审计 R1 的模型面残留——当时只修了 inbox 恢复的
+`filter_ignored:false`）。改为按**相对请求根**的路径分量判定（根自身豁免），根级噪音语义不变。
+
+## 影响面
+
+- **模型可见面**：仅 `fs` 的 `description` 一句；`parameters` 零变化（无新参数、无键增删）。
+- **用户可感知行为**：`fs(list)` 在纸面上从「一行 JSON」变成可读树；上一条截断提示不再出现；
+  目录过滤语义变为「显式请求的根自身豁免，根之下照旧」。
+- **协议面不动**：`fs_cap list` 仍返回 `{entries}`（UI 的 `kernelListDirectory` 直吃同一条 RPC），
+  整形只发生在模型面 provider（`fs-builtin`）。
+- **测试面**（故意规格变更，同批改）：新增 `tests/fs-list-format.test.ts`（16 例）；
+  `tests/paper-tool-present.test.ts` 的 fs(list) fixture 改文本树并改断言；
+  Rust `confined_fs` 三条新用例（显式根豁免 / 根之下仍过滤 / glob 同语义）。
+- **重录动作**：`npm run record:convergence`（standard）+ `CONVERGENCE_PRESET=minimal npm run record:convergence`，
+  随后 `npm run verify:convergence` 双轨必须 exit 0。
+
+---
+
+
 # baseline change request — 模型身份段：删品牌否定句，改报真实模型（2026-12-01）
 
 - **日期**: 2026-12-01

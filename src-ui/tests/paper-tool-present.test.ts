@@ -16,31 +16,15 @@
 import { describe, expect, it } from 'vitest';
 import { presentTool, tidyPath } from '../src/paper/tool-present';
 
-/** 真机 fs(list) 载荷（docs/ 的树，形状与 fs_cap list 一致：children 递归）。 */
-const FS_LIST_OUT = JSON.stringify({
-  entries: [
-    {
-      children: [
-        {
-          children: null,
-          is_dir: false,
-          name: '0001-provider-id-three-in-one.md',
-          path: '\\\\?\\D:\\HoloGramHG\\docs\\adr\\0001-provider-id-three-in-one.md',
-        },
-        {
-          children: null,
-          is_dir: false,
-          name: 'composition-boundaries.md',
-          path: '\\\\?\\D:\\HoloGramHG\\docs\\adr\\composition-boundaries.md',
-        },
-      ],
-      is_dir: true,
-      name: 'adr',
-      path: '\\\\?\\D:\\HoloGramHG\\docs\\adr',
-    },
-    { children: null, is_dir: false, name: 'landmine-map.md', path: '\\\\?\\D:\\HoloGramHG\\docs\\landmine-map.md' },
-  ],
-});
+/** 真机 fs(list) 载荷（2026-11-24 B 案起 = 逐行文本树：首行根路径 + 条目数，
+ *  目录尾 `/`，两空格一层；形状真源 = plugins/builtin/fs-builtin/list-format.ts）。 */
+const FS_LIST_OUT = [
+  'D:/HoloGramHG/docs — 4 项',
+  'adr/',
+  '  0001-provider-id-three-in-one.md',
+  '  composition-boundaries.md',
+  'landmine-map.md',
+].join('\n');
 
 /** 真机 search(content) 载荷（两个命中在同一个文件）。 */
 const SEARCH_OUT = JSON.stringify({
@@ -181,11 +165,11 @@ describe('结果面：JSON 不再直出，读成事', () => {
     expect(pres.summary).toBe('3 个改动');
   });
 
-  it('fs(list)：缩进树 + 项数，前缀 \\\\?\\D: 与 is_dir 不再上纸', () => {
+  it('fs(list)：逐行树原样上纸（首行根路径/项数进折叠读数，结构行零解析）', () => {
     const p = { name: 'fs', args: JSON.stringify({ action: 'list', path: 'docs' }), output: FS_LIST_OUT };
     const text = sectionOf(p, 'out').display.text;
     expect(text).toBe(
-      ['adr/ 2 项', '  0001-provider-id-three-in-one.md', '  composition-boundaries.md', 'landmine-map.md'].join('\n'),
+      ['adr/', '  0001-provider-id-three-in-one.md', '  composition-boundaries.md', 'landmine-map.md'].join('\n'),
     );
     expect(presentTool(p).summary).toBe('4 项');
   });
