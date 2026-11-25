@@ -26,6 +26,7 @@ import { defaultFolded } from '../src/paper/fold';
 import { subagentPostFields, translateMessages } from '../src/paper/translate';
 import {
   createBlockMeasureCache,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureBlockHeightCached,
 } from '../src/plugins/builtin/paper-shell/measure';
@@ -103,8 +104,11 @@ describe('帖高随读数走（测高镜像与渲染同源）', () => {
   it('在办比收尾高一条活体行；有复文再加复命段', () => {
     const live = blockOf(subagentPostFields(part({ parts: [toolPart('fs', 'running')] })), 'running');
     const settled = blockOf(subagentPostFields(part({ status: 'done', parts: [toolPart('fs', 'done')] })));
-    expect(measureBlockHeight(live)).toBe(10 + 20 + 2 + 15);
-    expect(measureBlockHeight(settled)).toBe(10 + 20);
+    // 展开态帖首底下还有一枚块底把手（2026-11-25 第二落点批）
+    expect(measureBlockHeight(live)).toBe(10 + 20 + 2 + 15 + FOLD_TAIL_H);
+    expect(measureBlockHeight(settled)).toBe(10 + 20 + FOLD_TAIL_H);
+    // 收起态：块顶即收起面，无把手
+    expect(measureBlockHeight(settled, true)).toBe(10 + 20);
     const withReport = blockOf(
       subagentPostFields(part({ status: 'done', parts: [toolPart('fs', 'done')], reportText: '办完了' })),
     );
@@ -192,12 +196,16 @@ describe('帖内页：子块不属于父卷（2026-11-21 内页批）', () => {
 
   /* 内页是**体**渲染（folded=false）：父卷的折叠行不在 DOM 里，测高必须扣掉。
    * 2026-11-21 叠字批：旧表只扣 padTop、夹注一分不扣 ⇒ 每步多算 20px 的虚高空白。 */
-  it('内页块壳含折叠行（脚注 30 / 夹注 20 / 正文 0）——多扣或少扣都是虚高/压字', () => {
-    expect(postInnerShellH('tool')).toBe(10 + 20); // toolPadTop + .pp-fold
-    expect(postInnerShellH('code')).toBe(10 + 20);
-    expect(postInnerShellH('reasoning')).toBe(20);
+  it('内页块壳含折叠行与块底把手（脚注 50 / 夹注 40 / 工具组 30 / 正文 0）——多扣或少扣都是虚高/压字', () => {
+    // 2026-11-25 第二落点批：内页只画体，父卷那枚块底把手也不在 DOM 里 ⇒ 一并扣掉。
+    expect(postInnerShellH('tool', true)).toBe(10 + 20 + FOLD_TAIL_H); // toolPadTop + .pp-fold + 把手
+    expect(postInnerShellH('code', true)).toBe(10 + 20 + FOLD_TAIL_H);
+    expect(postInnerShellH('reasoning', true)).toBe(20 + FOLD_TAIL_H);
+    // 工具组头无体、无把手（判据同 paper/fold.hasFoldTail）
+    expect(postInnerShellH('toolgroup', true)).toBe(10 + 20);
     expect(postInnerShellH('markdown')).toBe(0);
-    expect(measurePostInnerStepH({ kind: 'tool', w: 0 }, 600, () => 130)).toBe(100); // 130 − 30
+    // 内页步高 = 父卷形态量出来的块高 − 块壳（130 = 体 80 + 壳 50）
+    expect(measurePostInnerStepH({ kind: 'tool', w: 0 }, 600, () => 130)).toBe(80);
   });
 });
 

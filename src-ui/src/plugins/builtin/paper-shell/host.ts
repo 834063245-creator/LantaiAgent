@@ -69,7 +69,7 @@ export {
   worldToScreen,
   zoomAt,
 } from '../../../paper/canvas-math';
-export { defaultFolded, foldLabel, isFoldable } from '../../../paper/fold';
+export { defaultFolded, FOLD_TAIL_LABEL, foldLabel, hasFoldTail, isFoldable } from '../../../paper/fold';
 export type { BlockInk, InkCache, LodTier } from '../../../paper/ink';
 export {
   createInkCache,

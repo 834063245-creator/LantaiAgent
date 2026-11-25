@@ -37,6 +37,7 @@ import { Context } from '../src/cordis';
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
 import {
   clearPaperMeasureCache,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureSignature,
   needsObservedHeight,
@@ -216,11 +217,13 @@ describe('paper/measure — citation 块测高', () => {
     const venue = 3 + Math.ceil(36 / 17) * 17;
     const ids = 6 + Math.ceil(36 / 17) * 17; // 2 标识 × 14 列距从可宽扣除（≤80 回落 80，mock 36 不变）
     const bib = 8 + 5 + 18; // marginTop + border-top/padding-top + summary 行
-    expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + title + author + venue + ids + bib, 1);
+    expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + title + author + venue + ids + bib + FOLD_TAIL_H, 1);
   });
 
   it('空 payload：占位单行（pad + 30）', () => {
-    expect(measureBlockHeight(assetBlock('citation', {}, 'citation'))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
+    expect(measureBlockHeight(assetBlock('citation', {}, 'citation'))).toBe(
+      4 + ASSET_DERIVED.plateHeadH + 30 + FOLD_TAIL_H,
+    );
   });
 
   it('citation 属资产族 → needsObservedHeight 恒 true（挂载后 RO 实测兜底）', () => {
@@ -238,11 +241,11 @@ describe('paper/measure — citation 块测高', () => {
   it('畸形 payload 不崩：title 非字符串按空处理（唯一字段丢 → 占位；另有标识 → 保标识行）', () => {
     // title: 42（非 string）→ 按无标题；无其它字段 → 空卡占位
     expect(measureBlockHeight(assetBlock('citation', { title: 42 }, 'citation'))).toBe(
-      4 + ASSET_DERIVED.plateHeadH + 30,
+      4 + ASSET_DERIVED.plateHeadH + 30 + FOLD_TAIL_H,
     );
     // 畸形标题 + 合法 doi：标题丢但标识行保留（错误不静默——信息面不整块消失）
     const h = measureBlockHeight(assetBlock('citation', { title: 42, doi: 'x' }, 'citation'));
-    expect(h).toBe(4 + ASSET_DERIVED.plateHeadH + 6 + Math.ceil(36 / 17) * 17); // ids marginTop + 标识行（mock 36）
+    expect(h).toBe(4 + ASSET_DERIVED.plateHeadH + 6 + Math.ceil(36 / 17) * 17 + FOLD_TAIL_H); // ids 上距 + 标识行（mock 36）+ 块底把手
   });
 });
 

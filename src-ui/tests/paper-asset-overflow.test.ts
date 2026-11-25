@@ -32,6 +32,7 @@ import {
   clearObservedBlockHeights,
   clearPaperMeasureCache,
   createBlockMeasureCache,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureBlockHeightCached,
   measureSignature,
@@ -57,6 +58,8 @@ function assetBlock(kind: string, payload: unknown, presentation = '', w = 720):
 }
 
 describe('measure：资产块按表现原语计高（80px 常量退役）', () => {
+  // 展开态资产块 = 表现原语 + **块底收起把手**（2026-11-25「两个位置」批，FOLD_TAIL_H = 20）——
+  // 下列算式一律按「原语 + 把手」写；把手本身的出现/消失由 tests/paper-fold-tail.test.tsx 钉。
   beforeEach(() => {
     // mockClear 不清实现：逐用例改过的实现每轮由这里统一装回默认（36 → 2 行，旧语义）
     layoutMock.mockImplementation(() => ({ height: 36, lineCount: 2 }));
@@ -90,7 +93,7 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
 
   it('media 图：label 行 + 320 上限 + 边框（保守占满，加载后实测收敛）', () => {
     const b = assetBlock('file', { ext: 'png', filePath: 'x.png' });
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 2 + 320);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 2 + 320 + FOLD_TAIL_H);
   });
 
   it('media 文件行：未认领扩展走单行文件行（静态保守档；兜底查看器实测由 RO 收敛）', () => {
@@ -98,12 +101,14 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     // 静态测高对**未认领**档仍按文件行保守估（虚拟化窗口先按此摆位，挂载后 RO 实测收敛）。
     const b = assetBlock('file', { ext: 'xyz', filePath: 'x.xyz' });
     // 题签恒在（2026-09-17 收尾）：媒体块也带题签行（签「图」）
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 11 * 1.8);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 11 * 1.8 + FOLD_TAIL_H);
   });
 
   it('P2 盒高档：pdf / 3D 等重依赖查看器按盒高上限记（保守）', () => {
     const pdf = assetBlock('file', { ext: 'pdf', filePath: 'x.pdf' });
-    expect(measureBlockHeight(pdf)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + ASSET_DERIVED.viewerBoxH);
+    expect(measureBlockHeight(pdf)).toBe(
+      4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + ASSET_DERIVED.viewerBoxH + FOLD_TAIL_H,
+    );
   });
 
   it('chart 柱状：type 行 + svg 封顶 240（标签已进 SVG，不占盒外行）', () => {
@@ -119,19 +124,23 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     // 改为按类目数分档（≤4 类 180 / ≤10 类 210 / 更多 240）——2 类柱图因此是 180 行高，
     // 不再被拉到 240（旧模型下 3 类柱图还会被 meet 缩成 213px 宽居中）。真源见
     // ASSET_DERIVED.chartSvgH / docs/plans/tool-image-context-plan.md §5.0。
-    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2));
+    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2) + FOLD_TAIL_H);
   });
 
   it('chart 纯数值 data：无标签条（标签进 SVG 后纯数值同样无盒外行）', () => {
     const b = assetBlock('chart', { type: 'line', data: [1, 2, 3] });
-    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('line', 3));
+    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('line', 3) + FOLD_TAIL_H);
   });
 
   it('chart config.title / 轴名各占一行（D4/D9 新增，旧实现完全忽略 config）', () => {
     const withTitle = assetBlock('chart', { type: 'bar', data: [1, 2], config: { title: '论文量' } });
-    expect(measureBlockHeight(withTitle)).toBe(8 + (9 * 1.8 + 4) + (11 * 1.8 + 6) + ASSET_DERIVED.chartSvgH('bar', 2));
+    expect(measureBlockHeight(withTitle)).toBe(
+      8 + (9 * 1.8 + 4) + (11 * 1.8 + 6) + ASSET_DERIVED.chartSvgH('bar', 2) + FOLD_TAIL_H,
+    );
     const withAxis = assetBlock('chart', { type: 'bar', data: [1, 2], config: { xName: '月份' } });
-    expect(measureBlockHeight(withAxis)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2) + (8 * 1.8 + 2));
+    expect(measureBlockHeight(withAxis)).toBe(
+      8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2) + (8 * 1.8 + 2) + FOLD_TAIL_H,
+    );
   });
 
   /* metric 注脚行迭代（2026-10-13）：卡内三层——label / 数值 / 注脚（compare）。
@@ -154,7 +163,7 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     const cardLong = 4 + 16 + 3 * 19.8 + 3 * 24 + (2 + 3 * 19.8);
     const cardShort = 4 + 16 + 19.8 + 24;
     expect(cardLong).toBeGreaterThan(cardShort);
-    expect(measureBlockHeight(b)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + cardLong, 6);
+    expect(measureBlockHeight(b)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + cardLong + FOLD_TAIL_H, 6);
   });
 
   it('metric：auto-fill 列数（minmax(120,1fr)+gap 8）→ 行数 × 行高（注脚单行加算）', () => {
@@ -164,18 +173,21 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
       caption: 'kpi',
       items: Array.from({ length: 5 }, (_, i) => ({ label: `k${i}`, value: i })),
     });
-    expect(measureBlockHeight(five)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + card, 6);
+    expect(measureBlockHeight(five)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + card + FOLD_TAIL_H, 6);
     // 12 项 → 3 行（+2 行距 8）；带注脚行 = +上距 2 + 注脚行 19.8
     const twelve = assetBlock('metric', {
       caption: 'kpi',
       items: Array.from({ length: 12 }, (_, i) => ({ label: `k${i}`, value: i, compare: '口径' })),
     });
-    expect(measureBlockHeight(twelve)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + 3 * (card + 2 + 19.8) + 2 * 8, 6);
+    expect(measureBlockHeight(twelve)).toBeCloseTo(
+      4 + ASSET_DERIVED.plateHeadH + 3 * (card + 2 + 19.8) + 2 * 8 + FOLD_TAIL_H,
+      6,
+    );
   });
 
   it('metric：空卡组不占格（题签 + 上下 padding 即全部）', () => {
     const b = assetBlock('metric', { items: [] });
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + FOLD_TAIL_H);
   });
 
   it('grid 表格：表头 + 逐行文字测量（列宽偶分近似）', () => {
@@ -190,7 +202,7 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     const headRow = 2 * line + 8 + 1; // 表头两列各一行 + padding + border-bottom
     const bodyRow = 2 * line + 8 + 0.5; // 单元格 mock 36 → ceil(36/19.8)=2 行
     // 题签恒在（2026-09-17 第二批）：无题名的表也出题签行 ⇒ 其总高恒计入
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + headRow + 2 * bodyRow);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + headRow + 2 * bodyRow + FOLD_TAIL_H);
   });
 
   it('graph 分层布局（A5 二期）：层宽×最宽层行高公式同 GraphLayeredBody', () => {
@@ -203,7 +215,7 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     });
     // 规格变更（2026-09-17 盒定比例批）：图高不再由「版心宽 × 层宽×行高 ÷ 坐标系宽」
     // 换算封顶（旧式 720×134/360 = 268），改为**只随行数**（最宽层 2 行 → 2×52+16 = 120）。
-    expect(measureBlockHeight(b)).toBe(8 + ASSET_DERIVED.graphViewH(2));
+    expect(measureBlockHeight(b)).toBe(8 + ASSET_DERIVED.graphViewH(2) + FOLD_TAIL_H);
   });
 
   it('tree 表现：全节点行高（3 节点 → 3 行；与列数无关）', () => {
@@ -219,12 +231,12 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
       'tree',
     );
     // 规格变更同上一例：tree 走的是「全节点行数」（3 行）而非最宽层
-    expect(measureBlockHeight(b)).toBe(8 + ASSET_DERIVED.graphViewH(3));
+    expect(measureBlockHeight(b)).toBe(8 + ASSET_DERIVED.graphViewH(3) + FOLD_TAIL_H);
   });
 
   it('graph 查询式/空数据：占位单行（不再按 SVG 计高）', () => {
-    expect(measureBlockHeight(assetBlock('deps_impact', { nodeId: 'x' }))).toBe(8 + 30);
-    expect(measureBlockHeight(assetBlock('deps_impact', { nodes: [], edges: [] }))).toBe(8 + 30);
+    expect(measureBlockHeight(assetBlock('deps_impact', { nodeId: 'x' }))).toBe(8 + 30 + FOLD_TAIL_H);
+    expect(measureBlockHeight(assetBlock('deps_impact', { nodes: [], edges: [] }))).toBe(8 + 30 + FOLD_TAIL_H);
   });
 
   it('board：横排列高中取最大列（列题 + Σ卡高）', () => {
@@ -237,11 +249,11 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     // 卡体文本 mock 36：带 body 卡 +38；列高 = 规线 2 + padding-top 6 + 列题 29.4 + 卡 42.4
     const colMax = 2 + 6 + (13 * 1.8 + 6) + (1 + 12 + 13 * 1.8 + 6) + 36 + 2;
     // 题签恒在（2026-09-17）：看板体高含题签行（签「板」）
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + colMax);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + colMax + FOLD_TAIL_H);
   });
 
   it('board 空数据：占位单行（题签行仍在）', () => {
-    expect(measureBlockHeight(assetBlock('board', {}))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
+    expect(measureBlockHeight(assetBlock('board', {}))).toBe(4 + ASSET_DERIVED.plateHeadH + 30 + FOLD_TAIL_H);
   });
 
   it('timeline：逐项 max(标题/时标行) + 正文实测 + 行距', () => {
@@ -259,23 +271,27 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     const item1 = headMax + 36 + 2; // 正文实测 36 + 2
     const item2 = headMax; // 无正文
     // 题签恒在同上：时间轴体高含题签行（签「序」）
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + item1 + 10 + item2);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + item1 + 10 + item2 + FOLD_TAIL_H);
   });
 
   it('timeline 空数据：占位单行（题签行仍在）', () => {
-    expect(measureBlockHeight(assetBlock('timeline', { items: [] }))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
+    expect(measureBlockHeight(assetBlock('timeline', { items: [] }))).toBe(
+      4 + ASSET_DERIVED.plateHeadH + 30 + FOLD_TAIL_H,
+    );
   });
 
   it('html：内距 4 + iframe 初始 240（上报后由实测回写抬到实际上报值）', () => {
     const b = assetBlock('html', { code: '<p>x</p>' });
     // 题签恒在同前（签「页」）
-    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + 240);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + 240 + FOLD_TAIL_H);
   });
 
   it('form：题/文/选项列（desc 实测）/操作行（钤印钮面同拟策：13px 宋体 + margin-top 14）', () => {
     const b = assetBlock('confirm', { title: 't', body: 'b', options: [{ label: 'l', description: 'd' }] });
     const actionsH = 13 * 1.8 + 5 * 2 + 1 * 2 + 14; // .pp-pc-btn 行（CHROME_TOKENS.plan.actions*）
-    expect(measureBlockHeight(b)).toBe(4 + (15 * 1.8 + 4) + (36 + 8) + (2 + 12 + 13 * 1.8 + 36) + 8 + actionsH);
+    expect(measureBlockHeight(b)).toBe(
+      4 + (15 * 1.8 + 4) + (36 + 8) + (2 + 12 + 13 * 1.8 + 36) + 8 + actionsH + FOLD_TAIL_H,
+    );
   });
 
   it('随表现切换变高：media 图与文件行不同款（presentation 是高度信号）', () => {
@@ -358,7 +374,7 @@ describe('实测回写桥（动态高兜底）', () => {
     const b = assetBlock('html', { code: 'x' });
     reportObservedBlockHeight(observedKeyOf(b, false, false, false), 640, 800);
     expect(observedBlockHeightOf(observedKeyOf(b, false, false, false), b.w)).toBeUndefined();
-    expect(measureBlockHeightCached(b, cache)).toBe(4 + ASSET_DERIVED.plateHeadH + 240);
+    expect(measureBlockHeightCached(b, cache)).toBe(4 + ASSET_DERIVED.plateHeadH + 240 + FOLD_TAIL_H);
   });
 
   it('记录变化 → 签名变化 → 缓存重测采用新实测（反馈框展开/iframe 上报路径）', () => {

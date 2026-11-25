@@ -67,6 +67,9 @@ export const viewportCenterWorld = impl.viewportCenterWorld;
 export const defaultFolded = impl.defaultFolded;
 export const foldLabel = impl.foldLabel;
 export const isFoldable = impl.isFoldable;
+// 块底收起把手判据与短签（2026-11-25 第二落点批）：与 foldLabel/isFoldable 同族，同走桥。
+export const hasFoldTail = impl.hasFoldTail;
+export const FOLD_TAIL_LABEL = impl.FOLD_TAIL_LABEL;
 export const createInkCache = impl.createInkCache;
 export const inkBarColorOf = impl.inkBarColorOf;
 export const inkColorOf = impl.inkColorOf;

@@ -33,6 +33,7 @@ import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
   FOLD_ROW_H,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureBlockHeightCached,
   measureTextHeight,
@@ -100,9 +101,9 @@ describe('paper/measure', () => {
 
   it('tool 块：注线顶距 + 折叠行 + args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
-    // 顶距 10 + 折叠行 20；args 段头 14 + 36；output/err 各段头 14 + 上距 6 + 36
+    // 顶距 10 + 折叠行 20 + 块底把手 20；args 段头 14 + 36；output/err 各段头 14 + 上距 6 + 36
     const sec = (gap: boolean) => SEC_HEAD_H + (gap ? SEC_HEAD_GAP : 0) + 36;
-    expect(measureBlockHeight(b)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true) * 2);
+    expect(measureBlockHeight(b)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true) * 2 + FOLD_TAIL_H);
   });
 
   it('prepare 缓存：同文本同字体只 prepare 一次（FIFO 纪律）', () => {
@@ -141,10 +142,10 @@ describe('paper/measure', () => {
   it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
     // user 题签 48 + 纯文本 36 + asterism 44（2026-08-30 标题化：题签置顶占高，
 
-    // reasoning 展开态 = 折叠行 20 + 纯文本 36（折叠机制 2026-08-30）；
+    // reasoning 展开态 = 折叠行 20 + 纯文本 36 + 块底把手 20（折叠机制 2026-08-30；把手 2026-11-25）；
     // notice 带贴黄 chrome 17；plan 带拟策 chrome 31 + 标题实测 48
     expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(48 + 36 + 44);
-    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(FOLD_ROW_H + 36);
+    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(FOLD_ROW_H + 36 + FOLD_TAIL_H);
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
     // 拟策 2026-09-10 渲染专项：内容走 markdown 体（measureMdBlocks）；
     // 标题实测（mock 36）+ head margin 12——旧固定 39 已退役
@@ -192,8 +193,8 @@ describe('paper/measure', () => {
       status: 'done',
       output: 'y'.repeat(1000),
     });
-    // args 为空走零成本路径；折叠行 20 + 输出段头 14 + output 截断后，加顶距 10
-    expect(measureBlockHeight(tool)).toBe(10 + FOLD_ROW_H + SEC_HEAD_H + OUT_MAX_H);
+    // args 为空走零成本路径；折叠行 20 + 输出段头 14 + output 截断后，加顶距 10 + 块底把手 20
+    expect(measureBlockHeight(tool)).toBe(10 + FOLD_ROW_H + SEC_HEAD_H + OUT_MAX_H + FOLD_TAIL_H);
     // 超长程文（2026-08-30 溢出修复钉值）：程序体内容预算 320-20 内距、文本宽
     // w-17 内缩；输出截断到 200（.pp-code .pp-out 上限——2026-09-14 内距归段头）
     layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
@@ -206,7 +207,7 @@ describe('paper/measure', () => {
       output: 'y'.repeat(1000),
     });
     expect(measureBlockHeight(code)).toBe(
-      10 + FOLD_ROW_H + CODE_SRC_MAX_H + SEC_HEAD_H + SEC_HEAD_GAP + CODE_OUT_TEXT_MAX,
+      10 + FOLD_ROW_H + CODE_SRC_MAX_H + SEC_HEAD_H + SEC_HEAD_GAP + CODE_OUT_TEXT_MAX + FOLD_TAIL_H,
     );
     expect(layoutMock).toHaveBeenCalled();
   });

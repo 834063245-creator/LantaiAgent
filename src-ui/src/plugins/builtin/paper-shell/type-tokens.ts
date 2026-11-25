@@ -807,6 +807,12 @@ export const COMPOSER_TOKENS = {
 /* ── 折叠 / 滚动上限 ── */
 export const LIMIT_TOKENS = {
   foldRowH: 20, // 折叠行高（mono 10px + margin-bottom 6）
+  /* 块底收起把手高（2026-11-25 第二落点批）：行 14px + margin-top 6px，与块顶折叠行
+   * 上下对称（那边 margin-bottom 6）。CSS 真源 = .pp-fold--tail；镜像 = measure.FOLD_TAIL_H。
+   * ⚠ 键名不叫 foldTailH：注入面把 lh 后缀（正则 lh$ + i 标志）当**行高系数**（无单位）
+   *   注入，而 foldTailH 末三字是 "lH" 会被大小写不敏感命中 ⇒ 20 变「20 倍字号」（
+   *   paper-token-audit 会红）。故键名取 foldTailRowH。 */
+  foldTailRowH: 20,
   preMaxH: 260, // 渲染端 pre/输出 max-height（tool/diff 共用）
   outMaxH: 160,
 } as const;

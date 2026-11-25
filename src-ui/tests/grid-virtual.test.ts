@@ -36,6 +36,7 @@ import { Context } from '../src/cordis';
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
 import {
   clearPaperMeasureCache,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureSignature,
 } from '../src/plugins/builtin/paper-shell/measure';
@@ -147,7 +148,7 @@ describe('paper/measure — grid 大表虚拟镜像', () => {
     );
     const caption = 13 * 1.8 + 6; // captionSize 13 × 1.8 + captionMarginB 6
     const headRow = 8 + 19.8 + 1; // cellPadV×2 + rowSize×1.8 + headBorder
-    expect(h).toBeCloseTo(4 + caption + headRow + 240, 1); // gridPadV 2×2=4
+    expect(h).toBeCloseTo(4 + caption + headRow + 240 + FOLD_TAIL_H, 1); // gridPadV 2×2=4 + 块底把手
   });
 
   it('全量平铺模式（1000 行内）高度仍随行数延伸（旧镜像不变）', () => {

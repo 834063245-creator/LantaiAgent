@@ -26,6 +26,7 @@ import { assetKinds } from '../../../agent/asset-kinds';
 import type { BlockKind, CodeCallPart, SourcedBlock } from '../../../paper/block-model';
 import { codeCallLines, codeCallsSignature } from '../../../paper/code-calls';
 import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
+import { hasFoldTail } from '../../../paper/fold';
 import {
   type MdBlock,
   type MdInline,
@@ -245,6 +246,17 @@ function measureInlineHeight(
 /* ── 折叠行（2026-08-30 折叠机制；.pp-fold 镜像）── */
 /** 折叠行高 = 行 14px（mono 10px）+ margin-bottom 6px。夹注/脚注/程文恒有。 */
 export const FOLD_ROW_H = LIMIT_TOKENS.foldRowH;
+
+/** 块底收起把手高（2026-11-25 第二落点批）= 行 14px + margin-top 6px
+ *  （.pp-fold--tail）——与块顶折叠行上下对称：那边是「行 + 下距 6」，这边是
+ *  「上距 6 + 行」。夹注/脚注/程文/帖/图版卡的**展开态**各多这一档。 */
+export const FOLD_TAIL_H = LIMIT_TOKENS.foldTailRowH;
+
+/** 本块这一帧的块底把手高（0 或 FOLD_TAIL_H）。
+ *  判据单一真源 = paper/fold 的 hasFoldTail（渲染端按同一个函数决定出不出现）——
+ *  测高与渲染两处各写一套「什么时候有把手」必然漂成压字或幻影空档（同 2026-09-19
+ *  渲染态签名那笔账）。 */
+const foldTailH = (b: SourcedBlock, folded: boolean): number => (hasFoldTail(b.kind, b, folded) ? FOLD_TAIL_H : 0);
 
 /** 渲染端滚动上限（PaperPanel.css pre/输出 max-height——超限部分滚动不占高） */
 export const PRE_MAX_H = LIMIT_TOKENS.preMaxH;
@@ -1947,11 +1959,14 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       return measureMarkdownBody(parseMarkdown(p.text), b, sidecarFolded, sidecarOut);
     }
     case 'reasoning': {
-      if (!p.text) return FOLD_ROW_H;
+      // 块底把手（2026-11-25）：展开态多一枚收起行；空文本的展开态 DOM 里同样有
+      // 折叠行 + 空体 + 把手（三件都在），故这条早返也要带上它，否则差 20px。
+      if (!p.text) return FOLD_ROW_H + foldTailH(b, folded);
       if (folded) return FOLD_ROW_H + PAPER_REASONING_LINE_HEIGHT; // 预览恒一行（.pp-fold-preview 截断）
       return (
         FOLD_ROW_H +
-        measureTextHeight(p.text, b.w - REASONING_TEXT_INSET, PAPER_REASONING_FONT, PAPER_REASONING_LINE_HEIGHT)
+        measureTextHeight(p.text, b.w - REASONING_TEXT_INSET, PAPER_REASONING_FONT, PAPER_REASONING_LINE_HEIGHT) +
+        foldTailH(b, folded)
       );
     }
     case 'notice':
@@ -1990,7 +2005,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
             ? cappedH(sec.display.text, b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H)
             : cappedH(sec.display.text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H));
       });
-      return TOOL_PAD_TOP + FOLD_ROW_H + h;
+      return TOOL_PAD_TOP + FOLD_ROW_H + h + foldTailH(b, folded);
     }
     case 'code': {
       // 与 tool 同构的封顶测量（P2-A）：程序体 + 输出段 + 错误段。
@@ -2012,7 +2027,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       secs.forEach((sec, i) => {
         outH += SEC_HEAD_H + (showSrc || i > 0 || callsH > 0 ? SEC_HEAD_GAP : 0) + codeSectionBodyH(sec, b.w);
       });
-      return TOOL_PAD_TOP + FOLD_ROW_H + codeH + callsH + outH;
+      return TOOL_PAD_TOP + FOLD_ROW_H + codeH + callsH + outH + foldTailH(b, folded);
     }
     case 'plan': {
       // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：与正文块同一
@@ -2054,10 +2069,13 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
     case 'subagent': {
       // 子代理**帖**（11-20 帖批；11-21 内页批）：帖首 + 活体行 + 内页 + 复命段。
       // 内页块不在父卷块栈里，高度没别处会量——交给 post-metrics 逐块量（它持有该族知识）。
-      const inner = (b.payload as { inner?: ReadonlyArray<{ kind: string; w: number }> }).inner ?? [];
+      const inner =
+        (b.payload as { inner?: ReadonlyArray<{ kind: string; w: number; asset?: SourcedBlock['asset'] }> }).inner ??
+        [];
       const stepH = (i: number): number =>
         inner[i] ? measurePostInnerStepH(inner[i], b.w, (x) => measureBlockHeight(x as never)) : 0;
-      return measurePostHeight(b.payload as never, b.w, folded, measureTextHeight, stepH);
+      // 块底把手（2026-11-25）：帖展开后内页 + 复命段之下多一枚同款收起行。
+      return measurePostHeight(b.payload as never, b.w, folded, measureTextHeight, stepH) + foldTailH(b, folded);
     }
     default:
       // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。
@@ -2066,7 +2084,8 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // （.pp-fold 高 14 + 下距 6 = FOLD_ROW_H；块的文类签是页边注、绝对定位不占高，
       // 壳层折叠态不渲染块体 —— 与 toolgroup/subagent「头即本体」同构）。
       if (b.asset != null && folded) return FOLD_ROW_H;
-      return measureAssetBlockHeight(b);
+      // 块底把手（2026-11-25）：展开的图版卡（默认张开）体下多一枚收起行。
+      return measureAssetBlockHeight(b) + foldTailH(b, folded);
   }
 }
 

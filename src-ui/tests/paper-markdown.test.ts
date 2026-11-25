@@ -36,6 +36,7 @@ import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
   FOLD_ROW_H,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureBlockHeightCached,
   needsObservedHeight,
@@ -223,17 +224,18 @@ describe('paper/measure — 折叠态计高', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('夹注：展开 = 折叠行 + 全文；折叠 = 折叠行 + 一行预览高', () => {
+  it('夹注：展开 = 折叠行 + 全文 + 块底把手；折叠 = 折叠行 + 一行预览高', () => {
     const b = block('reasoning', { text: '思考全文' });
-    expect(measureBlockHeight(b, false)).toBe(FOLD_ROW_H + 36);
+    // 展开态块底还有一枚收起把手（2026-11-25 第二落点批，FOLD_TAIL_H）
+    expect(measureBlockHeight(b, false)).toBe(FOLD_ROW_H + 36 + FOLD_TAIL_H);
     expect(measureBlockHeight(b, true)).toBe(FOLD_ROW_H + PAPER_REASONING_LINE_HEIGHT);
   });
 
-  it('脚注：展开 = 折叠行 + 参数 + 输出 + 错误；折叠 = 折叠行（全部收起）', () => {
+  it('脚注：展开 = 折叠行 + 参数 + 输出 + 错误 + 块底把手；折叠 = 折叠行（全部收起）', () => {
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
     // 载荷段头恒一行（SEC_HEAD_H），输出/错误段带上距（首段紧跟折叠行不留档）
     const sec = (gap: boolean) => SEC_HEAD_H + (gap ? SEC_HEAD_GAP : 0) + 36;
-    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true) * 2);
+    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true) * 2 + FOLD_TAIL_H);
     expect(measureBlockHeight(b, true)).toBe(10 + FOLD_ROW_H);
   });
 
@@ -241,7 +243,7 @@ describe('paper/measure — 折叠态计高', () => {
     const b = block('code', { toolId: 't', description: 'd', code: 'c', status: 'done', output: 'o', err: 'e' });
     // 56 = 36 文本 + 20 程序体纵向内距（.pp-code-src 内距镜像，2026-08-30 溢出修复）
     const sec = (gap: boolean) => SEC_HEAD_H + (gap ? SEC_HEAD_GAP : 0) + 36;
-    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 56 + sec(true) * 2);
+    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 56 + sec(true) * 2 + FOLD_TAIL_H);
     // 折叠态程序体不画 → 输出段成了首段（无上距）
     expect(measureBlockHeight(b, true)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true));
   });
@@ -249,7 +251,7 @@ describe('paper/measure — 折叠态计高', () => {
   it('脚注参数测高消费 toolDisplay（渲染/测量同源变换）', () => {
     const raw = block('tool', { toolId: 't', name: 'n', label: 'l', args: '{"a":1}', status: 'done' });
     // 展示文本仍为一段（mock 恒 36）——只验不因规整而炸；段头恒占 SEC_HEAD_H
-    expect(measureBlockHeight(raw, false)).toBe(10 + FOLD_ROW_H + SEC_HEAD_H + 36);
+    expect(measureBlockHeight(raw, false)).toBe(10 + FOLD_ROW_H + SEC_HEAD_H + 36 + FOLD_TAIL_H);
   });
 
   it('折叠切换 = 签名变化 → 重测（缓存不以旧态命中）', () => {

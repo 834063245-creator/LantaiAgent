@@ -222,7 +222,7 @@ import {
   worldToScreen,
   zoomAt,
 } from '../../paper/canvas-math';
-import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
+import { defaultFolded, FOLD_TAIL_LABEL, foldLabel, hasFoldTail, isFoldable } from '../../paper/fold';
 import {
   createInkCache,
   INK_FAIL,
@@ -569,6 +569,9 @@ const faceDeps = {
   defaultFolded,
   foldLabel,
   isFoldable,
+  // 块底收起把手（2026-11-25 第二落点批）：纸壳 BlockView 与 measure 共用一处判据 + 短签。
+  hasFoldTail,
+  FOLD_TAIL_LABEL,
   createInkCache,
   inkBarColorOf,
   inkColorOf,

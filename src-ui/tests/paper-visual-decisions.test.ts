@@ -1024,6 +1024,24 @@ describe('纸面运行态（2026-09-06——「会话在跑而纸面死寂」根
     expect(fold).toContain('text-overflow: ellipsis');
   });
 
+  /* 2026-11-25「收起操作两个位置」批（用户拍板）：展开态卡片内容底部再加一枚折叠行。
+   * 本钉值锁三件事——① 它是**同一枚件**（只有上下距对调，不是第二种控件）；
+   * ② 高度 20 = 行 14 + 上距 6，与块顶折叠行（行 14 + 下距 6）上下对称；
+   * ③ 渲染与测高读**同一个判据**（hasFoldTail）——两处各写一套必漂成 20px 压字。 */
+  it('块底收起把手：只把上下距对调（同一枚件），高度与块顶折叠行对称', () => {
+    const tail = ruleBody(PANEL_CSS, '.pp-fold--tail {');
+    expect(tail).toContain('margin: 6px 0 0');
+    // 禁第二种外观：尾行不另立字号/颜色/边框，全部继承 .pp-fold
+    expect(tail).not.toContain('font-');
+    expect(tail).not.toContain('border');
+    // 高度镜像：token 20 = 行 14 + 上距 6（与 foldRowH 上下对称）
+    expect(TYPE_TOKENS_TS).toContain('foldTailRowH: 20');
+    expect(MEASURE_TS).toContain('export const FOLD_TAIL_H = LIMIT_TOKENS.foldTailRowH');
+    // 接线在册：渲染端按判据出把手，测高端按同一判据加高
+    expect(PANEL_TSX).toContain('hasFoldTail(block.kind, block, folded)');
+    expect(MEASURE_TS).toContain('hasFoldTail(b.kind, b, folded)');
+  });
+
   it('接线在册：落笔点/湿墨类/运行集进壳层，wet 判定进 block-model', () => {
     expect(PANEL_TSX).toContain('pp-quill');
     expect(PANEL_TSX).toContain("writing ? ' pp-writing'");

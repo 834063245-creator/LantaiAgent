@@ -11,7 +11,9 @@ import { formatCNDate } from './folio-date';
 import type { RegionView, SourcedBlock } from './host';
 import {
   activeSpace,
+  FOLD_TAIL_LABEL,
   foldLabel,
+  hasFoldTail,
   isFoldable,
   PluginBoundary,
   resolveAssetBlock,
@@ -277,6 +279,25 @@ export const BlockView = memo(function BlockView({
         </PluginBoundary>
       ) : (
         <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
+      )}
+      {/* 块底收起把手（2026-11-25 第二落点批，用户拍板）：展开态卡片的**内容底部**
+          再长一枚同款折叠行——长卡滚到底时不必再滚回块顶去收起。
+          同一个 onToggleFold、同一枚样式（.pp-fold + --tail 只把上下距对调）、
+          同一处判据（paper/fold.hasFoldTail，测高侧 measure 的 foldTailH 读同一个函数）。
+          与块顶那行的分工：顶行是**状态行**（收起态出「▸ …」、展开态出「▾ 收起 名字」），
+          尾行是**把手**（恒一枚短签「▾ 收起」）——长卡滚到底时它不重复块顶那串读数。
+          尾行只在**展开态**出现：收起态块底再来一枚「收起」就是自相矛盾的两态。 */}
+      {hasFoldTail(block.kind, block, folded) && (
+        <button
+          type="button"
+          className="pp-fold pp-fold--tail"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFold(block);
+          }}
+        >
+          {FOLD_TAIL_LABEL}
+        </button>
       )}
       {(ops.length > 0 || onBranchGripPointerDown) && (
         <div className="pp-msg-ops">

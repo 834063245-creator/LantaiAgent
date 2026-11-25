@@ -24,7 +24,7 @@ import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-mod
 import { defaultFolded, foldLabel, isFoldable } from '../src/paper/fold';
 import { hasArgsToShow, toolDigest } from '../src/paper/tool-text';
 import { collapseToolGroups, translateMessages } from '../src/paper/translate';
-import { measureBlockHeight, measureSignature } from '../src/plugins/builtin/paper-shell/measure';
+import { FOLD_TAIL_H, measureBlockHeight, measureSignature } from '../src/plugins/builtin/paper-shell/measure';
 import type { AssistantMessage, SubAgentPart, ToolCallPart } from '../src/ui/message-model';
 import { applyEventToParts } from '../src/ui/part-mutator';
 
@@ -396,19 +396,21 @@ describe('fold：子代理帖的折叠规则 + 帖签行文案', () => {
 describe('measure/摘除：子代理帖的帖首几何，收起摘子块', () => {
   beforeEach(() => resetBlockIdCounterForTests());
 
-  /* 帖首 = 帖签 20（+ padTop 10）+ 活体行（在办才有：2 + 15）。
-   * 三个读数都是**行为差**，不是抄固定值：收尾即退场了活体行。 */
-  it('帖首：收尾态 = 10 + 20；在办态多一条活体行 2 + 15', () => {
+  /* 帖首 = 帖签 20（+ padTop 10）+ 活体行（在办才有：2 + 15）+ 展开态的块底把手 20。
+   * 三个读数都是**行为差**，不是抄固定值：收尾即退场了活体行、收起即退场了把手。 */
+  it('帖首：展开态 = 10 + 20 + 把手；在办态多一条活体行 2 + 15；收起态两者都不在', () => {
     const make = (status: 'running' | 'done', doing: string | null) =>
       createBlock(
         'subagent',
         { agentId: 'sa1', description: '调研', status, childIds: [], items: [], doing },
         { messageId: 'm', part: null },
       );
-    expect(measureBlockHeight(make('done', null))).toBe(10 + 20);
-    expect(measureBlockHeight(make('running', 'fs(read) a.ts'))).toBe(10 + 20 + 2 + 15);
+    expect(measureBlockHeight(make('done', null))).toBe(10 + 20 + FOLD_TAIL_H);
+    expect(measureBlockHeight(make('running', 'fs(read) a.ts'))).toBe(10 + 20 + 2 + 15 + FOLD_TAIL_H);
     // 在办但还没开始干活（模型思考中）——doing 由转译层兜底成「思考中」，同样占一行
-    expect(measureBlockHeight(make('running', '思考中'))).toBe(10 + 20 + 2 + 15);
+    expect(measureBlockHeight(make('running', '思考中'))).toBe(10 + 20 + 2 + 15 + FOLD_TAIL_H);
+    // 收起态：块顶那行即收起面，块底不出把手（帖签 + 顶距两件）
+    expect(measureBlockHeight(make('done', null), true)).toBe(10 + 20);
   });
 
   it('签名含帖的状态/活体行/步数/复命长度（收尾那一帧必须重测）', () => {

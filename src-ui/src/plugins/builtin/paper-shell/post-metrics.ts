@@ -10,6 +10,8 @@
 //
 // 单一真源不变：所有数值都从 type-tokens.ts 的 CHROME_TOKENS.post 派生，这里不写魔数。
 
+import type { SourcedBlock } from '../../../paper/block-model';
+import { hasFoldTail } from '../../../paper/fold';
 import { CHROME_DERIVED, cssUsedPx, FONT_STACKS, LIMIT_TOKENS } from './type-tokens';
 
 const SONG_STACK = FONT_STACKS.song;
@@ -103,18 +105,26 @@ export function measurePostHeight(
  *  padTop + FOLD_ROW_H + 载荷，夹注 = FOLD_ROW_H + 正文；内页只画「载荷/正文」。
  *  旧表只扣 padTop、夹注一分不扣 ⇒ 每一步多算 20px（展开后帖内一片虚高空白）。
  *  ⚠ 与 paper-inline.css 的 `.pp-block.pp-*` padding-top 一一对应——改 CSS 必改这里。 */
-export function postInnerShellH(kind: string): number {
+export function postInnerShellH(kind: string, hasTail = false): number {
+  /* 块底收起把手（2026-11-25 第二落点批）：内页只画**体**，没有父卷那枚把手——
+   * 而 measureBlockHeight 按父卷形态量（展开态 + FOLD_TAIL_H），所以这里同样要扣掉。
+   * 判据不在这里另写：调用方按 paper/fold.hasFoldTail 判完再传（内页恒展开态），
+   * 工具组两侧同判（组头无体、无把手）。 */
+  const tailH = hasTail ? LIMIT_TOKENS.foldTailRowH : 0;
   switch (kind) {
     case 'tool':
-    case 'toolgroup':
     case 'code':
-      // .pp-block.pp-tool/.pp-toolgroup/.pp-code：padding-top + .pp-fold（14 + 6）
+      // .pp-block.pp-tool/.pp-code：padding-top + .pp-fold（14 + 6）+ 块底把手
+      return CHROME_DERIVED.toolPadTop + LIMIT_TOKENS.foldRowH + tailH;
+    case 'toolgroup':
+      // 组头即本体：无块体，也没有块底把手（方的展开内容是**独立块**）
       return CHROME_DERIVED.toolPadTop + LIMIT_TOKENS.foldRowH;
     case 'reasoning':
-      // .pp-block.pp-reasoning：折叠行 + 正文（内页只画正文）
-      return LIMIT_TOKENS.foldRowH;
+      // .pp-block.pp-reasoning：折叠行 + 正文（内页只画正文）+ 块底把手
+      return LIMIT_TOKENS.foldRowH + tailH;
     default:
-      return 0;
+      // 其余 kind 没有父卷块壳；图版卡（资产元数据在）展开态仍带块底把手
+      return tailH;
   }
 }
 
@@ -129,7 +139,7 @@ export function postInnerShellH(kind: string): number {
  *  ⚠ 为什么必须逐块量：内页块**不在父卷块栈里**（use-paper-regions 的单一分界点已滤掉），
  *  它们的宽度/折行也没有别处会算——不量就会「帖展开了、下方块还叠在原来位置」。 */
 export function measurePostInnerStepH(
-  innerBlock: { kind: string; w: number },
+  innerBlock: { kind: string; w: number; asset?: SourcedBlock['asset'] },
   postW: number,
   measureBlock: (b: { kind: string; w: number }) => number,
 ): number {
@@ -137,7 +147,9 @@ export function measurePostInnerStepH(
     80,
     postW - POST_TEXT_INSET - POST_INNER_BORDER - POST_INNER_PAD_L - POST_INNER_NO_W - POST_INNER_STEP_GAP,
   );
-  return Math.max(0, measureBlock({ ...innerBlock, w: stepW }) - postInnerShellH(innerBlock.kind));
+  // 内页恒展开态（帖的折叠只管内页整段出不出现）——把手判据与父卷同一个函数。
+  const tail = hasFoldTail(innerBlock.kind, innerBlock, false);
+  return Math.max(0, measureBlock({ ...innerBlock, w: stepW }) - postInnerShellH(innerBlock.kind, tail));
 }
 
 /** 复命段高：上规线 + 上内距 + 段头行（mono 9px / 1.2）+ 正文上距

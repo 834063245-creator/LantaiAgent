@@ -29,6 +29,10 @@
 //   - 其余 kind（来文/正文/抄录/拟策/贴黄——**未带 asset 元数据**的那些）不可折叠。
 // 用户显式点开/收起写入壳层覆盖表（foldOv），覆盖默认——
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
+//
+// **收起面两处**（2026-11-25 用户拍板）：块顶折叠行恒在（收起态 = 展开面、展开态 = 收起面），
+// 展开态的**块底**再加一枚同款把手（判据 hasFoldTail、文案 = 短签 FOLD_TAIL_LABEL）——
+// 长卡滚到底时不必再滚回块顶。两处走同一个 onToggleFold，没有第二种折叠语义。
 
 import { displayToolName } from '../ui/tool-semantics';
 import type { BlockKind, CodeCallPart, SourcedBlock } from './block-model';
@@ -65,7 +69,7 @@ function toolSummaryOf(
  *  `block.asset` 上，不看 kind 名（开放 kind 面）。
  *  **可折叠 ≠ 默认折叠**：资产（图版卡）自 2026-10-08 起默认张开，但仍可手动
  *  收起（见 defaultFolded）。 */
-export function isFoldable(kind: BlockKind, block?: SourcedBlock): boolean {
+export function isFoldable(kind: BlockKind, block?: { asset?: SourcedBlock['asset'] }): boolean {
   if (block?.asset != null) return true;
   return kind === 'reasoning' || kind === 'tool' || kind === 'code' || kind === 'toolgroup' || kind === 'subagent';
 }
@@ -113,6 +117,38 @@ export function defaultFolded(kind: BlockKind, payload: unknown, block?: Sourced
   }
   return false;
 }
+
+/** 收起把手的**第二位置**（2026-11-25 用户拍板）：展开态块**内容底部**那枚同款折叠行。
+ *
+ *  为什么要有第二处：长卡（长夹注 / 大输出 / 图版卡 / 帖内页）展开后，块顶那枚
+ *  折叠行早已滚出视口——想收起只能先滚回块顶。底部这枚是**同一个动作的第二落点**：
+ *  同一个覆盖表（onToggleFold）、同一枚样式（.pp-fold + --tail）、同一套手势与持久化；
+ *  文案是短签 FOLD_TAIL_LABEL（见下），不是块顶那行读数的复制品。
+ *  没有新状态，也没有第二种折叠语义。
+ *
+ *  判据（渲染端与测高端**共用这一处**——漏一层就是 20px 压字/幻影空档）：
+ *    · 必须**可折叠**且**当前展开**：收起态的块顶那行本身就是「展开」面，块底再来一枚
+ *      「收起」是自相矛盾的两态；
+ *    · 工具体（脚注/程文/夹注/帖/图版卡）的展开内容住在**本块盒子里**，块底就是内容底；
+ *    · **工具组（toolgroup）不出**：它的展开态子卡是**独立块**（见 translate 的
+ *      collapseToolGroups），「内容底部」落在组头盒子之外的下一个块坐标系里；在组头
+ *      盒内塞一枚只会紧贴块顶那行、读作两个重复的折叠行。组头的两处面 = 块顶那行
+ *      （展开/收起）+ 各子卡自己的两处。 */
+export function hasFoldTail(
+  kind: BlockKind,
+  block: { asset?: SourcedBlock['asset'] } | undefined,
+  folded: boolean,
+): boolean {
+  if (folded) return false;
+  if (kind === 'toolgroup') return false;
+  return isFoldable(kind, block);
+}
+
+/** 块底把手的文案（恒一枚短签）：它是**把手**，不是块顶那行读数的复制品——
+ *  顶行说的是「这块是什么」（名字 / 字数 / 摘要），把手说的是「收起来」。
+ *  不借用 foldLabel 的展开态文案还有两个硬理由：① 工具卡的长判别摘要（名字 + 路径）
+ *  在块底重复一遍纯属噪音；② 短签恒不溢出，块底那一行永远读得全（顶行靠省略号兜底）。 */
+export const FOLD_TAIL_LABEL = '▾ 收起';
 
 /** 紧凑计数（>1k 缩写，折叠行不放长数字）。
  *  2026-11-18 计数口径修正：旧实现 `(n/1000).toFixed(1)` 会把 9999 说成「10.0k」、

@@ -1,5 +1,5 @@
 {
-  "fingerprint": "ef9c65b2",
+  "fingerprint": "98280ed0",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -22,6 +22,7 @@
     "DraftPaperContext",
     "EMPTY_REGION_CONTENT_H",
     "EventKind",
+    "FOLD_TAIL_LABEL",
     "FileOwnership",
     "GoalError",
     "HookRegistry",
@@ -176,6 +177,7 @@
     "goalHostOf",
     "guardShellPoll",
     "hasDynamicFetchInflight",
+    "hasFoldTail",
     "hasImageRefs",
     "iconHtml",
     "iconSvg",

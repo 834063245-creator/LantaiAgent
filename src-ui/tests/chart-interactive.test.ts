@@ -39,6 +39,7 @@ import { Context } from '../src/cordis';
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
 import {
   clearPaperMeasureCache,
+  FOLD_TAIL_H,
   measureBlockHeight,
   measureSignature,
   needsObservedHeight,
@@ -236,7 +237,8 @@ describe('paper/measure — chart interactive 块测高', () => {
   it('interactive：pad + type 行 + 固定盒 260（图例/轴在盒内不占盒外行）', () => {
     const h = measureBlockHeight(assetBlock('chart', barPayload, 'interactive'));
     const typeH = 9 * 1.8 + 4; // chartTypeSize 9 × 1.8 + typeMarginB 4
-    expect(h).toBeCloseTo(8 + typeH + 260, 1); // chartPadV 4×2=8 + type 行 + 盒 260
+    // chartPadV 4×2=8 + type 行 + 盒 260 + 块底收起把手（2026-11-25）
+    expect(h).toBeCloseTo(8 + typeH + 260 + FOLD_TAIL_H, 1);
   });
 
   it('presentation 缺失回落默认 chart（静态镜像，与静态 chartBodyH 一致）', () => {

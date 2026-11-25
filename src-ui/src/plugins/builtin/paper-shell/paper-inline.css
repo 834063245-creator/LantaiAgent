@@ -2,9 +2,8 @@
  * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
  * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
 
-/* ── 折叠行（2026-08-30 折叠机制）：夹注/脚注/程文块顶的展开/收起面 ──
- * 折叠规则与字数文案在 paper/fold.ts；行高 14 + margin 6 = FOLD_ROW_H 20
- * （测量镜像）。mono 小字 + 墨三级——是界面注记，不搅正文墨色。 */
+/* ── 折叠行（2026-08-30 折叠机制）：块的展开/收起面——块顶恒在，展开态块底另有 --tail ──
+ * 规则与文案在 paper/fold.ts；行高 14 + margin 6 = FOLD_ROW_H / FOLD_TAIL_H 20（测量镜像）。 */
 .pp-fold {
   display: block;
   height: 14px;
@@ -35,6 +34,10 @@
   max-width: 100%;
   box-sizing: border-box;
   transition: color var(--snap);
+}
+.pp-fold--tail {
+  /* 块底收起把手（2026-11-25）：只把上下距对调（上距 6 + 行 14 = 20）；测高 = measure.FOLD_TAIL_H。 */
+  margin: 6px 0 0;
 }
 .pp-fold:hover {
   color: var(--seal-deep);

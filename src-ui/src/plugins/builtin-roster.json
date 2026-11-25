@@ -81,6 +81,7 @@
       "paper/code-view.ts",
       "paper/elevation.ts",
       "paper/fence.ts",
+      "paper/fold.ts",
       "paper/grammar.ts",
       "paper/ink.ts",
       "paper/markdown.ts",

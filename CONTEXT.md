@@ -355,6 +355,12 @@ _Avoid_: 标签、tag、badge
 钉住块页边注第三行「摘自 卷名 · 状态字」，常显，用于溯源。
 _Avoid_: 来源、source、引用信息
 
+**收起把手**:
+展开态卡片**内容底部**那枚「▾ 收起」短签——块顶折叠行之外的**第二收起面**（长卡滚到底不必再滚回块顶）。
+收起态不出（块顶那行本身就是展开面），工具组不出（展开后的子卡是独立块）。
+落点: `plugins/builtin/paper-shell/paper-panel-parts.tsx`（判据 `paper/fold.hasFoldTail`）
+_Avoid_: 底部折叠行、collapse handle、底部按钮
+
 **引线**:
 hover 钉块时，从钉缘引到洞缘的一丝手绘朱笔。
 落点: `plugins/builtin/paper-shell/provenance.ts`
