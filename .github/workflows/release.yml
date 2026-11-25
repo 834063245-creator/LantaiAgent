@@ -14,11 +14,12 @@
 #      以 `--config src-tauri/no-updater.local.json` 覆盖（本地无签名密码，也不需要 updater 产物）。
 #   2. updater 端点（tauri.conf.json `plugins.updater.endpoints`）的**仓库名必须真实存在**：
 #      2026-09 改名曾写成 `/Lantai/`（该仓库不存在）⇒ 端点 404。正确为 `/LantaiAgent/`。
-#      2026-09-26 起 `endpoints` 是**数组**：首位是 Gitee 上的国内更新清单，GitHub 退为兜底。
-#      **国内那份清单不由本工作流产出**：实测美国 runner 往国内主传大文件只有 29KB/s
-#      （4 次重试一致，属系统性），所以国内分发改为「本机构建+签名 →
-#      scripts/release-local.mjs 上传 GitCode + 推 Gitee 清单」。本工作流只负责 GitHub
-#      侧的正式发布（海外用户 + 备份），两边都用同一把新密钥签名，因此可以并存。
+#      2026-09-26 起 `endpoints` 是**数组**（可多源，不是单值）。
+#      **2026-11-25 核实：当前只有一条 GitHub 地址**——早先那套「首位 Gitee 国内清单 +
+#      本机 scripts/release-local.mjs 上传 GitCode + 推 Gitee 清单」的分工**已不存在**：
+#      该脚本全仓无此文件，Gitee/GitCode 只是代码镜像（main + tag 同步），不承载更新清单。
+#      要恢复国内腿，得另建清单与上传路径，别照这段旧注释去 invoke 一个不存在的脚本。
+#      本工作流只负责 GitHub 侧的正式发布（海外 + 国内都能取到；端点实测 2026-11-25 HTTP 200）。
 #
 # 签名密钥注意：升级签名的私钥密码若已遗失，**不要**贸然重新生成密钥对——已安装的旧客户端
 # 内嵌的是旧 pubkey，用新密钥签名会导致旧客户端校验失败（用户须手动重装一次）。
