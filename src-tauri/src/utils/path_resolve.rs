@@ -11,7 +11,7 @@ use crate::permissions;
 use crate::permissions::{
     has_permission_to_use_tool, register_ask, PermissionContext, PermissionDecision,
 };
-use crate::sandbox::{expand_home, is_symlink_or_junction, logical_path, Sandbox};
+use crate::sandbox::{expand_home, is_symlink_or_junction, logical_path, DeleteTarget, Sandbox};
 use crate::tools;
 use crate::workspace;
 
@@ -410,6 +410,46 @@ pub(crate) fn resolve_path_user_write(
     let physical = ctx.forward_map_path(&expanded, None);
     let physical_str = physical.to_string_lossy().to_string();
     ctx.resolve_write(&physical_str)
+}
+
+/// ponytail: 用户 UI 的**删除**解析 — 与写解析的差别只有一条：重解析点
+/// （junction / 符号链接）本身允许删，且返回的是链接路径而不是它的目标
+/// （见 Sandbox::resolve_delete：调用方只摘链接，绝不递归）。其余边界
+/// （项目根 / 用户级白名单 / 词法欺骗）与写解析同一处判据。
+pub(crate) fn resolve_path_user_delete(
+    file_path: &str,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<DeleteTarget, String> {
+    let expanded = expand_input(file_path);
+    // 用户级白名单与写解析同款先于工作区（例如全局记忆文件的删除）
+    if let Some(r) = Sandbox::user_data_delete(&expanded) {
+        return r;
+    }
+    let ctx = get_ctx(state)?;
+    let physical = ctx.forward_map_path(&expanded, None);
+    ctx.sandbox.resolve_delete(&physical)
+}
+
+/// 删除通道派发（fs_cap delete 专用）。
+///
+/// Agent 通道保持既有语义：权限闸 + 写解析（重解析点一律拒）。权限闸的写检查
+/// 没有删除专用判据，若在此放行会先吃到 Ask 分支（先于 deny 规则匹配）；
+/// 「删链接只摘链接」本次只对用户通道生效（2026-11-25 技能目录 junction 修复）。
+pub(crate) async fn resolve_delete_dispatch(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<DeleteTarget, String> {
+    if is_agent {
+        let real = require_write(file_path, agent_id, state, app).await?;
+        return Ok(DeleteTarget {
+            path: real,
+            is_link: false,
+        });
+    }
+    resolve_path_user_delete(file_path, state)
 }
 
 /// ponytail: 根据 is_agent 标志选择路径解析方式 — Agent 走权限检查(弹 Ask), UI 只解析.

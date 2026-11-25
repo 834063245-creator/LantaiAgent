@@ -944,6 +944,49 @@ mod tests {
         // 窗口越界安全钳制
         assert_eq!(slice_lines("aa\nbb", Some(5), Some(3)), "");
     }
+
+    // ── 摘链接（2026-11-25 真机修：技能目录 = junction）──
+
+    /// 建 junction（mklink /J 无需特权）；建不了返回 false（受限环境跳过用例）。
+    #[cfg(windows)]
+    fn make_junction(link: &std::path::Path, target: &std::path::Path) -> bool {
+        std::fs::create_dir_all(target).is_ok()
+            && std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+    }
+
+    /// 删链接只摘链接：内容源必须原样保留——旧实现拿 canonicalize 后的真实路径
+    /// 做 remove_dir_all，会顺着 junction 把内容源整棵删掉。
+    #[test]
+    #[cfg(windows)]
+    fn remove_link_only_unhooks_junction_and_keeps_source() {
+        let dir = tmp_dir("del_link");
+        let source = dir.join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "# skill\n").unwrap();
+        let link = dir.join("link");
+        if !make_junction(&link, &source) {
+            eprintln!("[confined_fs] junction 创建失败，跳过测试");
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        assert!(link.exists(), "junction 应可跟随（前置）");
+
+        remove_link_only(&link).expect("摘链接");
+
+        assert!(std::fs::symlink_metadata(&link).is_err(), "链接本身应消失");
+        assert_eq!(
+            std::fs::read_to_string(source.join("SKILL.md")).unwrap(),
+            "# skill\n",
+            "内容源必须原样保留"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1240,7 +1283,29 @@ pub(crate) async fn list_tree_cap(
     Ok(entries)
 }
 
-/// fs_cap.delete（能力口入口：dispatch 写闸 + 删）。返回解析后路径。
+/// 摘链接（**绝不递归**）：目录联接 / 目录符号链接走 remove_dir，文件符号
+/// 链接走 remove_file；前者失败再试后者——重解析点的元数据不足以稳定区分
+/// 目录/文件链接（断链连目标类型都读不到）。
+///
+/// ⚠️ 这里禁止 remove_dir_all：Windows 上它会跟随 junction/symlink 删进目标
+/// 目录（plugin_install::remove_dir_link 同款纪律）。
+fn remove_link_only(path: &std::path::Path) -> io::Result<()> {
+    match std::fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(dir_err) => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(dir_err),
+        },
+    }
+}
+
+/// fs_cap.delete（能力口入口：删除闸 + 删）。返回解析后路径。
+///
+/// 重解析点（junction / 符号链接）只摘链接本身（2026-11-25 真机修）：
+/// 旧实现在写闸里一刀切拒重解析点（技能目录 = junction 时，设置页技能页
+/// 「删除」恒报 symlinks and junctions are not allowed）；而即便放行，这里
+/// 拿到的是 canonicalize 后的**真实路径**——remove_dir_all 会顺着链接删进
+/// 内容源。故删除的落盘面必须与写分开：链接走非递归的 remove_dir/remove_file。
 pub(crate) async fn delete_cap(
     path: &str,
     is_agent: bool,
@@ -1248,12 +1313,23 @@ pub(crate) async fn delete_cap(
     state: &tauri::State<'_, WorkspaceState>,
     app: &AppHandle,
 ) -> Result<PathBuf, String> {
-    let real = crate::utils::resolve_write_dispatch(path, is_agent, agent_id, state, app).await?;
-    if !real.exists() {
+    let target =
+        crate::utils::resolve_delete_dispatch(path, is_agent, agent_id, state, app).await?;
+    if target.is_link {
+        // 断链也要能摘（exists() 跟随链接，对断链恒 false）
+        let rp = target.path.clone();
+        tokio::task::spawn_blocking(move || remove_link_only(&rp))
+            .await
+            .map_err(|e| format!("删除任务失败: {}", e))?
+            .map_err(|e| format!("无法删除链接 {}: {}", path, e))?;
+        return Ok(target.path);
+    }
+    if !target.path.exists() {
         return Err(format!("路径不存在: {}", path));
     }
-    let rp = real.clone();
-    if real.is_dir() {
+    let is_dir = target.path.is_dir();
+    let rp = target.path.clone();
+    if is_dir {
         tokio::task::spawn_blocking(move || std::fs::remove_dir_all(&rp))
             .await
             .map_err(|e| format!("删除任务失败: {}", e))?
@@ -1264,7 +1340,7 @@ pub(crate) async fn delete_cap(
             .map_err(|e| format!("删除任务失败: {}", e))?
             .map_err(|e| format!("无法删除文件 {}: {}", path, e))?;
     }
-    Ok(real)
+    Ok(target.path)
 }
 
 /// fs_cap.rename（能力口入口：read+write 双 dispatch 闸 + rename）。

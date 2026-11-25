@@ -23,6 +23,17 @@ impl SandboxResult {
     }
 }
 
+/// 删除目标（`Sandbox::resolve_delete` 的产出）。
+///
+/// `is_link = true` ⇒ `path` 是重解析点**本身**（junction / 符号链接，未经
+/// canonicalize）——调用方必须只摘链接（remove_dir / remove_file），**绝不能**
+/// 递归删除：顺着链接递归会删进它指向的内容源。
+#[derive(Debug)]
+pub struct DeleteTarget {
+    pub path: PathBuf,
+    pub is_link: bool,
+}
+
 /// 路径验证 — 规范化、检查符号链接、验证前缀。
 pub struct Sandbox {
     /// 逻辑版项目根（无 Windows verbatim `\\?\` 前缀）— 仅用于前缀比较。
@@ -125,6 +136,29 @@ impl Sandbox {
             return None;
         }
         Some(Self::allow_user_data(path))
+    }
+
+    /// 用户级数据路径的**删除**解析（判据 = is_user_data_writable_path）。
+    /// `None` = 非白名单。与写解析的差别同 `resolve_delete`：重解析点本身可删，
+    /// 返回链接路径而不是它的目标（只摘链接，不递归）。
+    pub fn user_data_delete(path: &Path) -> Option<Result<DeleteTarget, String>> {
+        if !Self::is_user_data_writable_path(path) {
+            return None;
+        }
+        if is_symlink_or_junction(path) {
+            return Some(Ok(DeleteTarget {
+                path: path.to_path_buf(),
+                is_link: true,
+            }));
+        }
+        Some(
+            Self::allow_user_data(path)
+                .into_result()
+                .map(|real| DeleteTarget {
+                    path: real,
+                    is_link: false,
+                }),
+        )
     }
 
     /// 白名单路径的放行体——`resolve_*` 的豁免分支与 `user_data_*` 共用这一处，
@@ -392,11 +426,57 @@ impl Sandbox {
 
         SandboxResult::Allowed(real)
     }
+
+    /// 删除解析（2026-11-25 真机修）：与 `resolve_write` 的差别只有一条——
+    /// **重解析点本身可以删**。
+    ///
+    /// 病灶：把技能内容放进版本库、`.lantai/skills/<名>` 只放 junction（内容不存
+    /// 两份）是常见接法，而写通道一刀切拒重解析点 ⇒ 设置页技能列表看得见、读得到，
+    /// 点「删除」恒报 `symlinks and junctions are not allowed`。摘链接不穿透链接，
+    /// 与「写进链接」是两件事，故删除要有自己的判据。
+    ///
+    /// 边界不放宽：链接的**自身位置**仍必须在项目根内（或用户级可写白名单内）——
+    /// 判据是「父目录 canonicalize + 原文件名」，先消 `..` 与父级重解析点，
+    /// `proj\..\..\outside\link` 这类前缀欺骗照样拒。链接指向哪里不参与裁决
+    /// （摘链接不触碰目标）。
+    pub fn resolve_delete(&self, path: &Path) -> Result<DeleteTarget, String> {
+        if is_symlink_or_junction(path) {
+            let location = normalized_location(path);
+            if self.contains(&location) || Self::is_user_data_writable_path(&location) {
+                return Ok(DeleteTarget {
+                    path: path.to_path_buf(),
+                    is_link: true,
+                });
+            }
+            return Err(format!(
+                "不允许删除项目外的链接 {:?}（项目根 {:?}）",
+                location, self.project_root
+            ));
+        }
+        self.resolve_write(path)
+            .into_result()
+            .map(|real| DeleteTarget {
+                path: real,
+                is_link: false,
+            })
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 辅助函数：路径穿越
 // ═══════════════════════════════════════════════════════════════
+
+/// 归属判定用的「链接自身位置」：父目录 canonicalize（消 `..` 与父级重解析点）
+/// + 原文件名。父级不可解析（路径本就不存在）⇒ 退回逻辑路径，由 `contains` 照常判。
+fn normalized_location(path: &Path) -> PathBuf {
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => match std::fs::canonicalize(parent) {
+            Ok(real) => logical_path(&real).join(name),
+            Err(_) => logical_path(path),
+        },
+        _ => logical_path(path),
+    }
+}
 
 /// 向上遍历目录树，查找最近的已存在祖先。
 fn find_existing_ancestor(path: &Path) -> Option<(PathBuf, PathBuf)> {
@@ -837,6 +917,17 @@ mod tests {
         );
         assert!(
             matches!(
+                Sandbox::user_data_delete(&providers),
+                Some(Ok(DeleteTarget { is_link: false, .. }))
+            ),
+            "删除：~/.lantai/providers.yml 应免工作区放行（非链接）"
+        );
+        assert!(
+            Sandbox::user_data_delete(&lantai.join("skills").join("officecli")).is_none(),
+            "skills 只读：删除不豁免"
+        );
+        assert!(
+            matches!(
                 Sandbox::user_data_read(&lantai.join("mcp.json")),
                 Some(SandboxResult::Allowed(_))
             ),
@@ -977,5 +1068,143 @@ mod tests {
             !Sandbox::is_user_data_path_with_home(&outside, &home_s),
             "项目内 skills 走正常沙箱，非用户数据豁免"
         );
+    }
+
+    // ── 删除解析（2026-11-25 真机修：技能目录 = junction）──
+    //
+    // 病灶：技能内容进版本库、.lantai/skills/<名> 只放 junction，写闸一刀切拒
+    // 重解析点 ⇒ 设置页「删除」恒报 symlinks and junctions are not allowed。
+    // 判据要点：链接**自身位置**在项目内即可删，链接指向哪里不参与裁决；
+    // 返回的必须是链接路径本身（拿 canonicalize 后的真实路径去递归删 = 删内容源）。
+
+    /// 建 junction（mklink /J 无需特权）；建不了返回 false（受限环境跳过用例）。
+    #[cfg(windows)]
+    fn make_junction(link: &Path, target: &Path) -> bool {
+        std::fs::create_dir_all(target).is_ok()
+            && std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_delete_allows_in_project_junction_and_returns_link() {
+        let base = std::env::temp_dir().join("lantai_del_junction_ok");
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("proj");
+        let source = base.join("source");
+        std::fs::create_dir_all(root.join(".lantai").join("skills")).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "# skill\n").unwrap();
+
+        let link = root.join(".lantai").join("skills").join("equity-research");
+        if !make_junction(&link, &source) {
+            eprintln!("[sandbox] junction 创建失败，跳过测试");
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+
+        let sandbox = Sandbox::new(&root);
+        let target = sandbox
+            .resolve_delete(&link)
+            .expect("项目内 junction 应允许删除");
+        assert!(target.is_link, "必须标记为重解析点（否则调用方会走递归删）");
+        assert_eq!(
+            target.path, link,
+            "必须返回链接路径本身——canonicalize 后的真实路径会被 remove_dir_all 递归删掉内容源"
+        );
+        assert!(
+            std::fs::symlink_metadata(&source).is_ok(),
+            "解析阶段不得触碰目标"
+        );
+
+        let _ = std::fs::remove_dir(&link);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_delete_rejects_junction_outside_project() {
+        let base = std::env::temp_dir().join("lantai_del_junction_out");
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("proj");
+        let elsewhere = base.join("elsewhere");
+        let source = base.join("source");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
+
+        let link = elsewhere.join("skill");
+        if !make_junction(&link, &source) {
+            eprintln!("[sandbox] junction 创建失败，跳过测试");
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+
+        let sandbox = Sandbox::new(&root);
+        assert!(
+            sandbox.resolve_delete(&link).is_err(),
+            "项目外的链接不得因为「只摘链接」而放行"
+        );
+
+        let _ = std::fs::remove_dir(&link);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// proj/../elsewhere/skill 这种「前缀在项目内、实际在项目外」的拼法不得骗过
+    /// 归属判定——判据必须落在 canonicalize 后的父目录上。
+    #[test]
+    #[cfg(windows)]
+    fn resolve_delete_rejects_dotdot_prefix_spoof() {
+        let base = std::env::temp_dir().join("lantai_del_junction_spoof");
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("proj");
+        let elsewhere = base.join("elsewhere");
+        let source = base.join("source");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
+
+        let link = elsewhere.join("skill");
+        if !make_junction(&link, &source) {
+            eprintln!("[sandbox] junction 创建失败，跳过测试");
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+
+        let spoof = root.join("..").join("elsewhere").join("skill");
+        let sandbox = Sandbox::new(&root);
+        assert!(
+            sandbox.resolve_delete(&spoof).is_err(),
+            "点段前缀欺骗必须拒绝（链接实际在项目外）"
+        );
+
+        let _ = std::fs::remove_dir(&link);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 非链接路径照旧走写解析（行为零变化）。
+    #[test]
+    fn resolve_delete_plain_path_delegates_to_write() {
+        let root = std::env::temp_dir().join("lantai_del_plain");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("a.txt");
+        std::fs::write(&file, "x").unwrap();
+
+        let sandbox = Sandbox::new(&root);
+        let target = sandbox.resolve_delete(&file).expect("项目内普通文件可删");
+        assert!(!target.is_link, "普通文件不是链接");
+        assert_eq!(
+            target.path,
+            std::fs::canonicalize(&file).unwrap(),
+            "非链接路径返回规范化路径（与写解析一致）"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
