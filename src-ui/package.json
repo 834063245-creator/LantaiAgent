@@ -82,7 +82,7 @@
     "@webgpu/types": "^0.1.70",
     "cross-env": "^10.1.0",
     "happy-dom": "^21.0.4",
-    "jsdom": "^29.1.1",
+    "jsdom": "^31.0.1",
     "tsx": "^4.22.4",
     "typescript": "^7.0.2",
     "typescript-legacy": "npm:typescript@^6.0.3",
