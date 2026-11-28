@@ -7,8 +7,20 @@
 //
 // 口内闸（D4-4/D4-5 同款）：直接构造 WebFetchTool 过 crate::utils::check_permission
 // ——无条件过闸（插件原语义）；域名规则 + SSRF + Ask 事件在 WebFetchTool /
-// web_fetch 逐跳复查（插件原样）。web_search 沿用原实现：以兜底搜索页 URL 过
-// WebFetch 权限（AnySearch 是后端 API，仍受同一 Web 域权限约束）。
+// web_fetch 逐跳复查（插件原样）。web_search 以主用搜索引擎的搜索页 URL 过同一
+// Web 域权限（搜索页也是「一次 Web 访问」）。
+//
+// 2026-11-28 修复（web_search 恒超时）：三处同时失效——① AnySearch 匿名请求
+// 按**出口 IP** 计每日免费额度（1,000 次/天），本机 IP 已耗尽：402
+// daily_free_quota_exhausted，而同一请求带 Authorization: Bearer <key> 即 200
+//（服务没下线，是匿名池被用光）；② DuckDuckGo html 端点在境内 TCP connect 超时，
+// 而它恰是当时的默认后端；③ Bing HTML 抓取侧的 li.b_algo 不再命中 cn.bing.com。
+// 修复后的次序：AnySearch（撞 402 时接住服务端自动生成的 key、落系统凭据并重发
+// 一次）→ Bing RSS 出口（format=rss，纯 XML、无 JS/无 cookie 挑战）→ DuckDuckGo
+// 抓取；全败时错误带出三方原因（不再静默吞成「无结果」）。
+//
+// ⚠ 402 响应体会带自动生成的账号/密码/API key——只允许就地解析 api_key 一个字段，
+// 整段 body 不进日志、不进错误串、不进模型上下文（AnySearch 文档明示）。
 //
 // 键语言：口收顶层 snake（能力口统一契约）；TS 工具面键 = manifest 语言
 // （camelCase：maxResults），映射在 TS execute 层。返回 Text（search = JSON
@@ -19,14 +31,53 @@ use tauri::State;
 
 const CHROME_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
 
-fn search_backend() -> &'static str {
-    match std::env::var("HOLOGRAM_SEARCH_BACKEND").as_deref() {
-        Ok("bing") => "bing",
-        _ => "duckduckgo",
+/// 内置搜索引擎。Bing 走 RSS 出口（`format=rss`：纯 XML、无反爬、无 JS）；
+/// DuckDuckGo 走 html 端点（境外网络可直连，境内多被 TCP 阻断——仅作兜底）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SearchEngine {
+    Bing,
+    DuckDuckGo,
+}
+
+impl SearchEngine {
+    fn name(self) -> &'static str {
+        match self {
+            SearchEngine::Bing => "bing",
+            SearchEngine::DuckDuckGo => "duckduckgo",
+        }
+    }
+
+    /// 备用引擎（主引擎失败或零结果时换它再试一次）。
+    fn other(self) -> SearchEngine {
+        match self {
+            SearchEngine::Bing => SearchEngine::DuckDuckGo,
+            SearchEngine::DuckDuckGo => SearchEngine::Bing,
+        }
     }
 }
 
-const ANYSEARCH_SEARCH_URL: &str = "https://api.anysearch.com/v1/search";
+/// `HOLOGRAM_SEARCH_BACKEND` 解析（纯函数：测试不碰进程环境）。
+fn engine_from_value(value: Option<&str>) -> SearchEngine {
+    match value {
+        Some("duckduckgo") => SearchEngine::DuckDuckGo,
+        _ => SearchEngine::Bing,
+    }
+}
+
+/// 默认 Bing（境内可直连且 RSS 出口稳定）；`HOLOGRAM_SEARCH_BACKEND=duckduckgo`
+/// 可切回 DuckDuckGo 抓取（境外网络更稳）。
+fn search_backend() -> SearchEngine {
+    engine_from_value(std::env::var("HOLOGRAM_SEARCH_BACKEND").ok().as_deref())
+}
+
+/// 搜索引擎的搜索页 URL——权限闸与真实请求共用同一 URL（单一真源）。
+fn search_page_url(engine: SearchEngine, query: &str) -> String {
+    let q = crate::utils::urlencoding(query);
+    match engine {
+        SearchEngine::Bing => format!("https://www.bing.com/search?q={q}&format=rss"),
+        SearchEngine::DuckDuckGo => format!("https://html.duckduckgo.com/html/?q={q}"),
+    }
+}
 
 /// 口内闸句柄（BrowserGate/UiaGate 同形——web 面用 WebFetchTool）。
 pub(crate) struct WebGate<'a> {
@@ -54,7 +105,7 @@ fn arg_str(args: &Value, key: &str) -> Option<String> {
 // ToolError 内联化——错误串即最终形态，Permission 带「权限拒绝: 」前缀）
 // ═══════════════════════════════════════════════════════════════
 
-/// web_search — AnySearch 免费 API + Bing/DuckDuckGo 抓取兜底。
+/// web_search — AnySearch（402 自动接 key）+ 引擎兜底（Bing RSS → DuckDuckGo）。
 async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
     let query = arg_str(args, "query").ok_or_else(|| "web_search: missing 'query'".to_string())?;
     let max_results = args
@@ -64,33 +115,21 @@ async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> 
         .unwrap_or(10)
         .clamp(1, 10);
 
-    // 权限检查沿用原有搜索页 URL（AnySearch 是后端 API，仍受同一 Web 域权限约束）。
-    let backend = search_backend();
-    let fallback_url = match backend {
-        "bing" => format!(
-            "https://www.bing.com/search?q={}&setlang=en",
-            crate::utils::urlencoding(&query)
-        ),
-        _ => format!(
-            "https://html.duckduckgo.com/html/?q={}",
-            crate::utils::urlencoding(&query)
-        ),
-    };
+    let primary = search_backend();
+    // 权限检查用主引擎的搜索页 URL（搜索页 = 一次 Web 访问，同一 Web 域权限）。
     gate.check(&crate::tools::WebFetchTool {
-        url: fallback_url,
+        url: search_page_url(primary, &query),
         agent_id: gate.agent_id.clone(),
     })
     .await?;
 
-    // 1) 先尝试 AnySearch 匿名免费 API（无需用户配置任何 key）
-    // 2) 失败/空结果时自动降级到 Bing / DuckDuckGo 页面抓取
-    let results = match anysearch_free_search(&query, max_results) {
-        Ok(results) if !results.is_empty() => results,
-        _ => match backend {
-            "bing" => bing_search(&query)?,
-            _ => duckduckgo_search(&query)?,
-        },
-    };
+    // ureq 是阻塞客户端：网络 IO 进 spawn_blocking，不占 tokio worker
+    //（CONVENTIONS §2.3；超时预算最长 8s+10s，落 async worker 会拖住同线程的其它 RPC）。
+    let owned_query = query.clone();
+    let results =
+        tokio::task::spawn_blocking(move || run_search(primary, &owned_query, max_results))
+            .await
+            .map_err(|e| format!("web_search: 搜索任务中断: {e}"))??;
 
     if results.is_empty() {
         return Ok(serde_json::json!({
@@ -108,49 +147,162 @@ async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> 
     .to_string())
 }
 
-/// AnySearch 匿名免费搜索：不需要 API key。
-/// 返回统一 [{ title, url, snippet }] 结构；失败时上层会 fallback。
-fn anysearch_free_search(
-    query: &str,
-    max_results: usize,
-) -> Result<Vec<serde_json::Value>, String> {
-    let body = serde_json::json!({
-        "query": query,
-        "max_results": max_results,
-        "language": "zh-CN",
-    });
+/// AnySearch 匿名额度耗尽后，官方会在同一个 402 响应里回一套自动生成的账号与
+/// key（文档「Anonymous quota response」：用 Bearer key 重发原请求）。这里按该
+/// 指引接住它并落到系统凭据——否则匿名池一旦见底，此后每次搜索都只能吃 402
+///（本机 2026-11-28 现场即此：keyless 恒 402，带 key 同一请求 200）。
+const ANYSEARCH_SEARCH_URL: &str = "https://api.anysearch.com/v1/search";
+/// 凭据库命名空间（与 LLM provider 名同一加密文件，见 credential.rs）。
+const ANYSEARCH_KEY_PROVIDER: &str = "anysearch";
 
+enum AnySearchOutcome {
+    Results(Vec<serde_json::Value>),
+    QuotaExhausted { auto_key: Option<String> },
+    Unauthorized,
+    Failed(String),
+}
+
+/// key 来源：env 覆盖优先，其次本机凭据（首次 402 自动落盘的那把）。
+fn anysearch_api_key() -> Option<String> {
+    if let Ok(value) = std::env::var("HOLOGRAM_ANYSEARCH_API_KEY") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    crate::credential::get_api_key(ANYSEARCH_KEY_PROVIDER)
+        .ok()
+        .flatten()
+}
+
+fn anysearch_search(query: &str, max_results: usize, key: Option<&str>) -> AnySearchOutcome {
+    let payload = serde_json::json!({ "query": query, "max_results": max_results });
     let agent = ureq::Agent::new_with_config(
         ureq::config::Config::builder()
+            .http_status_as_error(false)
             .timeout_per_call(Some(std::time::Duration::from_secs(8)))
             .timeout_global(Some(std::time::Duration::from_secs(15)))
             .build(),
     );
 
-    let resp = agent
+    let mut req = agent
         .post(ANYSEARCH_SEARCH_URL)
         .header("Content-Type", "application/json")
-        .header("User-Agent", CHROME_UA)
-        .send(body.to_string())
-        .map_err(|e| format!("AnySearch request failed: {}", e))?;
+        .header("User-Agent", CHROME_UA);
+    if let Some(key) = key {
+        let bearer = format!("Bearer {key}");
+        req = req.header("Authorization", bearer.as_str());
+    }
+    let resp = match req.send(payload.to_string()) {
+        Ok(resp) => resp,
+        Err(e) => return AnySearchOutcome::Failed(format!("请求失败: {e}")),
+    };
 
     let status = resp.status().as_u16();
     let mut body = resp.into_body();
-    let text = body
-        .read_to_string()
-        .map_err(|e| format!("AnySearch read error: {}", e))?;
+    // 402 的 body 含账号/密码/key：只允许就地解析出 key，绝不进日志或错误串。
+    let text = match body.read_to_string() {
+        Ok(text) => text,
+        Err(e) => return AnySearchOutcome::Failed(format!("读取失败: {e}")),
+    };
 
-    if status != 200 {
-        return Err(format!("AnySearch API {}", status));
+    match status {
+        200 => AnySearchOutcome::Results(parse_anysearch_results(&text, max_results)),
+        402 => AnySearchOutcome::QuotaExhausted {
+            auto_key: parse_generated_api_key(&text),
+        },
+        401 | 403 => AnySearchOutcome::Unauthorized,
+        other => AnySearchOutcome::Failed(format!("HTTP {other}")),
+    }
+}
+
+/// 一次搜索：AnySearch → 主引擎 → 备用引擎。AnySearch 零结果/失败才换引擎；
+/// 全败时错误带出三方原因，不再静默降级成「无结果」。
+fn run_search(
+    primary: SearchEngine,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut notes: Vec<String> = Vec::new();
+
+    match anysearch_attempt(query, max_results) {
+        Ok(items) if !items.is_empty() => return Ok(items),
+        Ok(_) => notes.push("anysearch: 0 条".to_string()),
+        Err(reason) => notes.push(format!("anysearch: {reason}")),
     }
 
-    let data: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("AnySearch parse error: {}", e))?;
+    let first = engine_search(primary, query, max_results);
+    if matches!(&first, Ok(items) if !items.is_empty()) {
+        return first;
+    }
+    match engine_search(primary.other(), query, max_results) {
+        Ok(items) => Ok(items),
+        Err(second_err) => match first {
+            // 主引擎正常返回但零命中 → 备用引擎不可达时仍按「无结果」回，不谎报故障。
+            Ok(_) => Ok(Vec::new()),
+            Err(first_err) => {
+                notes.push(format!("{}: {first_err}", primary.name()));
+                notes.push(format!("{}: {second_err}", primary.other().name()));
+                Err(format!(
+                    "web_search: 全部搜索引擎失败（{}）",
+                    notes.join("；")
+                ))
+            }
+        },
+    }
+}
 
+/// AnySearch 一次尝试：有 key 用 key；无 key 先匿名，撞 402 就接住服务端生成的
+/// key、落盘并重发一次（只重发一次，避免额度真耗尽时打转）。
+fn anysearch_attempt(query: &str, max_results: usize) -> Result<Vec<serde_json::Value>, String> {
+    let stored_key = anysearch_api_key();
+    match anysearch_search(query, max_results, stored_key.as_deref()) {
+        AnySearchOutcome::Results(items) => Ok(items),
+        AnySearchOutcome::Unauthorized => {
+            // 失效的 key 会把之后每次搜索都钉死在 401：清掉，下次重新走匿名注册。
+            if stored_key.is_some() {
+                let _ = crate::credential::delete_api_key(ANYSEARCH_KEY_PROVIDER);
+                return Err("API key 失效（401/403），已清除".to_string());
+            }
+            Err("认证失败（401/403）".to_string())
+        }
+        AnySearchOutcome::QuotaExhausted { auto_key } => {
+            let Some(auto_key) = auto_key else {
+                return Err("每日免费额度耗尽（402），响应未含可用 key".to_string());
+            };
+            // 落盘失败不阻断本次搜索：内存里带着这把 key 重试一次。
+            let stored =
+                crate::credential::store_api_key(ANYSEARCH_KEY_PROVIDER, &auto_key).is_ok();
+            match anysearch_search(query, max_results, Some(&auto_key)) {
+                AnySearchOutcome::Results(items) => Ok(items),
+                AnySearchOutcome::QuotaExhausted { .. } => Err(if stored {
+                    "额度耗尽（402），自动生成的 key 也未恢复额度".to_string()
+                } else {
+                    "额度耗尽（402），自动生成的 key 未落盘且重试失败".to_string()
+                }),
+                AnySearchOutcome::Unauthorized => Err("自动生成的 key 无效（401/403）".to_string()),
+                AnySearchOutcome::Failed(reason) => Err(reason),
+            }
+        }
+        AnySearchOutcome::Failed(reason) => Err(reason),
+    }
+}
+
+/// 402 body → 自动生成的 api_key（形如 `api_key=as_sk_xxx`）。只取这一个字段，
+/// body 其余部分（username / password）一律不进日志、不进错误串。
+fn parse_generated_api_key(body: &str) -> Option<String> {
+    let re = regex::Regex::new(r"api_key=([A-Za-z0-9_\-]{8,200})").expect("静态正则");
+    re.captures(body).map(|c| c[1].to_string())
+}
+
+/// AnySearch 成功响应 → 统一 [{ title, url, snippet }]；snippet 缺失时退 content。
+fn parse_anysearch_results(text: &str, max_results: usize) -> Vec<serde_json::Value> {
+    let Ok(data) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Vec::new();
+    };
     let items = data
         .get("data")
         .and_then(|d| d.get("results"))
-        .or_else(|| data.get("results"))
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
@@ -161,86 +313,133 @@ fn anysearch_free_search(
             .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("")
+            .trim()
             .to_string();
         let url = item
             .get("url")
             .and_then(|v| v.as_str())
             .unwrap_or("")
+            .trim()
             .to_string();
         let snippet = item
-            .get("content")
+            .get("snippet")
             .and_then(|v| v.as_str())
-            .or_else(|| item.get("description").and_then(|v| v.as_str()))
-            .or_else(|| item.get("snippet").and_then(|v| v.as_str()))
+            .or_else(|| item.get("content").and_then(|v| v.as_str()))
             .unwrap_or("")
+            .trim()
             .to_string();
-
-        if !title.is_empty() && !url.is_empty() {
-            results.push(serde_json::json!({
-                "title": title,
-                "url": url,
-                "snippet": snippet,
-            }));
+        if title.is_empty() || url.is_empty() {
+            continue;
         }
+        results.push(serde_json::json!({
+            "title": title,
+            "url": url,
+            "snippet": snippet,
+        }));
     }
-    Ok(results)
+    results
 }
 
-fn bing_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
-    let url = format!(
-        "https://www.bing.com/search?q={}&setlang=en",
-        crate::utils::urlencoding(query)
-    );
+fn engine_search(
+    engine: SearchEngine,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    match engine {
+        SearchEngine::Bing => bing_rss_search(query, max_results),
+        SearchEngine::DuckDuckGo => duckduckgo_search(query),
+    }
+}
+
+/// Bing 的 RSS 出口（format=rss）：纯 XML、稳定字段（title/link/description），
+/// 不依赖 JS / cookie，也不吃 li.b_algo 一类会随版式漂移的 HTML 结构。
+fn bing_rss_search(query: &str, max_results: usize) -> Result<Vec<serde_json::Value>, String> {
+    let url = search_page_url(SearchEngine::Bing, query);
 
     let agent = ureq::Agent::new_with_config(
         ureq::config::Config::builder()
-            .timeout_per_call(Some(std::time::Duration::from_secs(5)))
-            .timeout_global(Some(std::time::Duration::from_secs(10)))
+            .http_status_as_error(false)
+            .timeout_per_call(Some(std::time::Duration::from_secs(8)))
+            .timeout_global(Some(std::time::Duration::from_secs(15)))
             .build(),
     );
 
     let resp = agent
         .get(&url)
         .header("User-Agent", CHROME_UA)
-        .header("Accept-Language", "en-US,en;q=0.9")
+        .header("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8")
         .call()
-        .map_err(|e| format!("web_search: request failed: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
+    let status = resp.status().as_u16();
     let mut body = resp.into_body();
-    let html = body
+    let xml = body
         .read_to_string()
-        .map_err(|e| format!("web_search: read error: {}", e))?;
+        .map_err(|e| format!("读取失败: {e}"))?;
 
-    let mut results = Vec::new();
-    let block_re = regex::Regex::new(r#"<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>([\s\S]*?)</li>"#)
-        .expect("静态正则");
-    let link_re = regex::Regex::new(r#"<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a></h2>"#)
-        .expect("静态正则");
-    let snippet_re = regex::Regex::new(r#"<p[^>]*>([\s\S]*?)</p>"#).expect("静态正则");
+    if status != 200 {
+        return Err(format!("HTTP {status}"));
+    }
+
+    Ok(parse_bing_rss(&xml, max_results))
+}
+
+/// Bing RSS → 统一 [{ title, url, snippet }] 结构（纯函数，测试直测）。
+/// 空标题/空链接项丢弃（Bing 偶尔回占位项）。
+fn parse_bing_rss(xml: &str, max_results: usize) -> Vec<serde_json::Value> {
+    let item_re = regex::Regex::new(r"(?s)<item>(.*?)</item>").expect("静态正则");
+    let title_re = regex::Regex::new(r"(?s)<title>(.*?)</title>").expect("静态正则");
+    let link_re = regex::Regex::new(r"(?s)<link>(.*?)</link>").expect("静态正则");
+    let desc_re = regex::Regex::new(r"(?s)<description>(.*?)</description>").expect("静态正则");
     let tag_re = regex::Regex::new(r"<[^>]*>").expect("静态正则");
 
-    for cap in block_re.captures_iter(&html) {
+    let mut results = Vec::new();
+    for cap in item_re.captures_iter(xml) {
         let block = &cap[1];
-        if let Some(lc) = link_re.captures(block) {
-            let title = tag_re.replace_all(&lc[2], "").trim().to_string();
-            if title.len() > 3 {
-                let snippet = snippet_re
-                    .captures_iter(block)
-                    .map(|c| tag_re.replace_all(&c[1], "").trim().to_string())
-                    .find(|s| s.len() > 15)
-                    .unwrap_or_default();
-                results.push(serde_json::json!({
-                    "title": title,
-                    "url": lc[1].to_string(),
-                    "snippet": snippet,
-                }));
-                if results.len() >= 10 {
-                    break;
-                }
-            }
+        let field = |re: &regex::Regex| -> String {
+            re.captures(block)
+                .map(|c| html_to_text(&c[1], &tag_re))
+                .unwrap_or_default()
+        };
+        let title = field(&title_re);
+        let url = field(&link_re);
+        if title.is_empty() || url.is_empty() {
+            continue;
+        }
+        results.push(serde_json::json!({
+            "title": title,
+            "url": url,
+            "snippet": field(&desc_re),
+        }));
+        if results.len() >= max_results {
+            break;
         }
     }
-    Ok(results)
+    results
+}
+
+/// RSS 文本节点 → 纯文本：剥 CDATA 包装、去内嵌标签、解实体、压空白。
+fn html_to_text(raw: &str, tag_re: &regex::Regex) -> String {
+    let s = raw.trim();
+    let s = s
+        .strip_prefix("<![CDATA[")
+        .and_then(|r| r.strip_suffix("]]>"))
+        .unwrap_or(s);
+    let stripped = tag_re.replace_all(s, " ");
+    let text = unescape_entities(stripped.as_ref());
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// 常见 XML/HTML 实体反解（Bing RSS 的 description 会带这些）。
+fn unescape_entities(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&#x27;", "'")
+        .replace("&nbsp;", " ")
 }
 
 fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
@@ -259,12 +458,12 @@ fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
         .header("User-Agent", CHROME_UA)
         .header("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8")
         .call()
-        .map_err(|e| format!("web_search: request failed: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
     let mut body = resp.into_body();
     let html = body
         .read_to_string()
-        .map_err(|e| format!("web_search: read error: {}", e))?;
+        .map_err(|e| format!("读取失败: {e}"))?;
 
     let mut results = Vec::new();
     let title_re = regex::Regex::new(
@@ -301,6 +500,7 @@ fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
     }
     Ok(results)
 }
+
 /// web_fetch — URL 抓取（SSRF 逐跳复查 + 1 MiB 截断）。网页文本是 Text 结果。
 async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
     let url = arg_str(args, "url").ok_or_else(|| "web_fetch: missing 'url'".to_string())?;
@@ -492,6 +692,8 @@ pub(crate) async fn web_cap(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     /// 2 动作全集（= 退役前 builtin.web manifest.tools 名单）。
     #[test]
     fn action_table_is_exactly_two() {
@@ -510,6 +712,124 @@ mod tests {
         for a in ["web_crawl", "search", ""] {
             assert!(!known.contains(&a), "{a} 不应在动作表内");
         }
+    }
+
+    /// 默认主路 = Bing RSS（境内可直连）；env 只认 duckduckgo 一个覆盖值。
+    #[test]
+    fn search_backend_defaults_to_bing_and_honours_override() {
+        assert_eq!(
+            engine_from_value(None),
+            SearchEngine::Bing,
+            "默认 Bing（境内 DDG 被 TCP 阻断，2026-11-28 实测）"
+        );
+        assert_eq!(engine_from_value(Some("bing")), SearchEngine::Bing);
+        assert_eq!(
+            engine_from_value(Some("duckduckgo")),
+            SearchEngine::DuckDuckGo
+        );
+        assert_eq!(
+            engine_from_value(Some("whatever")),
+            SearchEngine::Bing,
+            "未知值回落默认，不静默换引擎"
+        );
+    }
+
+    /// 权限闸 URL 与真实请求共用一份（search_page_url 单一真源）。
+    #[test]
+    fn search_page_url_is_backend_specific() {
+        let bing = search_page_url(SearchEngine::Bing, "rust lang");
+        assert!(bing.starts_with("https://www.bing.com/search?q="), "{bing}");
+        assert!(bing.contains("format=rss"), "{bing}");
+        let ddg = search_page_url(SearchEngine::DuckDuckGo, "rust lang");
+        assert!(
+            ddg.starts_with("https://html.duckduckgo.com/html/?q="),
+            "{ddg}"
+        );
+    }
+
+    /// RSS 解析（纯函数）：CDATA / 实体 / 空标题 / 空链接 / 截断全走一遍。
+    #[test]
+    fn bing_rss_parses_items_with_cdata_and_entities() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel>
+<title>必应：rust</title>
+<item><title>Rust Programming Language</title><link>https://rust-lang.org/</link><description>The Rust &lt;programming&gt; language &amp; toolchain</description></item>
+<item><title><![CDATA[Rust 程序设计语言]]></title><link>https://rust-lang.org/zh-CN/</link><description><![CDATA[<b>Rust</b> 是一门注重安全性的语言]]></description></item>
+<item><title></title><link>https://example.com/empty-title</link></item>
+<item><title>No link</title><description>x</description></item>
+</channel></rss>"#;
+        let items = parse_bing_rss(xml, 10);
+        assert_eq!(items.len(), 2, "空标题 / 空链接项必须丢弃");
+        assert_eq!(items[0]["title"], "Rust Programming Language");
+        assert_eq!(items[0]["url"], "https://rust-lang.org/");
+        assert_eq!(
+            items[0]["snippet"],
+            "The Rust <programming> language & toolchain"
+        );
+        assert_eq!(items[1]["title"], "Rust 程序设计语言");
+        assert_eq!(items[1]["snippet"], "Rust 是一门注重安全性的语言");
+    }
+
+    /// 402 body 里能且只能取出 api_key 一个字段（username/password 不外泄）。
+    #[test]
+    fn generated_api_key_is_extracted_from_quota_402_body() {
+        let body = r#"{"code":-1,"message":"Your account and API key have been automatically generated. Use the API key below to continue.\nusername=as_auto_abc123\npassword=secretpwd\napi_key=as_sk_test0123456789abcdef0123456789","request_id":"r1","error_code":"daily_free_quota_exhausted"}"#;
+        assert_eq!(
+            parse_generated_api_key(body).as_deref(),
+            Some("as_sk_test0123456789abcdef0123456789")
+        );
+        assert_eq!(parse_generated_api_key(r#"{"code":-1}"#), None);
+        assert_eq!(parse_generated_api_key("api_key="), None, "空值不算 key");
+    }
+
+    /// AnySearch 成功响应 → 统一结构（snippet 缺失退 content；空标题/空链接丢弃）。
+    #[test]
+    fn anysearch_results_are_normalized() {
+        let body = r#"{"code":0,"message":"success","data":{"results":[
+{"title":"Rust Programming Language","url":"https://rust-lang.org/","snippet":"A language empowering everyone."},
+{"title":"No snippet","url":"https://example.com/a","content":"Content fallback."},
+{"title":"","url":"https://example.com/empty"},
+{"title":"No url","snippet":"x"}],"metadata":{"total_results":4}}}"#;
+        let items = parse_anysearch_results(body, 10);
+        assert_eq!(items.len(), 2, "空标题/空链接项必须丢弃");
+        assert_eq!(items[0]["title"], "Rust Programming Language");
+        assert_eq!(items[0]["snippet"], "A language empowering everyone.");
+        assert_eq!(items[1]["snippet"], "Content fallback.");
+        assert_eq!(
+            parse_anysearch_results(body, 1).len(),
+            1,
+            "遵守 max_results"
+        );
+        assert_eq!(
+            parse_anysearch_results("not json", 10).len(),
+            0,
+            "坏响应不 panic"
+        );
+    }
+
+    /// 联网冒烟（默认 ignored，手动跑）：
+    /// `cargo test -p lantai --release --bins web_cap_live -- --ignored --nocapture`
+    /// 覆盖真实链路：匿名 402 → 接住自动生成的 key → 落系统凭据 → 重发 → 200。
+    #[test]
+    #[ignore = "联网冒烟：手动执行，验证 AnySearch 402 自动接 key 全链路"]
+    fn web_cap_live_anysearch_roundtrip() {
+        let items = anysearch_attempt("rust programming language", 3).expect("AnySearch 应可用");
+        eprintln!("anysearch live items = {}", items.len());
+        assert!(!items.is_empty(), "应至少返回 1 条");
+        assert!(
+            items[0]["url"].as_str().unwrap_or("").starts_with("http"),
+            "首条应是 URL"
+        );
+    }
+
+    #[test]
+    fn bing_rss_respects_max_results() {
+        let xml: String = (0..5)
+            .map(|i| {
+                format!("<item><title>t{i}</title><link>https://example.com/{i}</link></item>")
+            })
+            .collect();
+        assert_eq!(parse_bing_rss(&xml, 3).len(), 3);
+        assert_eq!(parse_bing_rss(&xml, 10).len(), 5, "不足上限时全给");
     }
 }
 
